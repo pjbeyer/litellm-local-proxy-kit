@@ -1,0 +1,54 @@
+.gitignore
+  h_c5be3b3dad7ca8 1-37
+AGENTS.md
+  h_c5be3b3dad7ca8 1-22
+README.md
+  h_c5be3b3dad7ca8 1-121
+SHA256SUMS.txt
+  h_c5be3b3dad7ca8 1-8
+custom_callbacks.py
+  h_c5be3b3dad7ca8 1-295
+docs/compatibility-matrix.md
+  h_c5be3b3dad7ca8 1-28
+docs/compatibility.md
+  h_c5be3b3dad7ca8 1-26
+docs/import-blocker.md
+  h_c5be3b3dad7ca8 1-15
+docs/publication-readiness.md
+  h_c5be3b3dad7ca8 1-23
+docs/source-inventory.md
+  h_c5be3b3dad7ca8 1-28
+docs/test-results.md
+  h_c5be3b3dad7ca8 1-49
+preflight.py
+  h_c5be3b3dad7ca8 1-174
+proxy-env.sh
+  h_c5be3b3dad7ca8 1-13
+proxy_config.yaml
+  h_c5be3b3dad7ca8 1-187
+requirements-candidate.txt
+  h_c5be3b3dad7ca8 1-3
+reviews/README.md
+  h_c5be3b3dad7ca8 1-5
+reviews/codex-review-import-summary.md
+  h_c5be3b3dad7ca8 1-23
+reviews/codex-review-skeleton-prompt.txt
+  h_c5be3b3dad7ca8 1-13
+reviews/codex-review-skeleton-summary.md
+  h_c5be3b3dad7ca8 1-36
+tests/test_callbacks.py
+  h_c5be3b3dad7ca8 1-162
+tests/test_preflight.py
+  h_c5be3b3dad7ca8 1-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "ed38b67ce2e6cedc232ed2c33b55c20107fed19f",
+  "prompts": {},
+  "humans": {
+    "h_c5be3b3dad7ca8": {
+      "author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
