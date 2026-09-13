@@ -22,5 +22,6 @@ Before publishing a runnable release, identify and pin a stable LiteLLM version 
 
 1. `CustomLogger` exposes both the pre-deployment and per-deployment failure hooks used by `custom_callbacks.py`.
 2. `preflight.py --router-test` proves one failed local mock deployment, one ordered fallback, one failure-hook event, and the expected rewritten output cap.
+3. The local function-tool contract documented in [local-tool compatibility](local-tool-compatibility.md) passes through the exact candidate proxy and selected local endpoint.
 
 Do not weaken the preflight guard merely to make a newer release load. Any callback adaptation needs the same lifecycle test and an independent review.

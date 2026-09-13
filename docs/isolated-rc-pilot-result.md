@@ -25,6 +25,7 @@
 - After installing `prisma==0.15.0` in the disposable environment, the unauthenticated request correctly returned HTTP `401`; an authenticated model-list request returned HTTP `200`.
 - A fresh disposable environment installed `requirements-pilot.txt`, imported the proxy runtime and Prisma, and passed `pip check` with LiteLLM `1.102.0`.
 - Loopback-only binding and liveness were confirmed.
+- The subsequent local function-tool investigation determined why the forced tool request emitted no call through the proxy; see `docs/local-tool-compatibility.md`.
 
 ### Local proxy behavior — passed except tools
 

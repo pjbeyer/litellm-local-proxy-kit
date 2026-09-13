@@ -251,6 +251,8 @@ class ProxyModifierHook(CustomLogger):
         data.pop("max_completion_tokens", None)
         data.pop("max_output_tokens", None)
         data["num_retries"] = 0
+        if provider == "local" and data.get("tools"):
+            raise litellm.BadRequestError(message="Local function tools are disabled until the RC/oMLX tool contract is verified", model=model, llm_provider="auto-free")
         if provider == "local":
             # max_tokens is an output cap. No invented thinking_budget argument.
             data.setdefault("temperature", .7)

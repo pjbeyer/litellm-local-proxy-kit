@@ -40,7 +40,7 @@ Prepared from an Apple Silicon local oMLX + free-cloud experiment, 2026-09-07.
 3. Removed the invented `thinking_budget` injection. This kit makes no claim about the private local model's thinking abilities; use only parameters your oMLX model actually supports.
 4. Removed broad SIMPLE/MEDIUM keyword overrides: "explain" or "hi" must not force a difficult task into a cheap tier. Retained selected high-tier escalation terms.
 5. Disabled session/deployment affinity. Classify user turns rather than pinning the entire session to its first-turn model; the current router carries decisions through continuation turns.
-6. Removed cache-control injection, global silent parameter dropping, and forced cloud sampling values. Tools and full messages are preserved. Provider incompatibilities produce visible errors, not silent removal of tools.
+6. Removed cache-control injection, global silent parameter dropping, and forced cloud sampling values. Tools and full messages are preserved where the selected endpoint honors the forwarded contract; the current RC/oMLX local route has a documented forced-tool incompatibility in [docs/local-tool-compatibility.md](docs/local-tool-compatibility.md). Provider incompatibilities produce visible errors, not silent removal of tools.
 7. Replaced the class-shadowing callback object with `custom_callbacks.proxy_modifier`.
 8. Used Cloudflare's OpenAI-compatible `/ai/v1` endpoint. Your supplied plist lacks the Cloudflare ACCOUNT ID; the API key alone is insufficient.
 
@@ -100,7 +100,7 @@ Free-provider terms and retention policies can be unsuitable for confidential co
 ## Validation performed during preparation
 
 - Python compilation; YAML parsing and structural consistency.
-- 33 source-derived offline callback unit tests plus 3 preflight command-mode regression tests for rewriting, output caps, fail-closed policy, quota persistence, retry headers, day resets/DST, no input mutation, and credential-free router-test mode.
+- 34 offline callback unit tests (33 source-derived plus one local tool-contract regression) plus 3 preflight command-mode regression tests for rewriting, output caps, fail-closed policy, quota persistence, retry headers, day resets/DST, no input mutation, and credential-free router-test mode.
 - The unit tests deliberately stub LiteLLM: they validate this code's behavior, not the installed Router.
 - This imported workspace also ran `preflight.py --router-test` against installed LiteLLM 1.99.0 and two ephemeral localhost endpoints. It safely rejected that version because it lacks the required deployment-attempt failure hook; see [compatibility status](docs/compatibility.md).
 - Live provider inference and authenticated catalog checks were not run. No provider credentials, account configuration, existing proxy configuration, startup service, or running proxy was modified.

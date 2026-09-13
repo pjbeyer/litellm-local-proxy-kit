@@ -58,6 +58,10 @@ class PolicyTests(unittest.IsolatedAsyncioTestCase):
     async def test_local_preserves_chat_template_options(self):
         r = await self.call(cb.LOCAL_MODEL, extra_body={"chat_template_kwargs":{"enable_thinking":False}})
         self.assertFalse(r["extra_body"]["chat_template_kwargs"]["enable_thinking"])
+    async def test_local_function_tools_rejected_until_contract_is_verified(self):
+        with self.assertRaises(FakeBadRequest) as ctx:
+            await self.call(cb.LOCAL_MODEL, tools=[{"type":"function","function":{"name":"pilot_echo"}}])
+        self.assertIn("function tools are disabled", str(ctx.exception))
     async def test_openrouter_zero_price_policy(self):
         r = await self.call("openrouter/openrouter/free", temperature=.3, extra_body={"provider":{"max_price":{"prompt":10}}, "thinking_budget":55})
         self.assertEqual(r["extra_body"]["provider"]["max_price"], {"prompt":0,"completion":0,"request":0})

@@ -177,6 +177,7 @@ router_settings:
 litellm_settings:
   telemetry: false
   drop_params: false # Do not silently discard tools / structured-output requests.
+  # RC/oMLX caveat: LiteLLM omits explicit stream:false downstream; this local endpoint then ignores forced tools. See docs/local-tool-compatibility.md.
   modify_params: false
   num_retries: 0
   request_timeout: 600 # Whole-request ceiling; individual attempts capped above.
