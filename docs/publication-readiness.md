@@ -18,6 +18,8 @@ This repository is an import-stage local project, not yet a public release.
 - [ ] Re-run `preflight.py --router-test` with that pinned environment.
 - [ ] Verify each provider/model name, quota policy, and data-handling term at release time; do not rely on source-experiment observations.
 - [ ] Add a portable macOS service guide only after separate specification and review. Do not publish a workstation plist or script.
-- [ ] Add dependency/install metadata and a declared supported Python/LiteLLM environment.
+- [ ] Replace the validation-only candidate and disposable `requirements-pilot.txt` manifest with reproducible, stable-release dependency/install metadata and a declared supported Python/LiteLLM environment.
+- [ ] Resolve the RC proxy authentication dependency gap documented in `docs/isolated-rc-pilot-result.md`; the current manifest is not a production lockfile.
+- [ ] Repeat and pass every remaining pilot gate recorded in `docs/isolated-rc-pilot-result.md`, including approved provider validation and a client-executed function-tool round trip, before release consideration.
 - [ ] Add CI that runs offline tests and publication-hygiene scans.
 - [ ] Run a final independent review of the release candidate.

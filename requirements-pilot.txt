@@ -1,0 +1,6 @@
+# Disposable pilot dependency manifest; not a production lockfile or activation command.
+# This installs LiteLLM's proxy extra from the immutable validation candidate.
+litellm[proxy] @ git+https://github.com/BerriAI/litellm.git@16f6d924530c1cf2dc94b3e83c86a4632aefb7c0
+# Required by the RC proxy's unauthenticated-auth error path in the validated pilot.
+prisma==0.15.0
+PyYAML>=6

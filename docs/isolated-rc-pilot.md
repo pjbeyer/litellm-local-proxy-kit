@@ -7,7 +7,8 @@ Validate the compatible LiteLLM release-candidate build in an isolated, loopback
 **Candidate under test:**
 
 - LiteLLM release-candidate commit `16f6d924530c1cf2dc94b3e83c86a4632aefb7c0`
-- Install input: `requirements-candidate.txt`
+- Router-only compatibility input: `requirements-candidate.txt`
+- Proxy-pilot runtime input: `requirements-pilot.txt`
 
 The compatibility matrix already proved that this candidate passes the repository's 36 offline tests and the no-provider localhost Router lifecycle test. This protocol covers the later, separately authorized credentialed validation.
 
@@ -31,6 +32,7 @@ Use a disposable directory and a dedicated Python virtual environment. Keep its 
 
 - Bind any test proxy only to `127.0.0.1` on an unused high port.
 - Use a fresh local state database under the disposable root.
+- Install the candidate's proxy runtime from `requirements-pilot.txt`; it is a disposable pilot manifest, not a production lockfile.
 - Supply credentials only through the established command-scoped secret resolver.
 - Use distinct, explicitly named pilot credentials/accounts where available; never copy values from another process into a file.
 - Keep request logging at a level that excludes prompts, responses, and credential values.
