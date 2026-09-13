@@ -1,0 +1,32 @@
+README.md
+  h_c5be3b3dad7ca8 43,103
+SHA256SUMS.txt
+  h_c5be3b3dad7ca8 1-3,6
+custom_callbacks.py
+  h_c5be3b3dad7ca8 254-255
+docs/compatibility.md
+  h_c5be3b3dad7ca8 25
+docs/isolated-rc-pilot-result.md
+  h_c5be3b3dad7ca8 28
+docs/local-tool-compatibility.md
+  h_c5be3b3dad7ca8 1-33
+docs/publication-readiness.md
+  h_c5be3b3dad7ca8 24
+proxy_config.yaml
+  h_c5be3b3dad7ca8 180
+reviews/codex-review-local-tool-summary.md
+  h_c5be3b3dad7ca8 1-11
+tests/test_callbacks.py
+  h_c5be3b3dad7ca8 61-64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "631a8b1bc672a26e1204eb1bf71697779f79cb1d",
+  "prompts": {},
+  "humans": {
+    "h_c5be3b3dad7ca8": {
+      "author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
