@@ -1,0 +1,14 @@
+docs/isolated-rc-pilot.md
+  h_c5be3b3dad7ca8 1-122
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "60da4c1c0bc2faa2e4cb016f43771e34e0e09707",
+  "prompts": {},
+  "humans": {
+    "h_c5be3b3dad7ca8": {
+      "author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
