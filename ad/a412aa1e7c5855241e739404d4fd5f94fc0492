@@ -1,0 +1,26 @@
+core/install_launchagent.py
+  s_639594661735ca::t_e573ef7fd9d431 1-81
+launchd/proxy.rotate.plist.tmpl
+  s_639594661735ca::t_7aa60b57a3fe73 1-45
+launchd/proxy.plist.tmpl
+  s_639594661735ca::t_8b2a469623edd6 19-21,27,30-37,39-44
+  s_639594661735ca::t_6c8465c1f9ac6c 52,55
+  s_639594661735ca::t_c22a7b4afbc2e6 1-18,22-26,28-29,38,45-51,54,56-69
+  s_639594661735ca::t_cb43b81dbb16ed 53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "ada412aa1e7c5855241e739404d4fd5f94fc0492",
+  "prompts": {},
+  "sessions": {
+    "s_639594661735ca": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261009_123920_cc7c2090",
+        "model": "glm-5.3-flash"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
