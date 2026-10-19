@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Template: placeholders are substituted by core/install_launchagent.sh.
+     Do not install this file directly. (spec 015, Contract 4)
+
+     Placeholders: {{LABEL}} {{PORT}} {{LOG_DIR}} {{WRAPPER_PATH}} -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{{LABEL}}</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>{{WRAPPER_PATH}}</string>
+        <string>{{PORT}}</string>
+    </array>
+
+    <!-- launchd's minimal environment: the wrapper rebuilds everything else.
+         OP_* settings keep the 1Password CLI from touching the desktop app or
+         its cache (launchd-safe op behavior, mirrors the live wrapper). -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HOME</key>
+        <string>/Users/pjbeyer</string>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>LITELLM_LOCAL_PORT</key>
+        <string>{{PORT}}</string>
+        <key>LITELLM_PROXY_LABEL</key>
+        <string>{{LABEL}}</string>
+        <key>LITELLM_PROXY_LOG_DIR</key>
+        <string>{{LOG_DIR}}</string>
+        <key>OP_CACHE</key>
+        <string>false</string>
+        <key>OP_LOAD_DESKTOP_APP_SETTINGS</key>
+        <string>false</string>
+    </dict>
+
+    <key>LimitLoadToSessionType</key>
+    <array>
+        <string>Aqua</string>
+        <string>Background</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <dict>
+        <!-- Restart on abnormal exit/crash, NOT after a clean operator stop or
+             a config error (exit 78 = EX_CONFIG): a bad config cannot hot-loop.
+             SuccessfulExit:false alone (no Crashed key) mirrors the live agent. -->
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+    <key>WorkingDirectory</key>
+    <string>{{WORK_DIR}}</string>
+
+    <key>StandardOutPath</key>
+    <string>{{LOG_DIR}}/proxy.log</string>
+    <key>StandardErrorPath</key>
+    <string>{{LOG_DIR}}/proxy.err.log</string>
+</dict>
+</plist>
