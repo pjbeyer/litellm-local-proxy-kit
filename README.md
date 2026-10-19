@@ -102,7 +102,7 @@ Free-provider terms and retention policies can be unsuitable for confidential co
 - Python compilation; YAML parsing and structural consistency.
 - 34 offline callback unit tests (33 source-derived plus one local tool-contract regression) plus 3 preflight command-mode regression tests for rewriting, output caps, fail-closed policy, quota persistence, retry headers, day resets/DST, no input mutation, and credential-free router-test mode.
 - The unit tests deliberately stub LiteLLM: they validate this code's behavior, not the installed Router.
-- This imported workspace also ran `preflight.py --router-test` against installed LiteLLM 1.99.0 and two ephemeral localhost endpoints. It safely rejected that version because it lacks the required deployment-attempt failure hook; see [compatibility status](docs/compatibility.md).
+- The initial RC validation established the callback/router contract. A later disposable LiteLLM `1.101.0` stable-candidate environment passed all 37 offline tests, `pip check`, the localhost Router lifecycle, and a synthetic two-phase tool transport probe. It still omitted explicit downstream `stream: false`, so the local function-tool guard remains in place; see [stable candidate validation](docs/stable-candidate-validation.md) and [local-tool compatibility](docs/local-tool-compatibility.md).
 - Live provider inference and authenticated catalog checks were not run. No provider credentials, account configuration, existing proxy configuration, startup service, or running proxy was modified.
 
 ## Sources

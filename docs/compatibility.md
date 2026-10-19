@@ -16,12 +16,13 @@ The preflight failure is expected and safe: **do not activate this kit with Lite
 
 ## Publication gate
 
-The isolated compatibility matrix identified `v1.102.0-rc.1` commit `16f6d924530c1cf2dc94b3e83c86a4632aefb7c0` as a passing release candidate. It is pinned for isolated validation in `requirements-candidate.txt`; see [compatibility matrix](compatibility-matrix.md). It is not yet a production recommendation.
+The isolated compatibility matrix now includes LiteLLM `1.101.0` as a passing stable compatibility candidate. In a disposable `1.101.0` environment, the imported callback/router contract, all 37 offline tests, and the localhost fallback lifecycle passed. A synthetic two-phase tool transport probe also passed, while confirming that the proxy still omits explicit downstream `stream: false`; see [stable candidate validation](stable-candidate-validation.md) and the [compatibility matrix](compatibility-matrix.md).
 
-Before publishing a runnable release, identify and pin a stable LiteLLM version that passes both of these gates:
+This is not a production recommendation and does not resolve the local function-tool gate. Before publishing a runnable release:
 
-1. `CustomLogger` exposes both the pre-deployment and per-deployment failure hooks used by `custom_callbacks.py`.
-2. `preflight.py --router-test` proves one failed local mock deployment, one ordered fallback, one failure-hook event, and the expected rewritten output cap.
-3. The local function-tool contract documented in [local-tool compatibility](local-tool-compatibility.md) passes through the exact candidate proxy and selected local endpoint.
+1. Preserve the exact stable validation environment in reproducible, declared install metadata and repeat the matrix when it changes.
+2. `CustomLogger` must expose both the pre-deployment and per-deployment failure hooks used by `custom_callbacks.py`.
+3. `preflight.py --router-test` must prove one failed local mock deployment, one ordered fallback, one failure-hook event, and the expected rewritten output cap.
+4. The local function-tool contract documented in [local-tool compatibility](local-tool-compatibility.md) must pass through the exact candidate proxy and selected local endpoint.
 
-Do not weaken the preflight guard merely to make a newer release load. Any callback adaptation needs the same lifecycle test and an independent review.
+Do not weaken the preflight or local-tool guards merely to make a newer release load. Any callback or proxy adaptation needs the same lifecycle test and an independent review.
