@@ -1,0 +1,26 @@
+README.md
+  h_c5be3b3dad7ca8 105
+SHA256SUMS.txt
+  h_c5be3b3dad7ca8 1
+docs/compatibility-matrix.md
+  h_c5be3b3dad7ca8 8-9,11,13-15,21-22
+docs/compatibility.md
+  h_c5be3b3dad7ca8 19,21,23-26,28
+docs/publication-readiness.md
+  h_c5be3b3dad7ca8 17-18
+docs/stable-candidate-validation.md
+  h_c5be3b3dad7ca8 1-57
+requirements-stable-candidate.txt
+  h_c5be3b3dad7ca8 1-6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "dd7b5e6134036744213995ac0dbb3d562884e617",
+  "prompts": {},
+  "humans": {
+    "h_c5be3b3dad7ca8": {
+      "author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
