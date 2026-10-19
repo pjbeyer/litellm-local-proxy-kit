@@ -1,0 +1,5 @@
+# Rendered LiteLLM proxy config — GENERATED, do not hand-edit.
+# Source of truth: deployments/<name>/overlay.yaml via core/render_config.py.
+# Regenerate: core/installer.sh (apply targets only).
+#
+# Secrets: os.environ/... references only. Never inline a key.
