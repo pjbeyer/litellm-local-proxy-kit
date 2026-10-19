@@ -1,0 +1,20 @@
+tests/test_core.py
+  s_639594661735ca::t_daf4b574d8e068 153,162,172,174,186,197-203,205-206
+  s_639594661735ca::t_dc4105c21eea52 1-152,154-161,163-171,173,175-185,187-196,204,207-263
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "5538254f68c472c8d9c866175441f7ed862e65fd",
+  "prompts": {},
+  "sessions": {
+    "s_639594661735ca": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261009_123920_cc7c2090",
+        "model": "glm-5.3-flash"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
