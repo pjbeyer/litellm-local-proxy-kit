@@ -43,10 +43,16 @@ def render(overlay: dict, template: str) -> str:
         params["model"] = f"openai/{m['name']}"
         models.append({"model_name": m["name"], "litellm_params": params})
     if overlay["upstream"].get("wildcard"):
+        wildcard_params: dict = {"model": "openai/*", **base}
+        # The live wildcard entry carries NO timeouts (deliberate: unlisted
+        # models use litellm defaults). Preserve that shape exactly.
+        if not overlay["upstream"].get("wildcard_timeouts", True):
+            for k in ("timeout", "stream_timeout"):
+                wildcard_params.pop(k, None)
         models.append(
             {
                 "model_name": "*",
-                "litellm_params": {"model": "openai/*", **base},
+                "litellm_params": wildcard_params,
             }
         )
     doc: dict = {"model_list": models}
