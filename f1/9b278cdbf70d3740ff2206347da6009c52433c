@@ -1,0 +1,21 @@
+drift-exemptions.yaml
+  s_639594661735ca::t_066138737d59e1 1-11
+core/drift_check.py
+  s_639594661735ca::t_60b209047d3480 1-141
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "f19b278cdbf70d3740ff2206347da6009c52433c",
+  "prompts": {},
+  "sessions": {
+    "s_639594661735ca": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261009_123920_cc7c2090",
+        "model": "glm-5.3-flash"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
