@@ -1,0 +1,23 @@
+core/render_config.py
+  s_639594661735ca::t_14182da3b4880c 39,43
+  s_639594661735ca::t_33a3079b6b959c 44-45,54
+  s_639594661735ca::t_6270f060595a2e 30-38,46-53
+  s_639594661735ca::t_b5b654dcb8a6c7 29,40-42
+  s_639594661735ca::t_c6f55bb5089fe6 13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "9dafaf52eeb2341589779b9951a5f831131d8105",
+  "prompts": {},
+  "sessions": {
+    "s_639594661735ca": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261009_123920_cc7c2090",
+        "model": "glm-5.3-flash"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
