@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import os
 import sys
 from pathlib import Path
 
@@ -25,8 +26,32 @@ def _render_yaml(obj: object) -> str:
     )
 
 
-def render(overlay: dict, template: str) -> str:
-    """Produce the final config bytes: template with overlay-driven blocks."""
+def render(overlay: dict, template: str, *, home: str | None = None) -> str:  # noqa: C901
+    """Produce the final config bytes: template with overlay-driven blocks.
+
+    `${HOME}` in overlay values is substituted with the operator's home at
+    RENDER time (never tracked, FR-004): MCP stdio commands receive literal
+    paths — litellm does not expand `~`/`$HOME` in stdio `command` (verified
+    against the pinned build's StdioServerParameters path).
+    """
+    if home is None:
+        home = os.environ.get("HOME", "")
+    if not home:
+        raise ValueError(
+            "HOME undefined in the render environment — ${HOME} placeholders "
+            "would go unresolved (fail-closed, FR-004)"
+        )
+    else:
+
+        def _subst(obj: object) -> object:
+            if isinstance(obj, dict):
+                return {k: _subst(v) for k, v in obj.items()}
+            if isinstance(obj, list):
+                return [_subst(v) for v in obj]
+            if isinstance(obj, str):
+                return obj.replace("${HOME}", home)
+            return obj
+        overlay = _subst(overlay)  # type: ignore[assignment]
     template_part = template.split("# ===BEGIN GENERATED===")[0] + "# ===BEGIN GENERATED===\n"
 
     # model_list: explicit entries + optional wildcard
