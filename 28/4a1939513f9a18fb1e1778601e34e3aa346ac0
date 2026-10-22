@@ -1,0 +1,41 @@
+core/run-proxy-wrapper.sh
+  s_639594661735ca::t_bfd2246ef5db1e 47
+  s_639594661735ca::t_6ef27d7333b669 21
+launchd/proxy.plist.tmpl
+  s_639594661735ca::t_7440e712d1e12c 42-45
+  s_639594661735ca::t_32451c36d9350c 25,34-41
+core/install_launchagent.py
+  s_639594661735ca::t_e6efe8e9e1fa3f 71-72
+  s_639594661735ca::t_4987e5918f219c 69-70,73
+  s_639594661735ca::t_31e8a1de9462b4 18
+  s_639594661735ca::t_be22b576c39706 11
+  s_639594661735ca::t_98b269fcccee7b 40-41
+  s_639594661735ca::t_de68a3d1d8ef96 78-80,82
+  s_639594661735ca::t_d55b7880975a4b 31-39,42,50-52
+  s_639594661735ca::t_eeb07f790a343d 81
+  s_639594661735ca::t_361a76e9855b76 53-54
+core/rotate-logs.sh
+  s_639594661735ca::t_6eb2a25f4bb4df 1-61
+core/installer.sh
+  s_639594661735ca::t_d6906a36cdcb77 79-80
+  s_639594661735ca::t_40fc7a360338bf 71,73-76
+  s_639594661735ca::t_8d52a655f3fdd5 78,83,86
+tests/test_core.py
+  s_639594661735ca::t_e55c01ef4ef1ee 212-214,220,231-239,244,253
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "284a1939513f9a18fb1e1778601e34e3aa346ac0",
+  "prompts": {},
+  "sessions": {
+    "s_639594661735ca": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261009_123920_cc7c2090",
+        "model": "glm-5.3-flash"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
