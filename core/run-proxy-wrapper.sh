@@ -18,7 +18,7 @@
 #   LITELLM_PROXY_CONFIG    config file path          (default: <config_dir>/config.rendered.yaml)
 #   LITELLM_LOCAL_PORT      port                      (default 4000)
 #   OP_KEYCHAIN_SERVICE     Keychain item holding the 1Password service-account token
-#   OP_KEYCHAIN_ACCOUNT     Keychain account (default pjbeyer)
+#   OP_KEYCHAIN_ACCOUNT     Keychain account (default: current uid's name)
 #   CREDENTIALS_MANIFEST    path to credentials.toml (Contract 1)
 #   LITELLM_PATCH_SENTINEL  patch sentinel symbol to assert in the installed build (FR-006)
 #   LITELLM_PROXY_PYTHON    python interpreter of the pinned build (must be set)
@@ -44,7 +44,7 @@ is_resolved_by_wrapper() { # is_resolved_by_wrapper VAR -> 0/1
 
 # ---- 1. Service-account token: Keychain primary, manifest file fallback -----
 OP_KEYCHAIN_SERVICE="${OP_KEYCHAIN_SERVICE:-litellm-gateways-op-token}"
-OP_KEYCHAIN_ACCOUNT="${OP_KEYCHAIN_ACCOUNT:-pjbeyer}"
+OP_KEYCHAIN_ACCOUNT="${OP_KEYCHAIN_ACCOUNT:-$(id -un 2>/dev/null || true)}"
 if [ -z "${OP_SERVICE_ACCOUNT_TOKEN:-}" ]; then
   tok="$(/usr/bin/security find-generic-password -s "$OP_KEYCHAIN_SERVICE" -a "$OP_KEYCHAIN_ACCOUNT" -w 2>/dev/null || true)"
   if [ -n "$tok" ]; then

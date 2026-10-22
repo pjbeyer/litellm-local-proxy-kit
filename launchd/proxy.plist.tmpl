@@ -22,7 +22,7 @@
     <key>EnvironmentVariables</key>
     <dict>
         <key>HOME</key>
-        <string>/Users/pjbeyer</string>
+        <string>{{HOME}}</string>
         <key>PATH</key>
         <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
         <key>LITELLM_LOCAL_PORT</key>
@@ -31,6 +31,18 @@
         <string>{{LABEL}}</string>
         <key>LITELLM_PROXY_LOG_DIR</key>
         <string>{{LOG_DIR}}</string>
+        <key>LITELLM_DEPLOYMENT</key>
+        <string>{{DEPLOYMENT}}</string>
+        <key>LITELLM_PROXY_CONFIG</key>
+        <string>{{WRAPPER_DIR}}/config.rendered.yaml</string>
+        <key>CREDENTIALS_MANIFEST</key>
+        <string>{{WRAPPER_DIR}}/credentials.toml</string>
+        <key>LITELLM_PROXY_PYTHON</key>
+        <string>{{PROXY_PYTHON}}</string>
+        <key>OP_KEYCHAIN_SERVICE</key>
+        <string>{{OP_KEYCHAIN_SERVICE}}</string>
+        <key>OP_KEYCHAIN_ACCOUNT</key>
+        <string>{{OP_KEYCHAIN_ACCOUNT}}</string>
         <key>OP_CACHE</key>
         <string>false</string>
         <key>OP_LOAD_DESKTOP_APP_SETTINGS</key>

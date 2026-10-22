@@ -209,12 +209,15 @@ def test_sentinel_checker_positive_and_negative(tmp_path):
 
 # ---------- plist templating (Contract 4) ----------
 
+NEW_ARGS = ["--deployment", "work", "--proxy-python", "/tmp/venv/bin/python",
+            "--op-keychain-service", "test-sa", "--op-keychain-account", "testuser"]
+
 def test_plist_render_and_check(tmp_path):
     out = tmp_path / "out"
     r = subprocess.run(
         [sys.executable, str(PLIST), "--label", "test.proxy", "--port", "4001",
          "--log-dir", str(tmp_path / "logs"), "--wrapper-dir", "/tmp/wd",
-         "--work-dir", "/tmp/work", "--out", str(out)],
+         "--work-dir", "/tmp/work", "--out", str(out)] + NEW_ARGS,
         capture_output=True, text=True,
     )
     assert r.returncode == 0, r.stderr
@@ -225,11 +228,20 @@ def test_plist_render_and_check(tmp_path):
     assert d["Label"] == "test.proxy"
     assert d["ProgramArguments"][-1] == "4001"
     assert d["StandardOutPath"].endswith("proxy.log")
+    # wrapper-contract keys must be present and fully substituted (no leaks)
+    env = d["EnvironmentVariables"]
+    assert env["LITELLM_DEPLOYMENT"] == "work"
+    assert env["LITELLM_PROXY_PYTHON"] == "/tmp/venv/bin/python"
+    assert env["CREDENTIALS_MANIFEST"] == "/tmp/wd/credentials.toml"
+    assert env["LITELLM_PROXY_CONFIG"] == "/tmp/wd/config.rendered.yaml"
+    assert env["OP_KEYCHAIN_SERVICE"] == "test-sa"
+    assert env["OP_KEYCHAIN_ACCOUNT"] == "testuser"
+    assert "{{" not in (out / "test.proxy.plist").read_text()
     # check mode: passing
     r = subprocess.run(
         [sys.executable, str(PLIST), "--label", "test.proxy", "--port", "4001",
          "--log-dir", str(tmp_path / "logs"), "--wrapper-dir", "/tmp/wd",
-         "--work-dir", "/tmp/work", "--check", str(out)],
+         "--work-dir", "/tmp/work", "--check", str(out)] + NEW_ARGS,
         capture_output=True, text=True,
     )
     assert r.returncode == 0, "check must pass on freshly rendered plists"
@@ -238,7 +250,7 @@ def test_plist_render_and_check(tmp_path):
     r = subprocess.run(
         [sys.executable, str(PLIST), "--label", "test.proxy", "--port", "4001",
          "--log-dir", str(tmp_path / "logs"), "--wrapper-dir", "/tmp/wd",
-         "--work-dir", "/tmp/work", "--check", str(out)],
+         "--work-dir", "/tmp/work", "--check", str(out)] + NEW_ARGS,
         capture_output=True, text=True,
     )
     assert r.returncode == 1, "check must fail on stale plist"

@@ -68,16 +68,22 @@ STAGE="$(mktemp -d "${TMPDIR:-/tmp}/litellm-install.XXXXXX")"
 trap 'rm -rf "$STAGE"' EXIT
 TEMPLATE="$CORE_DIR/config.template.header.txt"
 [ -f "$TEMPLATE" ] || TEMPLATE="$CORE_DIR/../deployments/$DEPLOY_NAME/config.header.txt"
-/usr/bin/python3 "$CORE_DIR/render_config.py" --overlay "$OVERLAY" --template "$TEMPLATE" \
+"$PROXY_PYTHON" "$CORE_DIR/render_config.py" --overlay "$OVERLAY" --template "$TEMPLATE" \
   --out "$STAGE/config.rendered.yaml" || die "config render failed"
-/usr/bin/python3 "$CORE_DIR/install_launchagent.py" --label "$LABEL" --port "$PORT" \
+# Pinned venv python for rendering tools: venvs ignore user-site entirely, so
+# operator PYTHONUSERBASE/PYTHONPATH pollution (e.g. a stale shared user-site)
+# cannot break the render. Stdlib-only helpers below stay on /usr/bin/python3.
+"$PROXY_PYTHON" "$CORE_DIR/install_launchagent.py" --label "$LABEL" --port "$PORT" \
   --log-dir "$LOG_DIR" --wrapper-dir "$CONFIG_DIR" --work-dir "$CONFIG_DIR" \
+  --deployment "$DEPLOY_NAME" --proxy-python "$PROXY_PYTHON" \
+  --op-keychain-service "${OP_KEYCHAIN_SERVICE:?deploy.conf.sh must set OP_KEYCHAIN_SERVICE}" \
+  --op-keychain-account "${OP_KEYCHAIN_ACCOUNT:?deploy.conf.sh must set OP_KEYCHAIN_ACCOUNT}" \
   --out "$STAGE" || die "plist render failed"
 cp "$CORE_DIR/run-proxy-wrapper.sh" "$CORE_DIR/check_patch_sentinel.py" \
-   "$CORE_DIR/parse_credentials.py" "$STAGE/"
+   "$CORE_DIR/parse_credentials.py" "$CORE_DIR/rotate-logs.sh" "$STAGE/"
 
 # Managed file set: everything the installer owns at the apply target.
-MANAGED=(config.rendered.yaml "$LABEL.plist" "$LABEL.rotate.plist" run-proxy-wrapper.sh check_patch_sentinel.py parse_credentials.py)
+MANAGED=(config.rendered.yaml "$LABEL.plist" "$LABEL.rotate.plist" run-proxy-wrapper.sh check_patch_sentinel.py parse_credentials.py rotate-logs.sh)
 # Stale entry points the installer owns and must remove/rename (FR-001/F-CI-4).
 STALE=(run-local-proxy.sh launchd-wrapper.sh)
 
