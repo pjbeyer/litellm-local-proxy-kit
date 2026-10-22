@@ -1,0 +1,19 @@
+docs/1062-port-assessment.md
+  s_639594661735ca::t_8217d9bc3bad2c 1-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "b1b7b637d3e2736d7b3b926792250787851a8b08",
+  "prompts": {},
+  "sessions": {
+    "s_639594661735ca": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261009_123920_cc7c2090",
+        "model": "glm-5.3-flash"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
