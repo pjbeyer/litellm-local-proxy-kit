@@ -1,0 +1,39 @@
+tests/test_installer_contract.py
+  s_639594661735ca::t_5f104f7fb1ede9 85
+  s_639594661735ca::t_791c3c1ca7f746 70
+  s_639594661735ca::t_2617bdfeb1d66e 1-69,71-84,86-104
+README.md
+  s_639594661735ca::t_42ca35fd34ca46 75-77
+  s_639594661735ca::t_f1af1628747b6a 80-81,84-86,89-90
+  s_639594661735ca::t_b6967316cd4bd9 91
+core/installer.sh
+  s_639594661735ca::t_3d4a950b757bee 94-96
+  s_639594661735ca::t_48522603bfb485 78
+  s_639594661735ca::t_3cb16344f6ac3f 84-86,89
+core/install_launchagent.py
+  s_639594661735ca::t_2c779930828291 74
+  s_639594661735ca::t_619a62e1ef1c59 12,15-45
+  s_639594661735ca::t_c936fbb6418e3e 113
+  s_639594661735ca::t_4c88fdddf53f6f 119-124,128
+  s_639594661735ca::t_8664f17c339b01 89,93-99
+launchd/proxy.plist.tmpl
+  s_639594661735ca::t_b044a2c425f10a 63-65
+docs/macos-managed-service.md
+  s_639594661735ca::t_46ae9306d3a7de 1-135
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "1884cda58b02c09878364538329659df9e7c0501",
+  "prompts": {},
+  "sessions": {
+    "s_639594661735ca": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261009_123920_cc7c2090",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
