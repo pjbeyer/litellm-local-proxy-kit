@@ -1,0 +1,27 @@
+tests/test_installer_contract.py
+  s_639594661735ca::t_50ecf7f49fffd4 89
+  s_639594661735ca::t_a0fb326a5d769b 46
+  s_639594661735ca::t_762e3212f44340 100-106
+docs/macos-managed-service.md
+  s_639594661735ca::t_913990a188a84a 19-22
+  s_639594661735ca::t_0b3033d396a68f 39
+core/install_launchagent.py
+  s_639594661735ca::t_4c9f02b7b8eb7d 30-34
+  s_639594661735ca::t_6a7f01f306d577 44-46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "9965bc4e1dafd713906849895c9d4bd4b091cf47",
+  "prompts": {},
+  "sessions": {
+    "s_639594661735ca": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261009_123920_cc7c2090",
+        "model": "glm-5.3-flash"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
