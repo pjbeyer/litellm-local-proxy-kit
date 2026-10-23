@@ -131,6 +131,14 @@ salt-key continuity; verify required MCP access and consuming agents, and update
 operational references to the rendered config and managed wrapper only when
 those are the active files. Keep unrelated routing experiments disabled.
 
+A true rollback restores the **previous build**, not just the previous wrapper:
+re-point `LITELLM_PROXY_PYTHON` at a venv built from a real checkout of the old
+version (matching `pin.lock` provenance, which `check_pin.py` enforces), then
+bootstrap the backed-up plist. A venv whose editable install points at the
+*current* worktree will pass the old sentinel (it checks a symbol, not
+provenance) while silently running the new code with stale metadata — the
+installer now rejects exactly this shape at Gate 2a.
+
 If verification fails, the operator stops the new job, restores the captured
 old plist **and its referenced scripts**, selects the matching source checkout
 and dependency environment, and bootstraps the restored plist. Re-run the same

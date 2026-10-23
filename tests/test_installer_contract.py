@@ -23,7 +23,7 @@ def sandbox(tmp_path):
     logs = tmp_path / "logs"
     interpreter = tmp_path / "python"
     interpreter.write_text(
-        '#!/bin/bash\ncase "$1" in */check_patch_sentinel.py) exit 0;; esac\n'
+        '#!/bin/bash\ncase "$1" in */check_patch_sentinel.py|*/check_pin.py) exit 0;; esac\n'
         f'exec {shlex.quote(sys.executable)} "$@"\n'
     )
     interpreter.chmod(0o755)
