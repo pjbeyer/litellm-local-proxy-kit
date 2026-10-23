@@ -60,9 +60,9 @@
 
     <key>KeepAlive</key>
     <dict>
-        <!-- Restart on abnormal exit/crash, NOT after a clean operator stop or
-             a config error (exit 78 = EX_CONFIG): a bad config cannot hot-loop.
-             SuccessfulExit:false alone (no Crashed key) mirrors the live agent. -->
+        <!-- Restart on nonzero exit, including EX_CONFIG (78). Launchd does not
+             special-case 78: ThrottleInterval below bounds retries to 30s.
+             A clean exit is not restarted. -->
         <key>SuccessfulExit</key>
         <false/>
     </dict>

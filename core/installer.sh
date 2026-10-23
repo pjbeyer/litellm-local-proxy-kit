@@ -75,20 +75,25 @@ TEMPLATE="$CORE_DIR/config.template.header.txt"
 # cannot break the render. Stdlib-only helpers below stay on /usr/bin/python3.
 "$PROXY_PYTHON" "$CORE_DIR/install_launchagent.py" --label "$LABEL" --port "$PORT" \
   --log-dir "$LOG_DIR" --wrapper-dir "$CONFIG_DIR" --work-dir "$CONFIG_DIR" \
-  --deployment "$DEPLOY_NAME" --proxy-python "$PROXY_PYTHON" \
+  --deployment "$DEPLOY_NAME" --proxy-python "$PROXY_PYTHON" --runtime-overlay "$OVERLAY" \
   --op-keychain-service "${OP_KEYCHAIN_SERVICE:?deploy.conf.sh must set OP_KEYCHAIN_SERVICE}" \
   --op-keychain-account "${OP_KEYCHAIN_ACCOUNT:?deploy.conf.sh must set OP_KEYCHAIN_ACCOUNT}" \
   --out "$STAGE" || die "plist render failed"
 cp "$CORE_DIR/run-proxy-wrapper.sh" "$CORE_DIR/check_patch_sentinel.py" \
    "$CORE_DIR/parse_credentials.py" "$CORE_DIR/rotate-logs.sh" "$STAGE/"
+# The plist points at this deployed manifest; shipping only the parser leaves
+# every installed wrapper failing closed before credential resolution.
+cp "$MANIFEST" "$STAGE/credentials.toml"
 
 # Managed file set: everything the installer owns at the apply target.
-MANAGED=(config.rendered.yaml "$LABEL.plist" "$LABEL.rotate.plist" run-proxy-wrapper.sh check_patch_sentinel.py parse_credentials.py rotate-logs.sh)
+MANAGED=(config.rendered.yaml "$LABEL.plist" "$LABEL.rotate.plist" run-proxy-wrapper.sh check_patch_sentinel.py parse_credentials.py rotate-logs.sh credentials.toml)
 # Stale entry points the installer owns and must remove/rename (FR-001/F-CI-4).
 STALE=(run-local-proxy.sh launchd-wrapper.sh)
 
 apply() {
-  mkdir -p "$CONFIG_DIR" "$LOG_DIR"
+  if [ "$MODE" = "apply" ]; then
+    mkdir -p "$CONFIG_DIR" "$LOG_DIR"
+  fi
   local f
   for f in "${MANAGED[@]}"; do
     if ! cmp -s "$STAGE/$f" "$CONFIG_DIR/$f" 2>/dev/null; then

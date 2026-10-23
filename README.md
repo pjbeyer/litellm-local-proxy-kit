@@ -72,14 +72,22 @@ Cloudflare has a SHARED 10,000-Neuron/day allowance, not 10K tokens/day or a per
 
 ## Validation boundary
 
-This imported kit is **not an activation or migration procedure**. It intentionally does not include a LaunchAgent, startup script, credential injection, proxy authentication configuration, or instructions to overwrite an existing LiteLLM configuration.
+The original imported routing experiment is **not an activation or migration procedure**. The separately specified shared service core (`core/`, `launchd/`, spec 015) now has a [managed macOS service guide](docs/macos-managed-service.md), covering manifest installation, runtime environment parity, operator reload, real authentication/inference gates and rollback. Workstation credentials and resolved plists remain excluded; deployment source is separate.
+
+The isolation and offline-test instructions below apply to the original routing experiment, not a production takeover.
 
 1. Work only in an isolated copy of this repository; keep any running proxy configuration, authentication settings, startup scripts, and credentials unchanged.
-2. Run the offline tests from the repository root:
+2. Run the complete offline suite from the repository root using an isolated
+   test environment (includes the shared installer and installed-layout tests):
 
 ```sh
-python -m unittest discover -s tests -v
+uv venv .venv-tests
+uv pip install --python .venv-tests/bin/python pytest pyyaml
+.venv-tests/bin/python -m pytest -q tests
 ```
+
+`unittest discover` alone does not collect the pytest-style shared-core and
+installer regressions; it is not the complete suite.
 
 3. Use the same Python environment that starts LiteLLM to run the non-provider compatibility and localhost routing check:
 

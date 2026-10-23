@@ -9,8 +9,40 @@ from __future__ import annotations
 
 import argparse
 import os
+import plistlib
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
+
+
+def runtime_environment_from_overlay(path: Path | None) -> dict[str, str]:
+    """Only non-secret runtime settings may be materialized in a plist.
+
+    Credential-bearing database URLs belong in credentials.toml (env_var =
+    DATABASE_URL), never in this allowlisted, persisted environment block.
+    """
+    if path is None:
+        return {}
+    import yaml
+
+    overlay = yaml.safe_load(path.read_text())
+    env = overlay.get("runtime_environment", {})
+    allowed = {"DATABASE_URL", "LITELLM_MCP_STDIO_EXTRA_COMMANDS"}
+    if not isinstance(env, dict) or set(env) - allowed:
+        raise ValueError("runtime_environment contains unsupported keys")
+    if any(not isinstance(v, str) or not v or "\x00" in v for v in env.values()):
+        raise ValueError("runtime_environment values must be nonempty strings")
+    if "DATABASE_URL" in env:
+        url = urlsplit(env["DATABASE_URL"])
+        if (url.scheme not in {"postgres", "postgresql"} or url.password is not None
+                or url.query or url.fragment or not url.hostname or not url.path.strip("/")):
+            raise ValueError("DATABASE_URL must be a password-free PostgreSQL URI without query/fragment")
+    commands = env.get("LITELLM_MCP_STDIO_EXTRA_COMMANDS", "")
+    if commands:
+        import re
+        if not all(re.fullmatch(r"[A-Za-z0-9_.-]+", c) for c in commands.split(",")):
+            raise ValueError("stdio allowlist must contain comma-separated command basenames")
+    return env
 
 REPO = Path(__file__).resolve().parent.parent
 TMPL = REPO / "launchd"
@@ -39,6 +71,7 @@ def render_plists(
     home: str | None = None,
     op_keychain_service: str = "",
     op_keychain_account: str = "",
+    runtime_environment: dict[str, str] | None = None,
 ) -> dict[str, str]:
     values = {
         "LABEL": label,
@@ -53,10 +86,17 @@ def render_plists(
         "OP_KEYCHAIN_SERVICE": op_keychain_service,
         "OP_KEYCHAIN_ACCOUNT": op_keychain_account,
     }
-    return {
+    rendered = {
         f"{label}.plist": substitute((TMPL / "proxy.plist.tmpl").read_text(), values),
         f"{label}.rotate.plist": substitute((TMPL / "proxy.rotate.plist.tmpl").read_text(), values),
     }
+    if runtime_environment:
+        # Serialize XML structurally; environment values must not be substituted
+        # as raw XML (e.g. an ampersand in a value would corrupt the plist).
+        proxy = plistlib.loads(rendered[f"{label}.plist"].encode())
+        proxy["EnvironmentVariables"].update(runtime_environment)
+        rendered[f"{label}.plist"] = plistlib.dumps(proxy, sort_keys=False).decode()
+    return rendered
 
 
 def main() -> int:
@@ -70,15 +110,22 @@ def main() -> int:
     ap.add_argument("--proxy-python", required=True)
     ap.add_argument("--op-keychain-service", required=True)
     ap.add_argument("--op-keychain-account", required=True)
+    ap.add_argument("--runtime-overlay", type=Path, help="overlay containing allowlisted non-secret runtime_environment")
     ap.add_argument("--home", default=None, help="HOME to bake into the plist (default: operator's)")
     ap.add_argument("--out", type=Path, help="directory to write rendered plists into")
     ap.add_argument("--check", type=Path, help="compare rendered plists against this dir instead of writing")
     args = ap.parse_args()
 
+    try:
+        runtime_environment = runtime_environment_from_overlay(args.runtime_overlay)
+    except Exception as exc:
+        # Do not echo input-bearing YAML/URI parser errors into logs.
+        print(f"invalid runtime environment ({type(exc).__name__})", file=sys.stderr)
+        return 1
     rendered = render_plists(
         args.label, args.port, args.log_dir, args.wrapper_dir, args.work_dir,
         args.deployment, args.proxy_python, args.home,
-        args.op_keychain_service, args.op_keychain_account,
+        args.op_keychain_service, args.op_keychain_account, runtime_environment,
     )
     if args.check:
         bad = []
