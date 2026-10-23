@@ -1,0 +1,38 @@
+tests/test_installer_contract.py
+  s_639594661735ca::t_2bf854673fd441 26
+core/drift_check.py
+  s_639594661735ca::t_cc9151be520c7e 73,75,77-81
+  s_639594661735ca::t_15ba71403322be 125,128-130
+  s_639594661735ca::t_24d4a7eb642023 98-119
+  s_639594661735ca::t_165a06de6e9316 24-26
+docs/macos-managed-service.md
+  s_639594661735ca::t_a6d34b086e50da 134-141
+core/installer.sh
+  s_639594661735ca::t_2b2b8ec70518ec 66-72
+  s_639594661735ca::t_fc46e8c15542ab 96
+  s_639594661735ca::t_b204fd1d02c964 89
+core/check_pin.py
+  s_639594661735ca::t_1f2765e142dbe1 86-90
+  s_639594661735ca::t_d8a6f4745a33ad 1-21,23-28,59-85,91-104,108-116
+  s_639594661735ca::t_f94841d5b9b7ab 22
+  s_639594661735ca::t_726d077f95a630 29-37,39,41,58
+  s_639594661735ca::t_634f50db3590a8 44-53,57
+  s_639594661735ca::t_3294d5bbceba5d 38,40,42-43,54-56
+  s_639594661735ca::t_2ae499611716ce 105-107
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "dc4031c9efe6a016c55f09c9da4829d53e9faba3",
+  "prompts": {},
+  "sessions": {
+    "s_639594661735ca": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261009_123920_cc7c2090",
+        "model": "glm-5.3-flash"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
