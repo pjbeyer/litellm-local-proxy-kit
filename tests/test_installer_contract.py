@@ -43,6 +43,7 @@ def sandbox(tmp_path):
         "runtime_environment:\n"
         "  DATABASE_URL: postgresql://test@127.0.0.1:5432/test\n"
         "  LITELLM_MCP_STDIO_EXTRA_COMMANDS: obscura,dayflow\n"
+        "  LITELLM_ENABLE_MCP_STDIO: 'true'\n"
     )
     (dep / "credentials.toml").write_text(
         '[[credential]]\nenv_var = "LOCAL_KEY"\n'
@@ -85,6 +86,7 @@ def test_installer_preserves_runtime_environment_in_plist(tmp_path):
     assert "DATABASE_URL" in env, "installer omitted database runtime state"
     assert env["DATABASE_URL"] == "postgresql://test@127.0.0.1:5432/test"
     assert env["LITELLM_MCP_STDIO_EXTRA_COMMANDS"] == "obscura,dayflow"
+    assert env["LITELLM_ENABLE_MCP_STDIO"] == "true"
     assert run(root, "--verify").returncode == 0
 
 
@@ -92,6 +94,13 @@ def test_runtime_environment_cannot_override_auth_contract(tmp_path):
     root, dep, _ = sandbox(tmp_path)
     with (dep / "overlay.yaml").open("a") as stream:
         stream.write("  CREDENTIALS_MANIFEST: /untrusted/file\n")
+    assert run(root, "apply").returncode != 0
+
+
+def test_runtime_environment_rejects_ambiguous_stdio_enablement(tmp_path):
+    root, dep, _ = sandbox(tmp_path)
+    p = dep / "overlay.yaml"
+    p.write_text(p.read_text().replace("'true'", "'yes'"))
     assert run(root, "apply").returncode != 0
 
 

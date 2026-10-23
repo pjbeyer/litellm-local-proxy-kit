@@ -16,8 +16,10 @@ use this guide to bypass a workstation's operator/EDR approval boundary.
   A login-Keychain item holds the bootstrap service-account token. The wrapper
   resolves credentials in memory, fails closed when required credentials are
   unavailable and asserts the installed patch sentinel before launching.
-- `overlay.yaml` may have a `runtime_environment` mapping. Only `DATABASE_URL`
-  and `LITELLM_MCP_STDIO_EXTRA_COMMANDS` are accepted. A persisted database URL
+- `overlay.yaml` may have a `runtime_environment` mapping. Only `DATABASE_URL`,
+  `LITELLM_MCP_STDIO_EXTRA_COMMANDS`, and `LITELLM_ENABLE_MCP_STDIO` are
+  accepted. The stdio flag must be quoted literal `'true'` or `'false'`; enabling
+  it is the reviewed opt-in that lets the proxy start configured stdio children.
   must be password-free PostgreSQL without query/fragment; use the credential
   manifest to resolve a credential-bearing URL into `DATABASE_URL` instead.
 - List additional MCP stdio executable **basenames** as a comma-separated value.
@@ -34,6 +36,7 @@ Example overlay fragment (non-secret, illustrative identity):
 runtime_environment:
   DATABASE_URL: postgresql://localuser@127.0.0.1:5432/local_proxy
   LITELLM_MCP_STDIO_EXTRA_COMMANDS: example-mcp-command
+  LITELLM_ENABLE_MCP_STDIO: 'true'
 ```
 
 ## Prepare and rehearse
