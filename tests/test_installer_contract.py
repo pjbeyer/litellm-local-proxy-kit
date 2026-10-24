@@ -44,6 +44,7 @@ def sandbox(tmp_path):
         "  DATABASE_URL: postgresql://test@127.0.0.1:5432/test\n"
         "  LITELLM_MCP_STDIO_EXTRA_COMMANDS: obscura,dayflow\n"
         "  LITELLM_ENABLE_MCP_STDIO: 'true'\n"
+        "  TYPESAFE_API_BASE: https://gateway.example.invalid/typesafe\n"
     )
     (dep / "credentials.toml").write_text(
         '[[credential]]\nenv_var = "LOCAL_KEY"\n'
@@ -87,6 +88,7 @@ def test_installer_preserves_runtime_environment_in_plist(tmp_path):
     assert env["DATABASE_URL"] == "postgresql://test@127.0.0.1:5432/test"
     assert env["LITELLM_MCP_STDIO_EXTRA_COMMANDS"] == "obscura,dayflow"
     assert env["LITELLM_ENABLE_MCP_STDIO"] == "true"
+    assert env["TYPESAFE_API_BASE"] == "https://gateway.example.invalid/typesafe"
     assert run(root, "--verify").returncode == 0
 
 
@@ -111,3 +113,20 @@ def test_runtime_environment_rejects_password_literal(tmp_path):
     r = run(root, "apply")
     assert r.returncode != 0
     assert "not-a-real-password" not in r.stdout + r.stderr
+
+
+def test_runtime_environment_rejects_credential_bearing_typesafe_base(tmp_path):
+    root, dep, _ = sandbox(tmp_path)
+    p = dep / "overlay.yaml"
+    credential_bearing_url = (
+        "https://" + "not-a-real-key" + "@gateway.example.invalid/typesafe?"
+        + "token" + "=" + "not-a-real-token"
+    )
+    p.write_text(p.read_text().replace(
+        "https://gateway.example.invalid/typesafe", credential_bearing_url
+    ))
+    r = run(root, "apply")
+    assert r.returncode != 0
+    # The persisted-configuration guard must not echo sensitive URL components.
+    assert "not-a-real-key" not in r.stdout + r.stderr
+    assert "not-a-real-token" not in r.stdout + r.stderr

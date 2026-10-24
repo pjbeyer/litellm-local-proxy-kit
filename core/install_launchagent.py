@@ -31,6 +31,10 @@ def runtime_environment_from_overlay(path: Path | None) -> dict[str, str]:
         "DATABASE_URL",
         "LITELLM_MCP_STDIO_EXTRA_COMMANDS",
         "LITELLM_ENABLE_MCP_STDIO",
+        # Non-secret TypeSafe-compatible endpoint for Phase-3 Jev routing.
+        # The API key stays in credentials.toml; this value is deliberately
+        # separate so no credential can be persisted in a LaunchAgent plist.
+        "TYPESAFE_API_BASE",
     }
     if not isinstance(env, dict) or set(env) - allowed:
         raise ValueError("runtime_environment contains unsupported keys")
@@ -41,6 +45,11 @@ def runtime_environment_from_overlay(path: Path | None) -> dict[str, str]:
         if (url.scheme not in {"postgres", "postgresql"} or url.password is not None
                 or url.query or url.fragment or not url.hostname or not url.path.strip("/")):
             raise ValueError("DATABASE_URL must be a password-free PostgreSQL URI without query/fragment")
+    if "TYPESAFE_API_BASE" in env:
+        url = urlsplit(env["TYPESAFE_API_BASE"])
+        if (url.scheme != "https" or url.username is not None or url.password is not None
+                or url.query or url.fragment or not url.hostname):
+            raise ValueError("TYPESAFE_API_BASE must be an https URL without userinfo/query/fragment")
     stdio_enabled = env.get("LITELLM_ENABLE_MCP_STDIO")
     if stdio_enabled is not None and stdio_enabled not in {"true", "false"}:
         raise ValueError("stdio enablement must be literal true or false")
