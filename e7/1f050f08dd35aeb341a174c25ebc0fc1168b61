@@ -1,0 +1,21 @@
+core/parse_credentials.py
+  s_639594661735ca::t_1ce9c2e8a94f17 91-93
+tests/test_core.py
+  s_639594661735ca::t_f0ef9295b66b88 267
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "e71f050f08dd35aeb341a174c25ebc0fc1168b61",
+  "prompts": {},
+  "sessions": {
+    "s_639594661735ca": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261009_123920_cc7c2090",
+        "model": "glm-5.3-flash"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
