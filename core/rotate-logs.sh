@@ -29,6 +29,23 @@ LOGS=("proxy.log" "proxy.err.log")
 
 log() { printf '%s %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$*"; }
 
+# ---- 0. Metrics harvest (Phase 2): persist semantic-filter events BEFORE the
+# rotate step can truncate them. Runs only if the harvester ships beside this
+# script; wrapped in a timeout and best-effort — a harvesting failure must
+# never prevent rotation (same fail-open posture as the filter itself).
+harvest_bin="$(dirname "$0")/harvest-filter-metrics.sh"
+if [[ -x "$harvest_bin" ]]; then
+  if command -v timeout >/dev/null 2>&1; then
+    if ! timeout 60 "$harvest_bin" 2>&1 | sed 's/^/[harvest] /'; then
+      log "WARN: filter-metrics harvest failed (non-fatal; rotation proceeds)"
+    fi
+  else
+    "$harvest_bin" 2>&1 | sed 's/^/[harvest] /' || log "WARN: filter-metrics harvest failed (non-fatal; rotation proceeds)"
+  fi
+else
+  log "no harvester shipped; skipping filter-metrics harvest"
+fi
+
 [[ -d "$LOG_DIR" ]] || { log "no log dir at $LOG_DIR (nothing to do)"; exit 0; }
 
 rotated=0

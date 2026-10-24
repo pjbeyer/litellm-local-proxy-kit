@@ -23,7 +23,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 MANAGED = ("config.rendered.yaml", "run-proxy-wrapper.sh", "check_patch_sentinel.py",
            "check_pin.py", "parse_credentials.py", "rotate-logs.sh",
-           "aws-sso-cred-shim.sh", "credentials.toml", "*.plist")
+           "aws-sso-cred-shim.sh", "harvest-filter-metrics.sh", "credentials.toml",
+           "*.plist")
 
 
 def sha256(path: Path) -> str:
