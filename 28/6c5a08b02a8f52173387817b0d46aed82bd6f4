@@ -1,0 +1,39 @@
+core/parse_credentials.py
+  s_639594661735ca::t_4e29ebd3f91e6d 51
+  s_639594661735ca::t_872e777cf8bd49 20-21
+  s_639594661735ca::t_b8e4db93d83a6e 75-86,91
+core/drift_check.py
+  s_639594661735ca::t_2e06d59c2b7fe8 26
+core/aws-sso-cred-shim.sh
+  s_639594661735ca::t_a50e528fbc34a0 1-70,78-79,82-92,94
+  s_639594661735ca::t_e72d8a195189b9 71,93
+  s_639594661735ca::t_506d0c263ff3f1 72-77,80-81,95-97
+core/installer.sh
+  s_639594661735ca::t_5e8d52bbb32110 90-91
+  s_639594661735ca::t_25f096c786802e 97
+core/render_config.py
+  s_639594661735ca::t_26c82f3979874d 94-101
+  s_639594661735ca::t_e216094a2feb62 83-88
+core/run-proxy-wrapper.sh
+  s_639594661735ca::t_abf4489159c4d8 76,78-82,96-134
+  s_639594661735ca::t_dc4ed295a41398 135
+tests/test_core.py
+  s_639594661735ca::t_173468c95ca7bc 336
+  s_639594661735ca::t_34606a70b550bb 261-331
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "286c5a08b02a8f52173387817b0d46aed82bd6f4",
+  "prompts": {},
+  "sessions": {
+    "s_639594661735ca": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261009_123920_cc7c2090",
+        "model": "glm-5.3-flash"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
