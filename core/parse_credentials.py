@@ -17,7 +17,8 @@ import sys
 
 _ROW = re.compile(r"^\s*\[\[credential\]\]\s*$")
 _KV = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(\"[^\"]*\"|true|false)\s*(?:#.*)?$")
-_ALLOWED_KEYS = {"env_var", "op_ref", "required", "purpose", "presented_by", "copies"}
+_ALLOWED_KEYS = {"env_var", "op_ref", "required", "purpose", "presented_by", "copies", "source"}
+_SOURCES = {"op", "aws-sso-shim"}
 
 
 def _unquote(value: str) -> str:
@@ -47,7 +48,7 @@ def parse(text: str) -> list[dict]:
             continue
         if key not in _ALLOWED_KEYS:
             raise ValueError(f"line {lineno}: disallowed manifest key: {key}")
-        if key in ("env_var", "op_ref", "purpose"):
+        if key in ("env_var", "op_ref", "purpose", "source"):
             current[key] = _unquote(value)
         elif key == "required":
             if value not in ("true", "false"):
@@ -71,13 +72,23 @@ def main() -> int:
         print("FAIL: manifest declares no credentials", file=sys.stderr)
         return 1
     for c in creds:
-        if not c.get("env_var") or not c.get("op_ref"):
-            print(f"FAIL: credential entry missing env_var/op_ref: {c}", file=sys.stderr)
+        if not c.get("env_var"):
+            print(f"FAIL: credential entry missing env_var: {c}", file=sys.stderr)
+            return 1
+        source = c.get("source", "op")
+        if source not in _SOURCES:
+            print(f"FAIL: credential {c['env_var']}: unknown source {source!r}", file=sys.stderr)
+            return 1
+        if source == "op" and not c.get("op_ref"):
+            print(f"FAIL: credential {c['env_var']}: source=op requires op_ref", file=sys.stderr)
+            return 1
+        if source != "op" and c.get("op_ref"):
+            print(f"FAIL: credential {c['env_var']}: op_ref is invalid for source={source}", file=sys.stderr)
             return 1
         if "required" not in c:
             print(f"FAIL: credential entry missing explicit required flag: {c.get('env_var')}", file=sys.stderr)
             return 1
-        print(f"{c['env_var']}\t{c['op_ref']}\t{int(bool(c['required']))}")
+        print(f"{c['env_var']}\t{c.get('op_ref', '')}\t{int(bool(c['required']))}\t{source}")
     return 0
 
 

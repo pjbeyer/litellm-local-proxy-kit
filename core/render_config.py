@@ -80,11 +80,25 @@ def render(overlay: dict, template: str, *, home: str | None = None) -> str:  # 
                 "litellm_params": wildcard_params,
             }
         )
+    # Extra model_list entries pass through verbatim (e.g. non-openai providers
+    # such as bedrock embeddings). Overlay-only; no live-state reads (FR-002).
+    for extra in overlay.get("extra_model_list") or []:
+        if not isinstance(extra, dict) or "model_name" not in extra or "litellm_params" not in extra:
+            raise ValueError("extra_model_list entries need model_name + litellm_params")
+        models.append(extra)
     doc: dict = {"model_list": models}
 
     ls = overlay.get("litellm_settings") or {}
     if ls:
         doc["litellm_settings"] = ls
+    add = overlay.get("litellm_settings_addendum") or {}
+    if add:
+        if "litellm_settings" not in doc:
+            doc["litellm_settings"] = {}
+        for k, v in add.items():
+            if k in doc["litellm_settings"] and doc["litellm_settings"][k] != v:
+                raise ValueError(f"litellm_settings_addendum conflicts with litellm_settings: {k}")
+            doc["litellm_settings"][k] = v
     gs = dict(overlay.get("general_settings") or {})
     gs["master_key"] = f"os.environ/{overlay['master_key_env']}"
     doc["general_settings"] = gs

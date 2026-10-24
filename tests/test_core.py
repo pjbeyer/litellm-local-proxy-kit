@@ -258,11 +258,82 @@ def test_plist_render_and_check(tmp_path):
 
 # ---------- manifest parser ----------
 
+def test_parse_credentials_source_semantics(tmp_path):
+    # source=aws-sso-shim rows are valid without op_ref and emit the source.
+    good = tmp_path / "shim.toml"
+    good.write_text('[[credential]]\nenv_var = "AWS_ACCESS_KEY_ID"\nsource = "aws-sso-shim"\nrequired = true\n')
+    r = subprocess.run([sys.executable, str(PARSE), str(good)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == "AWS_ACCESS_KEY_ID\t\t1\taws-sso-shim"
+    # op_ref + source=aws-sso-shim is contradictory and must fail closed.
+    bad = tmp_path / "contradiction.toml"
+    bad.write_text('[[credential]]\nenv_var = "X"\nsource = "aws-sso-shim"\nop_ref = "op://a/b/c"\nrequired = true\n')
+    r = subprocess.run([sys.executable, str(PARSE), str(bad)], capture_output=True, text=True)
+    assert r.returncode == 1, "op_ref is invalid for source=aws-sso-shim"
+    # unknown source must fail closed.
+    bad2 = tmp_path / "unknown.toml"
+    bad2.write_text('[[credential]]\nenv_var = "X"\nsource = "carrier-pigeon"\nrequired = true\n')
+    r = subprocess.run([sys.executable, str(PARSE), str(bad2)], capture_output=True, text=True)
+    assert r.returncode == 1, "unknown source must fail closed"
+    # source=op row without op_ref must fail closed.
+    bad3 = tmp_path / "no-ref.toml"
+    bad3.write_text('[[credential]]\nenv_var = "X"\nrequired = true\n')
+    r = subprocess.run([sys.executable, str(PARSE), str(bad3)], capture_output=True, text=True)
+    assert r.returncode == 1, "source=op requires op_ref"
+
+
+def test_render_extra_model_list_and_addendum(tmp_path):
+    template = tmp_path / "header.txt"
+    template.write_text("# ===BEGIN GENERATED===\n")
+    overlay = tmp_path / "overlay.yaml"
+    overlay.write_text(
+        "upstream:\n"
+        "  api_base: https://up.example/v1\n"
+        "  api_key_env: KEY_ENV\n"
+        "  models: []\n"
+        "master_key_env: MASTER_ENV\n"
+        "extra_model_list:\n"
+        "- model_name: bedrock/embed\n"
+        "  litellm_params:\n"
+        "    model: bedrock/embed\n"
+        "litellm_settings_addendum:\n"
+        "  mcp_semantic_tool_filter:\n"
+        "    enabled: true\n"
+    )
+    out = tmp_path / "out.yaml"
+    r = subprocess.run(
+        [sys.executable, str(RENDER), "--overlay", str(overlay), "--template", str(template), "--out", str(out)],
+        capture_output=True, text=True,
+    )
+    assert r.returncode == 0, r.stderr
+    text = out.read_text()
+    assert "bedrock/embed" in text
+    assert "mcp_semantic_tool_filter" in text and "enabled: true" in text
+    # addendum conflicting with litellm_settings must fail closed
+    overlay2 = tmp_path / "conflict.yaml"
+    overlay2.write_text(
+        "upstream:\n"
+        "  api_base: https://up.example/v1\n"
+        "  api_key_env: KEY_ENV\n"
+        "  models: []\n"
+        "master_key_env: MASTER_ENV\n"
+        "litellm_settings:\n"
+        "  drop_params: true\n"
+        "litellm_settings_addendum:\n"
+        "  drop_params: false\n"
+    )
+    r = subprocess.run(
+        [sys.executable, str(RENDER), "--overlay", str(overlay2), "--template", str(template)],
+        capture_output=True, text=True,
+    )
+    assert r.returncode == 1, "addendum conflict must fail closed"
+
+
 def test_parse_credentials_valid_and_rejecting(tmp_path):
     creds = _write_creds(tmp_path, extra='purpose = "test"\n')
     r = subprocess.run([sys.executable, str(PARSE), str(creds)], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
-    assert r.stdout.strip() == "LITELLM_API_KEY\top://testvault/testitem/credential\t1"
+    assert r.stdout.strip() == "LITELLM_API_KEY\top://testvault/testitem/credential\t1\top"
     # rejection: missing required flag
     bad = tmp_path / "bad.toml"
     bad.write_text('[[credential]]\nenv_var = "X"\nop_ref = "op://a/b/c"\n')

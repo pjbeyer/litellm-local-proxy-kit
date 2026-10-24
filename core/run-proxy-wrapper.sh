@@ -73,8 +73,13 @@ CREDENTIALS_MANIFEST="${CREDENTIALS_MANIFEST:?CREDENTIALS_MANIFEST must point at
 manifest_json="$(/usr/bin/python3 "$(dirname "$0")/parse_credentials.py" "$CREDENTIALS_MANIFEST")" \
   || die "manifest unreadable: $CREDENTIALS_MANIFEST"
 
-while IFS=$'\t' read -r var ref required; do
+while IFS=$'\t' read -r var ref required source; do
   [ -n "$var" ] || continue
+  source="${source:-op}"
+  if [ "$source" = "aws-sso-shim" ]; then
+    # Deferred: all aws-sso-shim rows are satisfied by ONE shim run below.
+    continue
+  fi
   if val="$("$OP_BIN" read "$ref" 2>/dev/null)" && [ -n "$val" ]; then
     export "$var=$val"
     note_resolved "$var"
@@ -87,6 +92,46 @@ while IFS=$'\t' read -r var ref required; do
     fi
   fi
 done <<< "$manifest_json"
+
+# ---- 2a. AWS SSO shim credentials (Phase 2: Bedrock embeddings) --------------
+# One shim run satisfies every source=aws-sso-shim row. The shim exits 78 when
+# no usable SSO token exists; that is a JUSTIFIED degrade here (the semantic
+# tool filter fails open without embeddings — chat traffic is unaffected), so
+# required shim rows WARN instead of aborting. Value evidence still applies:
+# every shim var must be non-empty after sourcing, else the same WARN path.
+shim_bin="$(dirname "$0")/aws-sso-cred-shim.sh"
+shim_needed=0
+while IFS=$'\t' read -r var ref required source; do
+  [ "$source" = "aws-sso-shim" ] && shim_needed=1
+done <<< "$manifest_json"
+
+if [ "$shim_needed" = "1" ]; then
+  [ -x "$shim_bin" ] || die "manifest declares aws-sso-shim credentials but shim is missing: $shim_bin"
+  if shim_out="$("$shim_bin" 2>/dev/null)" && [ -n "$shim_out" ]; then
+    # shellcheck disable=SC1090
+    eval "$shim_out"
+    while IFS=$'\t' read -r var ref required source; do
+      [ "$source" = "aws-sso-shim" ] || continue
+      if [ -n "$(printenv "$var" 2>/dev/null || true)" ]; then
+        note_resolved "$var"
+        log "resolved $var from aws-sso-shim (value-evidence ok)"
+      elif [ "$required" = "1" ]; then
+        log "WARN (JUSTIFIED): shim did not set $var — semantic-filter degrade path applies (filter fails open; chat unaffected)"
+      else
+        log "WARN (JUSTIFIED): shim did not set optional $var"
+      fi
+    done <<< "$manifest_json"
+  else
+    while IFS=$'\t' read -r var ref required source; do
+      [ "$source" = "aws-sso-shim" ] || continue
+      if [ "$required" = "1" ]; then
+        log "WARN (JUSTIFIED): aws-sso-shim unavailable for $var — semantic-filter degrade path applies (filter fails open; chat unaffected)"
+      else
+        log "WARN (JUSTIFIED): aws-sso-shim unavailable for optional $var"
+      fi
+    done <<< "$manifest_json"
+  fi
+fi
 
 # ---- 3. Master-key guard: value evidence, never name matching (F-CI-1) -----
 # The config's master_key references some env var (e.g. LITELLM_LOCAL_KEY).
