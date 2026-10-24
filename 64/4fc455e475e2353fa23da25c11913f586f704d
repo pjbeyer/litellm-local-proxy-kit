@@ -1,0 +1,34 @@
+tests/test_harvest_filter_metrics.py
+  s_639594661735ca::t_730cf52500307c 1-138
+core/installer.sh
+  s_639594661735ca::t_71bbf37fb39b5f 91
+  s_639594661735ca::t_3025856bb49073 98
+core/rotate-logs.sh
+  s_639594661735ca::t_9390245ef164c9 32-37,44-47
+  s_639594661735ca::t_7c4548c145d23c 38-43
+  s_639594661735ca::t_d73b89f1fe8b26 48
+core/harvest-filter-metrics.sh
+  s_639594661735ca::t_a65bd842503c3c 1-54,56-65,67-113,116,118-153,156,158-160
+  s_639594661735ca::t_5ce05dfbad90bd 55
+  s_639594661735ca::t_2cc04b8b0e8dbe 66
+  s_639594661735ca::t_fc7fe863254469 114-115,117
+  s_639594661735ca::t_b50b9746b8d95a 154-155,157
+core/drift_check.py
+  s_639594661735ca::t_441cfaa225204a 26-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "644fc455e475e2353fa23da25c11913f586f704d",
+  "prompts": {},
+  "sessions": {
+    "s_639594661735ca": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261009_123920_cc7c2090",
+        "model": "glm-5.3-flash"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
