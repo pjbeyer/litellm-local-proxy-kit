@@ -88,7 +88,9 @@ def main() -> int:
         if "required" not in c:
             print(f"FAIL: credential entry missing explicit required flag: {c.get('env_var')}", file=sys.stderr)
             return 1
-        print(f"{c['env_var']}\t{c.get('op_ref', '')}\t{int(bool(c['required']))}\t{source}")
+        # Use '-' for absent op_ref: bash `read` collapses adjacent tab IFS
+        # delimiters, so an empty second field would shift source into `ref`.
+        print(f"{c['env_var']}\t{c.get('op_ref') or '-'}\t{int(bool(c['required']))}\t{source}")
     return 0
 
 

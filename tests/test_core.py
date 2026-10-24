@@ -264,7 +264,7 @@ def test_parse_credentials_source_semantics(tmp_path):
     good.write_text('[[credential]]\nenv_var = "AWS_ACCESS_KEY_ID"\nsource = "aws-sso-shim"\nrequired = true\n')
     r = subprocess.run([sys.executable, str(PARSE), str(good)], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
-    assert r.stdout.strip() == "AWS_ACCESS_KEY_ID\t\t1\taws-sso-shim"
+    assert r.stdout.strip() == "AWS_ACCESS_KEY_ID\t-\t1\taws-sso-shim"
     # op_ref + source=aws-sso-shim is contradictory and must fail closed.
     bad = tmp_path / "contradiction.toml"
     bad.write_text('[[credential]]\nenv_var = "X"\nsource = "aws-sso-shim"\nop_ref = "op://a/b/c"\nrequired = true\n')
