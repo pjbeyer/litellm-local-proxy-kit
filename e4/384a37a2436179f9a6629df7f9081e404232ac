@@ -1,0 +1,25 @@
+core/install_launchagent.py
+  s_40376ea7facda9::t_ba7690f59f2776 34-37
+  s_40376ea7facda9::t_773ef453154946 60-67
+tests/test_installer_contract.py
+  s_40376ea7facda9::t_1073f55c6e1e11 92
+  s_40376ea7facda9::t_4d213b02acd39f 47
+  s_40376ea7facda9::t_6484871b578cac 111-117
+  s_40376ea7facda9::t_f73bc3dad1ade4 109-110
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "e4384a37a2436179f9a6629df7f9081e404232ac",
+  "prompts": {},
+  "sessions": {
+    "s_40376ea7facda9": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261021_151556_8ba6c8a0",
+        "model": "glm-5.3-flash"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
