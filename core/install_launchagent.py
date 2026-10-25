@@ -31,6 +31,10 @@ def runtime_environment_from_overlay(path: Path | None) -> dict[str, str]:
         "DATABASE_URL",
         "LITELLM_MCP_STDIO_EXTRA_COMMANDS",
         "LITELLM_ENABLE_MCP_STDIO",
+        # Bounded, non-secret availability control for MCP discovery. This is
+        # deliberately allowlisted instead of admitting arbitrary LITELLM_*;
+        # persisted launchd settings must not become a credential/config bypass.
+        "LITELLM_MCP_TOOL_LISTING_TIMEOUT",
         # Non-secret TypeSafe-compatible endpoint for Phase-3 Jev routing.
         # The API key stays in credentials.toml; this value is deliberately
         # separate so no credential can be persisted in a LaunchAgent plist.
@@ -53,6 +57,14 @@ def runtime_environment_from_overlay(path: Path | None) -> dict[str, str]:
     stdio_enabled = env.get("LITELLM_ENABLE_MCP_STDIO")
     if stdio_enabled is not None and stdio_enabled not in {"true", "false"}:
         raise ValueError("stdio enablement must be literal true or false")
+    listing_timeout = env.get("LITELLM_MCP_TOOL_LISTING_TIMEOUT")
+    if listing_timeout is not None:
+        try:
+            timeout_value = float(listing_timeout)
+        except ValueError as exc:
+            raise ValueError("MCP tool-listing timeout must be a number") from exc
+        if not 1.0 <= timeout_value <= 30.0:
+            raise ValueError("MCP tool-listing timeout must be between 1 and 30 seconds")
     commands = env.get("LITELLM_MCP_STDIO_EXTRA_COMMANDS", "")
     if commands:
         import re

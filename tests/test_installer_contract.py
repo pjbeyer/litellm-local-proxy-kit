@@ -44,6 +44,7 @@ def sandbox(tmp_path):
         "  DATABASE_URL: postgresql://test@127.0.0.1:5432/test\n"
         "  LITELLM_MCP_STDIO_EXTRA_COMMANDS: obscura,dayflow\n"
         "  LITELLM_ENABLE_MCP_STDIO: 'true'\n"
+        "  LITELLM_MCP_TOOL_LISTING_TIMEOUT: '10'\n"
         "  TYPESAFE_API_BASE: https://gateway.example.invalid/typesafe\n"
     )
     (dep / "credentials.toml").write_text(
@@ -88,6 +89,7 @@ def test_installer_preserves_runtime_environment_in_plist(tmp_path):
     assert env["DATABASE_URL"] == "postgresql://test@127.0.0.1:5432/test"
     assert env["LITELLM_MCP_STDIO_EXTRA_COMMANDS"] == "obscura,dayflow"
     assert env["LITELLM_ENABLE_MCP_STDIO"] == "true"
+    assert env["LITELLM_MCP_TOOL_LISTING_TIMEOUT"] == "10"
     assert env["TYPESAFE_API_BASE"] == "https://gateway.example.invalid/typesafe"
     assert run(root, "--verify").returncode == 0
 
@@ -103,6 +105,15 @@ def test_runtime_environment_rejects_ambiguous_stdio_enablement(tmp_path):
     root, dep, _ = sandbox(tmp_path)
     p = dep / "overlay.yaml"
     p.write_text(p.read_text().replace("'true'", "'yes'"))
+    assert run(root, "apply").returncode != 0
+
+
+def test_runtime_environment_rejects_invalid_listing_timeout(tmp_path):
+    root, dep, _ = sandbox(tmp_path)
+    p = dep / "overlay.yaml"
+    p.write_text(p.read_text().replace("'10'", "'0.5'"))
+    assert run(root, "apply").returncode != 0
+    p.write_text(p.read_text().replace("'0.5'", "not-a-number"))
     assert run(root, "apply").returncode != 0
 
 
