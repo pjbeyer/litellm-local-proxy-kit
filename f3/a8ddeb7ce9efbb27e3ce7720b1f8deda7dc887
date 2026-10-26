@@ -1,0 +1,25 @@
+tests/test_core.py
+  s_9e4265bd7a8616::t_96e87f4b3be2b0 189-267,270-273
+  s_9e4265bd7a8616::t_00e9a7705e1b30 268-269
+core/run-proxy-wrapper.sh
+  s_9e4265bd7a8616::t_3c798b96dfba37 179-190
+  s_9e4265bd7a8616::t_468e12266c3c32 169-172
+  s_9e4265bd7a8616::t_af7b7f7cc43f73 168
+  s_9e4265bd7a8616::t_7868f5b3d6a58f 149-167,173-178
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "f3a8ddeb7ce9efbb27e3ce7720b1f8deda7dc887",
+  "prompts": {},
+  "sessions": {
+    "s_9e4265bd7a8616": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261025_190959_3828d0",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
