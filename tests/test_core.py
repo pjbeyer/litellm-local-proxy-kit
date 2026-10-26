@@ -186,6 +186,91 @@ def test_wrapper_sentinel_negative_on_python_without_litellm(tmp_path):
     assert "patch assertion FAILED" in r.stdout + r.stderr, "stock build must be refused (F-CI-2)"
 
 
+# ---------- coverage gate: config references vs manifest rows (FR-005) ----------
+
+def test_wrapper_fails_closed_on_omitted_manifest_row(tmp_path):
+    """Regression for the Phase-3 drill finding: a required credential row
+    deleted from the manifest previously let the wrapper reach launch; the
+    upstream proxy then silently DROPS the dependent deployment while serving
+    everything else (verified live: liveliness 200 with smart-router dropped).
+    The coverage gate must refuse before launch."""
+    creds = _write_creds(tmp_path)  # only LITELLM_API_KEY declared
+    # Config references TWO vars; TYPESAFE_API_KEY has no manifest row at all.
+    config = tmp_path / "config.yaml"
+    config.write_text(
+        "general_settings:\n  master_key: os.environ/LITELLM_API_KEY\n"
+        "model_list:\n"
+        "  - model_name: smart-router\n"
+        "    litellm_params:\n"
+        "      model: auto_router/complexity_router\n"
+        "      api_key: os.environ/TYPESAFE_API_KEY\n"
+    )
+    r = _run_wrapper({"LITELLM_PROXY_CONFIG": str(config), "CREDENTIALS_MANIFEST": str(creds)}, tmp_path)
+    assert r.returncode == 78, f"omitted row must refuse to start, got {r.returncode}: {r.stdout} {r.stderr}"
+    assert "no manifest row covers it" in r.stdout + r.stderr
+
+
+def test_wrapper_coverage_gate_accepts_env_resolved_var(tmp_path):
+    """Control: an unset-in-manifest var that IS non-empty in the environment
+    (operator env / shim source) is covered — gate passes and the run proceeds
+    to the sentinel stage (exit 78 there, on a python without litellm)."""
+    creds = _write_creds(tmp_path)
+    config = tmp_path / "config.yaml"
+    config.write_text(
+        "general_settings:\n  master_key: os.environ/LITELLM_API_KEY\n"
+        "model_list:\n"
+        "  - model_name: smart-router\n"
+        "    litellm_params:\n"
+        "      model: auto_router/complexity_router\n"
+        "      api_key: os.environ/TYPESAFE_API_KEY\n"
+    )
+    r = _run_wrapper(
+        {"LITELLM_PROXY_CONFIG": str(config), "CREDENTIALS_MANIFEST": str(creds),
+         "TYPESAFE_API_KEY": "fixture-env-value", "LITELLM_PROXY_PYTHON": "/usr/bin/python3"},
+        tmp_path,
+    )
+    assert "coverage gate OK" in r.stdout + r.stderr, r.stdout + r.stderr
+    assert r.returncode == 78  # fails later at sentinel, not at coverage
+    assert "no manifest row covers it" not in r.stdout + r.stderr
+
+
+def test_wrapper_coverage_gate_allows_optional_manifest_row(tmp_path):
+    """An optional manifest row is a documented degrade path: covered even when
+    unresolvable, per the JUSTIFIED_WARN classification."""
+    creds = _write_creds(
+        tmp_path,
+        extra='[[credential]]\nenv_var = "TYPESAFE_API_KEY"\n'
+              'op_ref = "op://testvault/optional/credential"\n'
+              "required = false\n",
+    )
+    config = tmp_path / "config.yaml"
+    config.write_text(
+        "general_settings:\n  master_key: os.environ/LITELLM_API_KEY\n"
+        "model_list:\n"
+        "  - model_name: smart-router\n"
+        "    litellm_params:\n"
+        "      model: auto_router/complexity_router\n"
+        "      api_key: os.environ/TYPESAFE_API_KEY\n"
+    )
+    # op shim returns a value, so the optional row resolves fine; to exercise
+    # the optional-unresolved branch, point OP_BIN at a failing op for it.
+    shim = _write_op_shim(tmp_path)
+    # First op read succeeds for LITELLM_API_KEY, fails for TYPESAFE's ref:
+    flaky = tmp_path / "opshim2"
+    flaky.mkdir()
+    (flaky / "op").write_text('#!/bin/sh\ncase "$*" in *optional*) exit 1;; *) echo test-key-value;; esac\n')
+    (flaky / "op").chmod(0o755)
+    r = _run_wrapper(
+        {"LITELLM_PROXY_CONFIG": str(config), "CREDENTIALS_MANIFEST": str(creds),
+         "OP_BIN": str(flaky / "op"), "LITELLM_PROXY_PYTHON": "/usr/bin/python3"},
+        tmp_path,
+    )
+    assert "coverage: TYPESAFE_API_KEY declared in the manifest" in r.stdout + r.stderr, r.stdout + r.stderr
+    assert "WARN (JUSTIFIED): optional credential TYPESAFE_API_KEY" in r.stdout + r.stderr
+    assert "no manifest row covers it" not in r.stdout + r.stderr
+    assert r.returncode == 78  # sentinel stage, not coverage
+
+
 # ---------- sentinel checker (FR-006 positive assertion) ----------
 
 def test_sentinel_checker_positive_and_negative(tmp_path):

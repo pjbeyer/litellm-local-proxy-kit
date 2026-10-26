@@ -146,6 +146,48 @@ is_resolved_by_wrapper "$MASTER_KEY_VAR" && [ -n "$(printenv "$MASTER_KEY_VAR")"
   || die "master-key variable $MASTER_KEY_VAR referenced by config was NOT resolved by this wrapper (value-evidence gate — FR-005)"
 log "master-key gate OK: $MASTER_KEY_VAR resolved by value evidence"
 
+# ---- 3b. Coverage gate: every os.environ/VAR the config references must be
+# accounted for (FR-005). The upstream proxy FAILS OPEN here: a deployment
+# whose credential is missing is silently dropped at router construction
+# ("ignoring and continuing with other deployments") while the server comes
+# up and serves everything else. A manifest row that was DELETED (not merely
+# unresolvable) is invisible to the resolve loop above, so coverage must be
+# checked against the config's own references. For each referenced var:
+#   - resolved by this wrapper (value evidence)          -> covered
+#   - non-empty in the environment (shim / operator env) -> covered
+#   - declared in the manifest as optional               -> covered (degrade path)
+#   - otherwise                                          -> exit 78
+for CONFIG_VAR in $(sed -n 's/.*os\.environ\/\([A-Z_][A-Z_0-9]*\).*/\1/p' "$CONFIG" | sort -u); do
+  if is_resolved_by_wrapper "$CONFIG_VAR" && [ -n "$(printenv "$CONFIG_VAR" 2>/dev/null || true)" ]; then
+    continue
+  fi
+  if [ -n "$(printenv "$CONFIG_VAR" 2>/dev/null || true)" ]; then
+    log "coverage: $CONFIG_VAR resolved from environment (not by this wrapper)"
+    continue
+  fi
+  if grep -q "env_var=\"$CONFIG_VAR\"" "$CREDENTIALS_MANIFEST" || grep -q "env_var = \"$CONFIG_VAR\"" "$CREDENTIALS_MANIFEST"; then
+    # Declared in the manifest: the resolve loop above already classified the
+    # row (required+unresolvable dies there; optional unresolved WARNs there).
+    # Nothing further to require at coverage time.
+    log "coverage: $CONFIG_VAR declared in the manifest (row classification already applied)"
+    continue
+  fi
+  die "config references $CONFIG_VAR via os.environ but no manifest row covers it — refusing (upstream proxy would silently drop the dependent deployment)"
+done
+log "coverage gate OK: all $(sed -n 's/.*os\.environ\/\([A-Z_][A-Z_0-9]*\).*/\1/p' "$CONFIG" | sort -u | wc -l | tr -d ' ') referenced vars accounted for"
+
+# ---- 3c. Classifier-key preflight -------------------------------------------
+# The Jev classifier does not reference its key via os.environ in the config;
+# it reads TYPESAFE_API_KEY at request time via get_secret_str. If that row is
+# omitted from the manifest nothing above detects it, and the failure is
+# fail-open at runtime. If the config declares a Jev classifier, require the
+# row to exist.
+if grep -Eq 'classifier_type[[:space:]]*[:=][[:space:]]*["]?jev' "$CONFIG"; then
+  grep -Eq "env_var[[:space:]]*=[[:space:]]*\"TYPESAFE_API_KEY\"" "$CREDENTIALS_MANIFEST" \
+    || die "config declares a Jev classifier but the manifest has no TYPESAFE_API_KEY row — refusing (upstream proxy would start and silently drop the smart-router deployment)"
+fi
+log "classifier preflight OK: Jev classifier manifest row present"
+
 # ---- 4. Patch sentinel + pin assertion (FR-006, F-CI-2) ---------------------
 PROXY_PYTHON="${LITELLM_PROXY_PYTHON:?LITELLM_PROXY_PYTHON must point at the pinned build interpreter}"
 SENTINEL="${LITELLM_PATCH_SENTINEL:-args_already_complete}"
