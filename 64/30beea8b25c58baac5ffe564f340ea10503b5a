@@ -1,0 +1,57 @@
+docs/safe-restart-contract.md
+  s_228cedd40c9695::t_8e267c6e450c56 62-64
+  s_228cedd40c9695::t_edef9e9bb9223d 1-21,27-56,67-71
+  s_228cedd40c9695::t_24320e9b049b03 22-26
+  s_228cedd40c9695::t_687d21c5958fe8 57-61,65-66
+core/parse_credentials.py
+  s_228cedd40c9695::t_3a24440bea8b5e 21
+tests/test_restart_preflight.py
+  s_228cedd40c9695::t_9188f927e7129a 32
+  s_228cedd40c9695::t_eea7bcc665e548 40
+  s_228cedd40c9695::t_6f09c5a7f3b085 82-92,94-123
+  s_228cedd40c9695::t_72f0b1a72a72ab 65-69
+  s_228cedd40c9695::t_6d958c3ee30aa4 70
+  s_228cedd40c9695::t_78db76393d9567 93
+  s_228cedd40c9695::t_9cd82d2df7743d 1-31,33-39,41-64,71-81
+core/installer.sh
+  s_228cedd40c9695::t_178a0341c65569 94
+  s_228cedd40c9695::t_b7fdcc6292af94 80-82
+  s_228cedd40c9695::t_64bf4c1d0f9fa9 102
+  s_228cedd40c9695::t_a896565465f55c 114-118
+  s_228cedd40c9695::t_0641ddc3cb91b6 99
+core/drift_check.py
+  s_228cedd40c9695::t_b73fb5fed9588a 121-122
+  s_228cedd40c9695::t_50df852700a50e 132
+  s_228cedd40c9695::t_42753b27ceaa97 26
+tests/test_installer_contract.py
+  s_228cedd40c9695::t_23d38d77c4e210 165-176
+  s_228cedd40c9695::t_85e9e6fa1fd36c 144-164
+core/run-proxy-wrapper.sh
+  s_228cedd40c9695::t_dc1077a852a957 50-53,73
+  s_228cedd40c9695::t_eda153a534cef6 30-41,44
+  s_228cedd40c9695::t_baf3b89f58b81e 270-278
+  s_228cedd40c9695::t_21025554886593 29,42
+  s_228cedd40c9695::t_840c6be7f51a8f 54-72
+  s_228cedd40c9695::t_992c037050b090 121-146
+docs/macos-managed-service.md
+  s_228cedd40c9695::t_8902902a49b193 15-19,23-24
+  s_228cedd40c9695::t_35f7bd91c1b7e3 87-94
+core/check_credential_coverage.py
+  s_228cedd40c9695::t_046b8eab23c127 1-58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "6430beea8b25c58baac5ffe564f340ea10503b5a",
+  "prompts": {},
+  "sessions": {
+    "s_228cedd40c9695": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20260903_055433_49498f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
