@@ -23,7 +23,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 MANAGED = ("config.rendered.yaml", "run-proxy-wrapper.sh", "check_patch_sentinel.py",
            "check_pin.py", "parse_credentials.py", "rotate-logs.sh",
-           "aws-sso-cred-shim.sh", "harvest-filter-metrics.sh", "credentials.toml",
+           "aws-sso-cred-shim.sh", "harvest-filter-metrics.sh", "credentials.toml", "pin.lock", "check_credential_coverage.py",
            "*.plist")
 
 
@@ -118,6 +118,8 @@ def main() -> int:
             checks.append({"kind": "rendered-vs-live", "target": label, "status": status,
                            "detail": None if r.returncode == 0 else r.stderr.strip()[:200]})
             continue
+        elif name in ("credentials.toml", "pin.lock"):
+            expected = (deploy_dir / name).read_bytes()
         else:
             src = REPO / "core" / name
             expected = src.read_bytes() if src.exists() else None
@@ -127,7 +129,7 @@ def main() -> int:
     if args.other_root:
         other = args.other_root.resolve()
         for name in MANAGED:
-            if "*" in name or name in ("config.rendered.yaml", "credentials.toml"):
+            if "*" in name or name in ("config.rendered.yaml", "credentials.toml", "pin.lock"):
                 continue
             mine = REPO / "core" / name
             theirs = other / "core" / name

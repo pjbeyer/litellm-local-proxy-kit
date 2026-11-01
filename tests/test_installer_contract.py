@@ -141,3 +141,36 @@ def test_runtime_environment_rejects_credential_bearing_typesafe_base(tmp_path):
     # The persisted-configuration guard must not echo sensitive URL components.
     assert "not-a-real-key" not in r.stdout + r.stderr
     assert "not-a-real-token" not in r.stdout + r.stderr
+
+
+def test_installer_refuses_missing_credential_before_applying(tmp_path):
+    root, dep, config = sandbox(tmp_path)
+    assert run(root, "apply").returncode == 0
+    before = {p.name: p.read_bytes() for p in config.iterdir()}
+    overlay = dep / "overlay.yaml"
+    overlay.write_text(overlay.read_text() + '\nmcp_servers:\n  relay:\n    auth_value: os.environ/RELAY_KEY\n')
+    result = run(root, "apply")
+    assert result.returncode == 78
+    assert "undeclared config credentials: RELAY_KEY" in result.stdout + result.stderr
+    assert {p.name: p.read_bytes() for p in config.iterdir()} == before
+
+
+def test_installer_ships_pin_and_coverage_guard(tmp_path):
+    root, dep, config = sandbox(tmp_path)
+    assert run(root, "apply").returncode == 0
+    assert (config / "pin.lock").read_bytes() == (dep / "pin.lock").read_bytes()
+    assert (config / "check_credential_coverage.py").is_file()
+    (config / "pin.lock").unlink()
+    assert run(root, "--verify").returncode != 0
+
+
+def test_installer_replaces_entrypoint_without_overwriting_open_inode(tmp_path):
+    root, _, config = sandbox(tmp_path)
+    assert run(root, "apply").returncode == 0
+    wrapper = config / 'run-proxy-wrapper.sh'
+    wrapper.write_text('old-running-entrypoint\n')
+    with wrapper.open('rb') as old_inode:
+        assert run(root, 'apply').returncode == 0
+        assert old_inode.read() == b'old-running-entrypoint\n'
+    assert wrapper.read_bytes() == (REPO / 'core/run-proxy-wrapper.sh').read_bytes()
+    assert not list(config.glob('.*.install.*'))

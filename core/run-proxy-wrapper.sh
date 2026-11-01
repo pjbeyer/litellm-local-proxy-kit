@@ -26,13 +26,51 @@
 # Exit codes: 78 = EX_CONFIG (launchd backs off; no hot-loop on bad config).
 set -euo pipefail
 
+PREFLIGHT_ONLY=0
+ARG_PORT=""
+for arg in "$@"; do
+  case "$arg" in
+    --preflight) [ "$PREFLIGHT_ONLY" = "0" ] || exit 64; PREFLIGHT_ONLY=1 ;;
+    *[!0-9]*|"") echo "usage: run-proxy-wrapper.sh [PORT] [--preflight]" >&2; exit 64 ;;
+    *)
+      [ -z "$ARG_PORT" ] && [ "${#arg}" -le 5 ] || exit 64
+      [ "$((10#$arg))" -ge 1 ] && [ "$((10#$arg))" -le 65535 ] || exit 64
+      ARG_PORT="$((10#$arg))"
+      ;;
+  esac
+done
+
 DEPLOYMENT="${LITELLM_DEPLOYMENT:?LITELLM_DEPLOYMENT must be set (work|personal)}"
-PORT="${LITELLM_LOCAL_PORT:-4000}"
+PORT="${ARG_PORT:-${LITELLM_LOCAL_PORT:-4000}}"
 export OP_CACHE=false
 export OP_LOAD_DESKTOP_APP_SETTINGS=false
 
 log() { printf '%s [%s] %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$DEPLOYMENT" "$*"; }
 die() { log "ERROR: $*"; exit 78; }
+# A registered managed job may retry while an owner-authorized bridge serves.
+# Refuse before vault/MCP/DB initialization; do not start a competing proxy.
+# --preflight intentionally checks credentials without disturbing that listener.
+if [ "$PREFLIGHT_ONLY" = "0" ] && [ -n "${LITELLM_PROXY_LABEL:-}" ]; then
+  port_check=0
+  /usr/bin/python3 -c '
+import errno, socket, sys
+try:
+    port = int(sys.argv[1])
+    if not 1 <= port <= 65535:
+        sys.exit(2)
+    with socket.socket() as s:
+        s.settimeout(1)
+        result = s.connect_ex(("127.0.0.1", port))
+    sys.exit(1 if result == 0 else (0 if result == errno.ECONNREFUSED else 2))
+except (OSError, ValueError):
+    sys.exit(2)
+' "$PORT" || port_check=$?
+  case "$port_check" in
+    0) ;;
+    1) die "loopback port $PORT already occupied — preserving existing listener" ;;
+    *) die "cannot establish loopback port availability — refusing to start" ;;
+  esac
+fi
 resolved_vars=""   # value-evidence ledger: every var this wrapper itself exported
 
 note_resolved() { # note_resolved VAR — record that THIS wrapper set VAR
@@ -78,6 +116,32 @@ while IFS=$'\t' read -r var ref required source; do
   source="${source:-op}"
   if [ "$source" = "aws-sso-shim" ]; then
     # Deferred: all aws-sso-shim rows are satisfied by ONE shim run below.
+    continue
+  fi
+  if [ "$source" = "flexai-token" ]; then
+    # Closed argv, bounded resolution; stdout is consumed only by this shell.
+    # Do not borrow the legacy upstream key: it lacks the MCP tool-call grant.
+    flexai_bin="${FLEXAI_BIN:-$(command -v flexai || true)}"
+    if val="$(/usr/bin/python3 -c '
+import subprocess, sys
+try:
+    r = subprocess.run([sys.argv[1], "auth", "print-token"], capture_output=True, text=True, timeout=30)
+    v = r.stdout.strip()
+    if r.returncode or not v or v.startswith("op://") or any(c.isspace() for c in v):
+        sys.exit(1)
+    print(v)
+except (OSError, subprocess.SubprocessError):
+    sys.exit(1)
+' "$flexai_bin" 2>/dev/null)" && [ -n "$val" ]; then
+      export "$var=$val"
+      note_resolved "$var"
+      log "resolved $var from flexai-token (value-evidence ok)"
+    elif [ "$required" = "1" ]; then
+      die "required credential $var from flexai-token unresolvable — refusing to start"
+    else
+      unset "$var"
+      log "WARN (JUSTIFIED): optional credential $var from flexai-token unresolvable"
+    fi
     continue
   fi
   if val="$("$OP_BIN" read "$ref" 2>/dev/null)" && [ -n "$val" ]; then
@@ -203,6 +267,15 @@ log "patch assertion OK: sentinel '$SENTINEL' present in $MODULE"
 # ---- 5. Launch ----------------------------------------------------------------
 LITELLM_BIN="$(dirname "$PROXY_PYTHON")/litellm"
 [ -x "$LITELLM_BIN" ] || die "litellm launcher not found next to the pinned interpreter: $LITELLM_BIN"
+if [ "$PREFLIGHT_ONLY" = "1" ]; then
+  PIN_LOCK="$(dirname "$0")/pin.lock"
+  [ -f "$PIN_LOCK" ] || die "preflight requires the installed pin.lock"
+  env -u PYTHONPATH -u PYTHONHOME "$PROXY_PYTHON" \
+    "$(dirname "$0")/check_pin.py" "$PIN_LOCK" \
+    || die "pinned-build provenance preflight FAILED"
+  log "preflight complete — no listener started and no process stopped"
+  exit 0
+fi
 log "starting $DEPLOYMENT proxy on 127.0.0.1:$PORT (config: $CONFIG)"
 exec env -u PYTHONPATH -u PYTHONHOME "$LITELLM_BIN" \
   --config "$CONFIG" --host 127.0.0.1 --port "$PORT"

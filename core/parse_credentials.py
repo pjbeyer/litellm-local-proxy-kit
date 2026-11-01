@@ -18,7 +18,7 @@ import sys
 _ROW = re.compile(r"^\s*\[\[credential\]\]\s*$")
 _KV = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(\"[^\"]*\"|true|false)\s*(?:#.*)?$")
 _ALLOWED_KEYS = {"env_var", "op_ref", "required", "purpose", "presented_by", "copies", "source"}
-_SOURCES = {"op", "aws-sso-shim"}
+_SOURCES = {"op", "aws-sso-shim", "flexai-token"}
 
 
 def _unquote(value: str) -> str:

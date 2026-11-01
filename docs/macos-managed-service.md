@@ -12,10 +12,16 @@ use this guide to bypass a workstation's operator/EDR approval boundary.
   `deployments/<name>/{overlay.yaml,credentials.toml,pin.lock}`.
 - `deploy.conf.sh` sets the deployment name, config/log apply targets, unique
   label/port, pinned Python interpreter and Keychain service/account names.
-- `credentials.toml` contains **1Password references only**, never values.
+- `credentials.toml` contains **credential sources and references only**, never
+  values. Sources are `op` (1Password `op_ref`), `aws-sso-shim` (the documented
+  embedding-filter degrade path), and `flexai-token` (the closed, 30-second
+  `flexai auth print-token` resolver for a scoped MCP relay key). Non-`op`
+  sources forbid `op_ref`; no arbitrary command source is accepted.
   A login-Keychain item holds the bootstrap service-account token. The wrapper
   resolves credentials in memory, fails closed when required credentials are
   unavailable and asserts the installed patch sentinel before launching.
+  The installer checks rendered credential coverage **before changing any
+  apply target**, so an undeclared relay key cannot become an installed job.
 - `overlay.yaml` may have a `runtime_environment` mapping. Only `DATABASE_URL`,
   `LITELLM_MCP_STDIO_EXTRA_COMMANDS`, and `LITELLM_ENABLE_MCP_STDIO` are
   accepted. The stdio flag must be quoted literal `'true'` or `'false'`; enabling
@@ -78,7 +84,14 @@ bash "$KIT/core/installer.sh" "$DEPLOYMENT_REPO" --verify
 ```
 
 Apply stages the rendered YAML, both plists, wrapper, parser, sentinel checker,
-rotation helper and **credentials.toml** into the declared config directory.
+rotation helper, **credentials.toml**, **pin.lock** and the coverage checker
+into the declared config directory. `run-proxy-wrapper.sh [PORT] --preflight`
+resolves the actual manifest and verifies coverage, master-key evidence,
+sentinel and pin provenance without starting a listener or stopping a process.
+Run it with the clean generated plist environment, not inherited agent keys.
+See [the restart contract](safe-restart-contract.md) for the handoff and
+security-boundary gates; a successful preflight is not authority to kill the
+current service.
 It retires the legacy `run-local-proxy.sh` and `launchd-wrapper.sh` into the log
 directory. Dry-run must not create apply-target directories; verify must detect
 a missing or changed manifest. Neither apply nor verify loads launchd jobs.

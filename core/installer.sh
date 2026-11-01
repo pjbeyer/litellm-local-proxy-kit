@@ -77,6 +77,9 @@ TEMPLATE="$CORE_DIR/config.template.header.txt"
 [ -f "$TEMPLATE" ] || TEMPLATE="$CORE_DIR/../deployments/$DEPLOY_NAME/config.header.txt"
 "$PROXY_PYTHON" "$CORE_DIR/render_config.py" --overlay "$OVERLAY" --template "$TEMPLATE" \
   --out "$STAGE/config.rendered.yaml" || die "config render failed"
+"$PROXY_PYTHON" "$CORE_DIR/check_credential_coverage.py" \
+  --config "$STAGE/config.rendered.yaml" --manifest "$MANIFEST" --overlay "$OVERLAY" \
+  || die "rendered config credential coverage failed — no apply targets changed"
 # Pinned venv python for rendering tools: venvs ignore user-site entirely, so
 # operator PYTHONUSERBASE/PYTHONPATH pollution (e.g. a stale shared user-site)
 # cannot break the render. Stdlib-only helpers below stay on /usr/bin/python3.
@@ -88,14 +91,15 @@ TEMPLATE="$CORE_DIR/config.template.header.txt"
   --out "$STAGE" || die "plist render failed"
 cp "$CORE_DIR/run-proxy-wrapper.sh" "$CORE_DIR/check_patch_sentinel.py" "$CORE_DIR/check_pin.py" \
    "$CORE_DIR/parse_credentials.py" "$CORE_DIR/rotate-logs.sh" "$CORE_DIR/aws-sso-cred-shim.sh" \
-   "$CORE_DIR/harvest-filter-metrics.sh" \
+   "$CORE_DIR/harvest-filter-metrics.sh" "$CORE_DIR/check_credential_coverage.py" \
    "$STAGE/"
 # The plist points at this deployed manifest; shipping only the parser leaves
 # every installed wrapper failing closed before credential resolution.
 cp "$MANIFEST" "$STAGE/credentials.toml"
+cp "$PIN_LOCK" "$STAGE/pin.lock"
 
 # Managed file set: everything the installer owns at the apply target.
-MANAGED=(config.rendered.yaml "$LABEL.plist" "$LABEL.rotate.plist" run-proxy-wrapper.sh check_patch_sentinel.py check_pin.py parse_credentials.py rotate-logs.sh aws-sso-cred-shim.sh harvest-filter-metrics.sh credentials.toml)
+MANAGED=(config.rendered.yaml "$LABEL.plist" "$LABEL.rotate.plist" run-proxy-wrapper.sh check_patch_sentinel.py check_pin.py parse_credentials.py rotate-logs.sh aws-sso-cred-shim.sh harvest-filter-metrics.sh credentials.toml pin.lock check_credential_coverage.py)
 # Stale entry points the installer owns and must remove/rename (FR-001/F-CI-4).
 STALE=(run-local-proxy.sh launchd-wrapper.sh)
 
@@ -107,7 +111,11 @@ apply() {
   for f in "${MANAGED[@]}"; do
     if ! cmp -s "$STAGE/$f" "$CONFIG_DIR/$f" 2>/dev/null; then
       if [ "$MODE" = "apply" ]; then
-        cp "$STAGE/$f" "$CONFIG_DIR/$f"
+        # Atomic per-file replacement: a retrying launchd wrapper keeps its
+        # old inode instead of reading a partially overwritten shell script.
+        local pending="$CONFIG_DIR/.$f.install.$$"
+        cp -p "$STAGE/$f" "$pending"
+        mv -f "$pending" "$CONFIG_DIR/$f"
         log "wrote $CONFIG_DIR/$f"
       else
         log "DRY-RUN would write $CONFIG_DIR/$f"
