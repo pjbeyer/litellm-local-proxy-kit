@@ -1,0 +1,122 @@
+docs/plans/restart-controller.md
+  s_228cedd40c9695::t_3b199a871137ce 1-67
+core/restart_controller.py
+  s_039ee6aa9f3c63::t_4eefc4cb02b7b5 1-60
+core/install_restart_controller.py
+  s_039ee6aa9f3c63::t_fba66ee16688b0 1-102
+docs/restart-controller-operations.md
+  s_039ee6aa9f3c63::t_5b49b18c1ed3f2 3-6
+  s_039ee6aa9f3c63::t_dab637998d9b02 1-2,10-144
+  s_039ee6aa9f3c63::t_2b1cc1feb39af0 7-9
+tests/test_restart_runtime.py
+  s_039ee6aa9f3c63::t_a5c6cb0f20b831 347-353
+  s_039ee6aa9f3c63::t_3482934bc2f7e6 239-272
+  s_039ee6aa9f3c63::t_4ee204bffc2221 1-238,333-346,354-407,418-446
+  s_039ee6aa9f3c63::t_d40d532d94939e 273-332
+  s_039ee6aa9f3c63::t_085f482e38ef74 408-417
+docs/restart-controller.md
+  s_228cedd40c9695::t_3d4fe980e82e1d 1-25,32-38,44-50,61-67,71-72,97-101,106-113,120-126,139,153-162,177-204,265-271
+  s_228cedd40c9695::t_dcfc90dea9e7f0 79-84,93-94
+  s_228cedd40c9695::t_77c5d32ef4f458 140-141
+  s_228cedd40c9695::t_40303d63d57064 78,95-96
+  s_228cedd40c9695::t_9894759730b372 170-173
+  s_228cedd40c9695::t_446dc045dfbd63 39-43
+  s_228cedd40c9695::t_759753e6d6ca9b 73-77
+  s_228cedd40c9695::t_dd6e32eaf1889d 169
+  s_228cedd40c9695::t_11a3a98727bc50 131-138
+  s_228cedd40c9695::t_79e699e7f9ba67 127-130
+  s_228cedd40c9695::t_0485f299499c23 205-264
+  s_228cedd40c9695::t_5d915786c9b6e3 142-152
+  s_228cedd40c9695::t_4bdad5f7ab2a15 85-92
+  s_228cedd40c9695::t_30b7e51e6664e9 102-105
+  s_228cedd40c9695::t_0b78fc51d0738d 60
+  s_228cedd40c9695::t_0bac28203ccc70 114-119
+  s_228cedd40c9695::t_150b4fd16fb7ac 26-31
+  s_228cedd40c9695::t_ce5e11a8fcfd8f 163-168,174-176
+  s_228cedd40c9695::t_69263c03b575ae 68-70
+  s_228cedd40c9695::t_6acabc3fb134de 51-59
+tests/test_restart_controller.py
+  s_039ee6aa9f3c63::t_47dbd543420520 111,114,121-122,134-135,143-144,169,171-172,186-187,196-197,253-254,260-261,269-270,276-294
+  s_039ee6aa9f3c63::t_f7ae202944e56d 108-110
+  s_039ee6aa9f3c63::t_8a52fe78f980ac 112-113
+  s_039ee6aa9f3c63::t_52917fbbf0c6c8 115-120
+  s_039ee6aa9f3c63::t_7bcd2d7e902611 123-125,131-133
+  s_039ee6aa9f3c63::t_ca387cd0ffd4b2 136-138,140-142
+  s_039ee6aa9f3c63::t_c89ae2df2e3d0c 145-147,166-168
+  s_039ee6aa9f3c63::t_eb2b20d76a13b7 170
+  s_039ee6aa9f3c63::t_58502bc7e0796a 173-175,183-185
+  s_039ee6aa9f3c63::t_9d1fd26f50c282 188-190,193-195
+  s_039ee6aa9f3c63::t_455242229505f9 198-200,250-252
+  s_039ee6aa9f3c63::t_c4b3159a3b1424 255-259
+  s_039ee6aa9f3c63::t_2c080b2fa22113 262-264,266-268
+  s_039ee6aa9f3c63::t_3948c72fafed9a 271-275
+  s_039ee6aa9f3c63::t_fab73329faa4a9 295-297
+core/restart_control/runtime_identity.py
+  s_228cedd40c9695::t_1733dde299d21d 1-17,19-92,100-104,109,112,151-152,196,202,216-218,220-230
+  s_039ee6aa9f3c63::t_fb99f686f549a0 150
+  s_039ee6aa9f3c63::t_10d30ddded3577 203
+  s_039ee6aa9f3c63::t_145af456a019c6 212-214
+  s_228cedd40c9695::t_41d29f9e7c17da 105-108,110-111,113-149,153-171,175-195
+  s_039ee6aa9f3c63::t_0b5b2b3f6248ba 172-174
+  s_039ee6aa9f3c63::t_c0bbdde3ef1878 197-201,204-211,215,219
+  s_039ee6aa9f3c63::t_6a3e008a5e2a4b 93-99
+  s_039ee6aa9f3c63::t_f3e699557c9a05 18
+tests/test_restart_lifecycle_fixtures.py
+  s_e2af789d18b1ce::t_634b5dfb6b80af 1-831
+core/restart_control/process_identity.py
+  s_228cedd40c9695::t_32213b4b5d37c1 1-56
+core/restart_control/runtime.py
+  s_039ee6aa9f3c63::t_30c3c81fdf0dee 507-509
+  s_039ee6aa9f3c63::t_c0e2537787dc54 368-384,386-394,396,401-403
+  s_039ee6aa9f3c63::t_5bf0a750fdb0ee 29
+  s_039ee6aa9f3c63::t_ba68c5477d62ce 13
+  s_228cedd40c9695::t_f0da352802e994 289-292
+  s_039ee6aa9f3c63::t_db9b23f7b41663 30
+  s_039ee6aa9f3c63::t_df8d702b281253 316
+  s_039ee6aa9f3c63::t_71dfbd3614ae67 192-193,196,201,217-218,544-545
+  s_228cedd40c9695::t_06ab0ddbbe8a2f 129-132
+  s_039ee6aa9f3c63::t_e258f42585080d 128
+  s_039ee6aa9f3c63::t_12d94074a5dace 111-112
+  s_039ee6aa9f3c63::t_01d6cc581ad1bd 18
+  s_039ee6aa9f3c63::t_844beef50e6d5e 302
+  s_039ee6aa9f3c63::t_0f95fab1a5af86 151-156,164-170,174,181-182,185,187-191,194-195,197-200,202-210,213-216
+  s_039ee6aa9f3c63::t_bbb7a8b75daa8d 4
+  s_039ee6aa9f3c63::t_e61c65a7e8aedf 468
+  s_228cedd40c9695::t_4b0dba8693c35e 142-148
+  s_039ee6aa9f3c63::t_f0dbadb975124d 477
+  s_228cedd40c9695::t_6350af365e3ca3 175
+  s_228cedd40c9695::t_79fe58f71565e5 1-3,5-12,14-17,19-28,31-110,113-127,133-141,149-150,157-160,163,171-173,176-180,183-184,186,211-212,219-288,293-301,303-315,317-367,385,395,397-400,404-467,469-476,478-506,510-543,546-603
+  s_228cedd40c9695::t_ce2d07c710d3a9 161-162
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "8fc18455ea8ca683d9978871a14db2b4106d9ccb",
+  "prompts": {},
+  "sessions": {
+    "s_039ee6aa9f3c63": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261101_210254_0237ce",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_228cedd40c9695": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20260903_055433_49498f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_e2af789d18b1ce": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261101_211211_d11277",
+        "model": "glm-5.3"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
