@@ -1,0 +1,21 @@
+specs/001-proxy-lifecycle-guard-plugin/spec.md
+  s_d911d6ebd1d25a::t_82db135574e3b3 48-53
+.specify/extensions/red-team/red-team-lenses.yml
+  s_d911d6ebd1d25a::t_0699a69cc56baf 1-59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "9d9da88ae6e994d84dd45a84105ed6eaaa9be864",
+  "prompts": {},
+  "sessions": {
+    "s_d911d6ebd1d25a": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261102_055425_b7f94c5e",
+        "model": "glm-5.3-flash"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
