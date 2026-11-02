@@ -1,0 +1,36 @@
+tests/test_manifest_uniqueness.py
+  s_228cedd40c9695::t_979d537b9e4a16 10
+  s_228cedd40c9695::t_336cc42d90f520 1-9,11-33
+core/parse_credentials.py
+  s_228cedd40c9695::t_13ee56bee8759c 65-71
+  s_228cedd40c9695::t_e1ea8694104842 49-51,53-54
+  s_228cedd40c9695::t_cbcd6bdb71a4d0 31
+core/run-proxy-wrapper.sh
+  s_039ee6aa9f3c63::t_3c611730cd6563 84
+  s_228cedd40c9695::t_f8a2e5182be705 83,85-88
+  s_228cedd40c9695::t_d03f8b02997684 112
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "61aacc8d5d8e3069361fc74479ef4afb5099b172",
+  "prompts": {},
+  "sessions": {
+    "s_039ee6aa9f3c63": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261101_210254_0237ce",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_228cedd40c9695": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20260903_055433_49498f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
