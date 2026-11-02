@@ -142,8 +142,19 @@ production use; a Hermes-owned background process does not satisfy that gate.
   is issued by this implementation session. Qualification is a separate
   operator-issued 0600 regular, non-symlink record under the private state root:
   version, operator UID, controller label/PID/birth, controller/policy/proxy-plist
-  digests, issued/expiry times (at most 24 hours), and a digest of the operator's
-  real controller-context canary bootstrap/KeepAlive/bootout evidence. Require
+  digests, exact generated controller-plist digest and controller supervision
+  dictionary (`KeepAlive`, `ThrottleInterval`, `RunAtLoad`, `ExitTimeOut`),
+  issued/expiry times (at most 24 hours), and a digest of the operator's
+  real controller-context canary bootstrap/KeepAlive/bootout evidence. The
+  installer and qualification verifier must share one generated controller
+  definition. Qualification requires an owned 0600 regular non-symlink
+  controller plist matching that definition and available loaded controller
+  executable, argv, source path, working-directory, environment and throttle
+  parity; matching PID/birth alone is insufficient. Launchd's matching
+  `XPC_SERVICE_NAME` may be present in the loaded environment; other unexpected
+  explicit environment fields block. The trusted operator evidence binds the
+  supervision fields that launchctl does not expose. Old records without these
+  bindings fail closed and are never automatically upgraded. Require
   current UID, exact bindings, nonfuture issuance, unexpired record, controller
   PPID 1 and a launchd controller-label PID/birth match. Missing/stale/unverifiable
   qualification blocks; no RPC can create it. The operator is the trusted issuer

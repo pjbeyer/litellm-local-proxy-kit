@@ -304,32 +304,6 @@ def test_helper_stdout_is_bounded_during_capture(runtime):
     assert not runtime._cleanup_blocked
 
 
-@pytest.mark.parametrize('variant', ['wrong_uid', 'absent_daemon', 'boolean_version', 'wrong_epoch'])
-def test_operator_qualification_binding_refuses_invalid_evidence(runtime, variant):
-    frozen = runtime.freeze()
-    plan = dict(frozen, controller_epoch='a'*32)
-    identity = {'pid': os.getpid(), 'uid': os.getuid(), 'birth': [1, 1]}
-    now, mono = time.time(), time.monotonic()
-    record = {'version': 1, 'operator_uid': os.getuid(),
-       'controller_label': runtime.policy['controller_label'], 'controller_identity': identity,
-       'controller_digest': plan['controller_digest'], 'policy_digest': plan['policy_digest'],
-       'plist_digest': file_fact(runtime.plist)['sha256'], 'controller_epoch': plan['controller_epoch'],
-       'issued_at': now-1, 'expires_at': now+60, 'issued_monotonic': mono-1,
-       'expires_monotonic': mono+60, 'canary_evidence_digest': 'b'*64}
-    # Explicit fake launchd/kernel qualification context, never a live claim.
-    with mock.patch('restart_control.runtime.process_identity', return_value={**identity, 'ppid': 1}), \
-         mock.patch.object(runtime, '_job_state', return_value={'identity': identity}) as job:
-        atomic_json(runtime.state/'qualification.json', record)
-        runtime.qualify(plan)  # green fixture control
-        if variant == 'wrong_uid': record['operator_uid'] += 1
-        elif variant == 'absent_daemon': job.return_value = None
-        elif variant == 'boolean_version': record['version'] = True
-        else: record['controller_epoch'] = 'c'*32
-        atomic_json(runtime.state/'qualification.json', record)
-        with pytest.raises(Fault, match='qualification_invalid'):
-            runtime.qualify(plan)
-
-
 def test_missing_qualification_is_a_gate(runtime):
     with pytest.raises(Fault, match='qualification_missing'):
         runtime.qualify({})

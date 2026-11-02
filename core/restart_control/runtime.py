@@ -26,6 +26,23 @@ POLICY_FIELDS = {'version', 'kit_root', 'deployment_root', 'plist', 'auto_plist'
                  'controller_root', 'controller_label'}
 
 
+def controller_job(policy, policy_path, python):
+    """The single generated controller definition used by install and qualify."""
+    destination = Path(policy['controller_root'])
+    return {'Label': policy['controller_label'],
+        'ProgramArguments': [python, '-I', str(destination/'restart_controller.py'),
+                             '--policy', str(policy_path), 'serve'],
+        'WorkingDirectory': str(destination), 'RunAtLoad': True, 'KeepAlive': True,
+        'ThrottleInterval': 30, 'ExitTimeOut': 1000,
+        'EnvironmentVariables': {'HOME': str(Path.home()),
+            'PATH': '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin'},
+        'StandardOutPath': '/dev/null', 'StandardErrorPath': '/dev/null'}
+
+
+def controller_supervision(job):
+    return {key: job[key] for key in ('KeepAlive', 'ThrottleInterval', 'RunAtLoad', 'ExitTimeOut')}
+
+
 REQUEST_TIMEOUT = 15.0
 HELPER_OUTPUT_LIMIT = 4 * 1024 * 1024
 
@@ -233,8 +250,11 @@ class Runtime:
         except Exception:
             raise Fault('unmanaged_listener') from None
 
-    def _job_state(self, label=None):
+    def _job_state(self, label=None, expected=None, expected_path=None):
         label = label or self.label
+        controller_check = expected is not None
+        expected = self.job if expected is None else expected
+        expected_path = self.auto_plist if expected_path is None else expected_path
         try:
             r = subprocess.run(['/bin/launchctl', 'print', f'gui/{os.getuid()}/'+label],
                                env=self.env, capture_output=True, text=True, timeout=10)
@@ -255,9 +275,17 @@ class Runtime:
                     if ' => ' in line:
                         key, value = line.strip().split(' => ', 1)
                         actual_env[key] = value
-            parity = (field('path') == str(self.auto_plist) and args == self.job['ProgramArguments']
-                      and all(actual_env.get(k) == v for k, v in self.job['EnvironmentVariables'].items())
-                      and field('minimum runtime') == str(self.supervision['ThrottleInterval']))
+            parity = (field('path') == str(expected_path) and args == expected['ProgramArguments']
+                      and all(actual_env.get(k) == v for k, v in expected['EnvironmentVariables'].items())
+                      and field('minimum runtime') == str(expected['ThrottleInterval']))
+            if controller_check:
+                # launchd may add only its matching service-name metadata.
+                explicit = dict(actual_env)
+                if explicit.get('XPC_SERVICE_NAME') == label:
+                    explicit.pop('XPC_SERVICE_NAME')
+                parity = (parity and field('program') == expected['ProgramArguments'][0]
+                          and field('working directory') == expected['WorkingDirectory']
+                          and explicit == expected['EnvironmentVariables'])
             return {'identity': identity, 'runs': int(runs) if runs and runs.isdigit() else None,
                     'parity': parity}
         except Exception:
@@ -537,21 +565,30 @@ class Runtime:
             raise Fault('qualification_missing') from None
         try:
             own = process_identity(os.getpid())
-            job = self._job_state(self.policy['controller_label'])
+            expected = controller_job(self.policy, self.policy_path, self.python)
+            supervisor = Path.home()/'Library/LaunchAgents'/(self.policy['controller_label']+'.plist')
+            supervisor_fact = _regular(supervisor)
+            if (supervisor_fact['mode'] != 0o600 or supervisor.stat().st_uid != os.getuid()
+                    or supervisor.read_bytes() != plistlib.dumps(expected, sort_keys=True)):
+                raise ValueError('controller_supervision_invalid')
+            job = self._job_state(self.policy['controller_label'], expected=expected, expected_path=supervisor)
             fields = {'version', 'operator_uid', 'controller_label', 'controller_identity',
                       'controller_digest', 'policy_digest', 'plist_digest', 'controller_epoch',
-                      'issued_at', 'expires_at', 'issued_monotonic', 'expires_monotonic', 'canary_evidence_digest'}
+                      'issued_at', 'expires_at', 'issued_monotonic', 'expires_monotonic', 'canary_evidence_digest',
+                      'controller_plist_digest', 'controller_supervision'}
             if (set(record) != fields or type(record['version']) is not int or record['version'] != 1
                     or type(record['operator_uid']) is not int):
                 raise ValueError('qualification_invalid')
             identity = {k: own[k] for k in ('pid', 'uid', 'birth')}
-            if (own['ppid'] != 1 or record['operator_uid'] != os.getuid() or not job or job['identity'] != identity
-                    or record['controller_identity'] != identity
+            if (own['ppid'] != 1 or record['operator_uid'] != os.getuid() or not job or not job.get('parity') or job['identity'] != identity
+                    or canonical_digest(record['controller_identity']) != canonical_digest(identity)
                     or record['controller_label'] != self.policy['controller_label']
                     or record['controller_digest'] != plan['controller_digest']
                     or record['policy_digest'] != plan['policy_digest']
                     or record['plist_digest'] != _regular(self.plist)['sha256']
                     or record['controller_epoch'] != plan['controller_epoch']
+                    or record['controller_plist_digest'] != supervisor_fact['sha256']
+                    or canonical_digest(record['controller_supervision']) != canonical_digest(controller_supervision(expected))
                     or not re.fullmatch('[0-9a-f]{64}', record['canary_evidence_digest'])):
                 raise ValueError('qualification_invalid')
             for first, last, now in (('issued_at', 'expires_at', time.time()),

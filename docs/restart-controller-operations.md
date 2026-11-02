@@ -1,11 +1,11 @@
 # Restart controller operations (macOS)
 
-**Release posture: validation draft, not production-qualified.** A follow-up
-review found an unresolved release blocker: qualification does not yet compare
-the loaded controller job's arguments/plist/supervision with the generated
-controller definition. PID/birth agreement alone is insufficient for release.
-Until fixed, do not activate this draft or issue production qualification/approval
-records. The correction must be authorized, implemented and independently verified.
+**Release posture: validation draft, not production-qualified.** Qualification
+checks the generated controller plist and available loaded executable, arguments,
+source path, working directory, environment and throttle settings, not just
+PID/birth agreement. Operator evidence separately binds supervision fields that
+launchctl cannot expose. Source verification is not live platform qualification:
+activation, evidence issuance and production interruption remain operator gates.
 The executable contract is [restart-controller.md](restart-controller.md). Installation does not
 activate a job, qualify a platform, grant approval, or take over a bridge.
 This is accident prevention for trusted same-user automation, not OS isolation.
@@ -66,13 +66,22 @@ The operator-issued `qualification.json` is a 0600 regular, non-symlink file und
 
 - `version`, `operator_uid`, `controller_label`, `controller_identity`.
 - `controller_digest`, `policy_digest`, `plist_digest`, `controller_epoch`.
+- `controller_plist_digest`: SHA-256 of the exact generated controller plist.
+- `controller_supervision`: exact `KeepAlive`, `ThrottleInterval`, `RunAtLoad` and
+  `ExitTimeOut` dictionary from that generated definition.
 - `issued_at`, `expires_at`, `issued_monotonic`, `expires_monotonic`.
 - `canary_evidence_digest`: SHA-256 of the reviewed real canary evidence.
 
 Bind the current daemon epoch, exact source/policy/proxy-plist digests, dynamic
 UID and kernel PID/microsecond birth identity. Both lifetimes are at most 24
 hours. The controller must have PPID 1 and match its loaded launchd label's
-PID/birth. Missing or unverifiable qualification keeps restart disabled.
+PID/birth. The controller plist must be an owned 0600 regular non-symlink file
+matching the definition shared by installer and verifier. Available loaded fields
+must agree; only launchd's matching `XPC_SERVICE_NAME` is allowed as additional
+explicit environment metadata. The operator's real canary evidence binds the
+unexposed supervision fields to this loaded generation. Missing, stale or legacy
+qualification records without the new bindings keep restart disabled; they are
+never automatically upgraded.
 Do not manufacture qualification from a design review or mocked success.
 
 Initial proxy activation also needs an operator-issued `bootstrap.json` binding
