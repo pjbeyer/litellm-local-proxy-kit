@@ -28,6 +28,7 @@ def _unquote(value: str) -> str:
 def parse(text: str) -> list[dict]:
     creds: list[dict] = []
     current: dict | None = None
+    top_keys: set[str] = set()
     for lineno, raw in enumerate(text.splitlines(), 1):
         line = raw.split("#", 1)[0] if not raw.lstrip().startswith("#") else ""
         line = line.strip()
@@ -45,7 +46,12 @@ def parse(text: str) -> list[dict]:
             # top-level strings (identity/keychain_service) are ignored here
             if key not in ("identity", "keychain_service"):
                 raise ValueError(f"line {lineno}: key outside [[credential]] table: {key}")
+            if key in top_keys:
+                raise ValueError(f"line {lineno}: duplicate top-level manifest key")
+            top_keys.add(key)
             continue
+        if key in current:
+            raise ValueError(f"line {lineno}: duplicate credential key")
         if key not in _ALLOWED_KEYS:
             raise ValueError(f"line {lineno}: disallowed manifest key: {key}")
         if key in ("env_var", "op_ref", "purpose", "source"):
@@ -56,6 +62,13 @@ def parse(text: str) -> list[dict]:
             current[key] = value == "true"
         else:
             raise ValueError(f"line {lineno}: list-valued keys are not accepted by this parser: {key}")
+    names: set[str] = set()
+    for credential in creds:
+        name = credential.get('env_var')
+        if name and name in names:
+            raise ValueError('duplicate credential env_var')
+        if name:
+            names.add(name)
     return creds
 
 

@@ -80,6 +80,12 @@ is_resolved_by_wrapper() { # is_resolved_by_wrapper VAR -> 0/1
   case " $resolved_vars " in *" $1 "*) return 0 ;; *) return 1 ;; esac
 }
 
+# Validate the complete inventory before Keychain or any credential resolver.
+[ -n "${CREDENTIALS_MANIFEST:-}" ] || die "CREDENTIALS_MANIFEST must point at credentials.toml"
+[ -f "$CREDENTIALS_MANIFEST" ] || die "manifest missing: $CREDENTIALS_MANIFEST"
+manifest_json="$(/usr/bin/python3 "$(dirname "$0")/parse_credentials.py" "$CREDENTIALS_MANIFEST")" \
+  || die "manifest unreadable: $CREDENTIALS_MANIFEST"
+
 # ---- 1. Service-account token: Keychain primary, manifest file fallback -----
 OP_KEYCHAIN_SERVICE="${OP_KEYCHAIN_SERVICE:-litellm-gateways-op-token}"
 OP_KEYCHAIN_ACCOUNT="${OP_KEYCHAIN_ACCOUNT:-$(id -un 2>/dev/null || true)}"
@@ -103,13 +109,7 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 # ---- 2. Credential resolution from the manifest (Contract 1) ----------------
 # The manifest is authoritative: env_var | op_ref | required. This loop is
 # generic; the manifest decides what exists and whether it is required.
-CREDENTIALS_MANIFEST="${CREDENTIALS_MANIFEST:?CREDENTIALS_MANIFEST must point at credentials.toml}"
-[ -f "$CREDENTIALS_MANIFEST" ] || die "manifest missing: $CREDENTIALS_MANIFEST"
-
-# Parse with python (stdlib tomllib) via the helper file — no shell parsing of
-# untrusted shapes, no heredocs inside command substitution.
-manifest_json="$(/usr/bin/python3 "$(dirname "$0")/parse_credentials.py" "$CREDENTIALS_MANIFEST")" \
-  || die "manifest unreadable: $CREDENTIALS_MANIFEST"
+# Inventory parsing and uniqueness validation already completed before step 1.
 
 while IFS=$'\t' read -r var ref required source; do
   [ -n "$var" ] || continue
