@@ -54,15 +54,39 @@ exercise success, failed candidate, failed post-check, rollback, duplicate
 requests, wrong UID, stale digest and denied service control. Production
 restart is not accepted by mock results alone.
 
-## Open owner decision
+## Selected bounded command-guard contract
 
-A same-user command guard prevents recognizable accidental lifecycle commands,
-but arbitrary same-user Python or shell can bypass it. Choose explicitly between
-that bounded protection (with a recorded residual risk) and a new OS-enforced
-service identity/execution sandbox. Neither a weaker guarantee nor a new
-privilege boundary is approved by silence. Until this choice is recorded,
-the safe restart controller and its policy installation remain gated.
-No controller or enforcement hook is installed by the credential repair.
+The owner selected practical command-pattern protection, accepting that it is
+not OS-enforced isolation. That choice permits the profile-local guard below;
+it does not waive controller, candidate, handoff or rollback acceptance.
+
+- CG-001: Register a `pre_tool_call` veto; never auto-approve or use fail-open
+  execution middleware as a security gate. Ordinary file reads and read-only
+  service diagnostics must remain available.
+- CG-002: Refuse recognizable process signals targeting the current listener or
+  its process group, broad proxy/interpreter selectors, protected port kill
+  pipelines, launchd mutations of protected labels/domains, and mutations of
+  configured session-owned bridge handles. Evaluate hazards across compound
+  commands and supported inline/deferred wrappers.
+- CG-003: Discover listener ownership read-only with bounded subprocesses; do
+  not cache a startup PID. Invalid/incomplete discovery is not an empty result.
+  Missing/invalid policy fails closed for executable calls. Return only fixed
+  sanitized diagnostics; never include command text, credentials or process
+  environment in a denial.
+- CG-004: Install only in the explicitly authorized Hermes profile. Reuse the
+  kit's source and native plugin enable/reload path; verify live activation,
+  source/deployed byte parity, safe denied-call probes, permitted diagnostics,
+  and survival of the original listener. Do not test by signaling production.
+- CG-005: Explicit residual risk includes arbitrary same-user code, imported or
+  encoded programs, unsupported shell grammar/aliases/tools, mutable policy or
+  plugin files, other profiles/agents and discovery-to-execution races. Plugin
+  disabled/import failure means the guard is absent. Do not describe this as
+  sandboxing, a capability boundary, or a complete restart controller.
+
+The optional implementation and installation/rollback guide live in
+[`integrations/hermes/proxy-lifecycle-guard`](../integrations/hermes/proxy-lifecycle-guard/README.md).
+Production restart remains separately gated; guard installation must not stop
+or replace the currently serving bridge.
 
 ## Delivery status
 
