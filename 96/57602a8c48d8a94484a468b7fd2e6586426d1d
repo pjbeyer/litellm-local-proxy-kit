@@ -1,0 +1,64 @@
+docs/native-runtime-artifact-contract.md
+  s_039ee6aa9f3c63::t_b3ea8d5354d6e9 8-29
+tests/test_native_controller_closure.py
+  s_8b6739760a0a98::t_f4c681d4438ee0 183-184,187-188
+  s_8b6739760a0a98::t_e161c98f3e4a66 360
+  s_8b6739760a0a98::t_5ac0af2254114b 374
+  s_039ee6aa9f3c63::t_016a40abd93feb 383-407
+  s_8b6739760a0a98::t_9bb95cbd80cf4d 1-91,93-177,179-182,185-186,189-269,272,275-359,361-373,375-382
+  s_8b6739760a0a98::t_5e0aaadfb66ed9 178
+  s_8b6739760a0a98::t_a2e987a6809888 92
+  s_8b6739760a0a98::t_f41075e94c3fb6 270-271
+  s_8b6739760a0a98::t_e44a5e46ec040e 273-274
+core/restart_control/runtime_identity.py
+  s_039ee6aa9f3c63::t_1d7608b7519e31 184-215
+  s_039ee6aa9f3c63::t_aa1c946f0798d8 181-183
+  s_039ee6aa9f3c63::t_9579408bfb3aad 216-218
+tests/test_native_runtime_identity.py
+  s_039ee6aa9f3c63::t_f383474e8e8f15 1-164
+core/restart_control/runtime.py
+  s_8b6739760a0a98::t_4f6fd64e6853ed 577,612
+  s_8b6739760a0a98::t_d8f107e9995f12 552-553
+  s_8b6739760a0a98::t_a0bcc9b47c0420 24
+  s_8b6739760a0a98::t_aaa59e3e0bbadd 548-551,554-563,573-576,579,583-586
+  s_8b6739760a0a98::t_685a282e67c5f3 342,344-345
+  s_8b6739760a0a98::t_54713df4a7761a 76-78
+  s_8b6739760a0a98::t_ffb9a1cad95660 73
+  s_8b6739760a0a98::t_96e09e26e10c22 74-75
+  s_8b6739760a0a98::t_8cb00fb787e15e 25
+  s_8b6739760a0a98::t_612eb3b8dc4c8d 79-81
+  s_8b6739760a0a98::t_6b7a882f510258 587-589
+  s_8b6739760a0a98::t_f1cb7ab16a525d 613-615
+tests/test_restart_runtime.py
+  s_039ee6aa9f3c63::t_55d6736e975272 171-173
+core/check_pin.py
+  s_039ee6aa9f3c63::t_398ab11105d057 2,8-10,14-15,19-26,30,46
+  s_039ee6aa9f3c63::t_bbbd996d63c279 16-18
+  s_039ee6aa9f3c63::t_e39dae9982f78d 4,29,33-34,36-45,47-48,50,54-55
+tests/test_native_pin_cli.py
+  s_039ee6aa9f3c63::t_f762c095874a7f 1-51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "9657602a8c48d8a94484a468b7fd2e6586426d1d",
+  "prompts": {},
+  "sessions": {
+    "s_039ee6aa9f3c63": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261101_210254_0237ce",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_8b6739760a0a98": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261102_113216_5d6bd2",
+        "model": "glm-5.3"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
