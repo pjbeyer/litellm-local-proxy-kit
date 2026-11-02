@@ -1,6 +1,6 @@
 """Installed-layout regressions: exercise the real installer in a sandbox.
 
-The fake interpreter bypasses only the LiteLLM sentinel gate. Renderer,
+The fake interpreter bypasses the package proof and sentinel only. Receipt metadata, renderer,
 manifest parser, plist renderer, apply and verify all run their real code.
 No service, credential lookup, or launchctl operation is invoked.
 """
@@ -53,7 +53,7 @@ def sandbox(tmp_path):
         '[[credential]]\nenv_var = "LOCAL_KEY"\n'
         'op_ref = "op://test/item/credential"\nrequired = true\n'
     )
-    (dep / "pin.lock").write_text('base_version = "test"\n')
+    (dep / "pin.lock").write_text('base_version = "test"\npatch_tip = "'+'0'*40+'"\n')
     return root, dep, config
 
 

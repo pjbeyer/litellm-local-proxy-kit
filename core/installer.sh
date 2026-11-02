@@ -58,19 +58,36 @@ die() { log "ERROR: $*"; exit 78; }
 # ---- Gate 1: manifest parses (fail closed on unparseable/empty) -------------
 /usr/bin/python3 "$CORE_DIR/parse_credentials.py" "$MANIFEST" >/dev/null || die "credentials manifest invalid"
 
+# Existing optional receipt state must already be coherent. Never overwrite
+# stale evidence or repair a mixed native state as an incidental apply action.
+if [ -e "$CONFIG_DIR/pin.lock" ] || [ -L "$CONFIG_DIR/pin.lock" ] || \
+   [ -e "$CONFIG_DIR/native-build.json" ] || [ -L "$CONFIG_DIR/native-build.json" ]; then
+  env -u PYTHONPATH -u PYTHONHOME "$PROXY_PYTHON" "$CORE_DIR/restart_control/runtime_identity.py" --receipt-state \
+    "$CONFIG_DIR/pin.lock" >/dev/null 2>&1 || die "installed native pin/receipt pairing invalid"
+fi
+
+# Installed executable layout is fixed and cannot be shadowed by a nested copy.
+[ ! -e "$CONFIG_DIR/restart_control" ] && [ ! -L "$CONFIG_DIR/restart_control" ] \
+  || die "unexpected installed nested proof layout requires operator review"
+if [ -e "$CONFIG_DIR/runtime_identity.py" ] || [ -L "$CONFIG_DIR/runtime_identity.py" ]; then
+  env -u PYTHONPATH -u PYTHONHOME "$PROXY_PYTHON" "$CORE_DIR/restart_control/runtime_identity.py" \
+    --file-state "$CONFIG_DIR/runtime_identity.py" >/dev/null 2>&1 \
+    || die "installed runtime helper must be a regular single-link file"
+fi
+
+# ---- Gate 2a: dist-info version + worktree HEAD match pin.lock (FR-006) ------
+if ! env -u PYTHONPATH -u PYTHONHOME "$PROXY_PYTHON" "$CORE_DIR/check_pin.py" \
+      --repository "$PIN_LOCK" >/dev/null 2>&1; then
+  die "pinned build fails the pin-provenance check — refusing to install around it"
+fi
+log "pinned build provenance OK (dist-info + HEAD match pin.lock)"
+
 # ---- Gate 2: patch sentinel present in the pinned build (FR-006) ------------
 if ! env -u PYTHONPATH -u PYTHONHOME "$PROXY_PYTHON" "$CORE_DIR/check_patch_sentinel.py" "$SENTINEL" \
       "litellm.completion_extras.litellm_responses_transformation.transformation" >/dev/null 2>&1; then
   die "pinned build fails the patch sentinel check — refusing to install around it"
 fi
 log "pinned build patch assertion OK ($SENTINEL)"
-
-# ---- Gate 2a: dist-info version + worktree HEAD match pin.lock (FR-006) ------
-if ! env -u PYTHONPATH -u PYTHONHOME "$PROXY_PYTHON" "$CORE_DIR/check_pin.py" \
-      "$PIN_LOCK" >/dev/null 2>&1; then
-  die "pinned build fails the pin-provenance check — refusing to install around it"
-fi
-log "pinned build provenance OK (dist-info + HEAD match pin.lock)"
 
 # ---- Render config + plists into a staging dir ------------------------------
 STAGE="$(mktemp -d "${TMPDIR:-/tmp}/litellm-install.XXXXXX")"
@@ -97,11 +114,23 @@ cp "$CORE_DIR/run-proxy-wrapper.sh" "$CORE_DIR/check_patch_sentinel.py" "$CORE_D
    "$STAGE/"
 # The plist points at this deployed manifest; shipping only the parser leaves
 # every installed wrapper failing closed before credential resolution.
+cp "$CORE_DIR/restart_control/runtime_identity.py" "$STAGE/runtime_identity.py"
 cp "$MANIFEST" "$STAGE/credentials.toml"
 cp "$PIN_LOCK" "$STAGE/pin.lock"
 
 # Managed file set: everything the installer owns at the apply target.
-MANAGED=(config.rendered.yaml "$LABEL.plist" "$LABEL.rotate.plist" run-proxy-wrapper.sh check_patch_sentinel.py check_pin.py parse_credentials.py rotate-logs.sh aws-sso-cred-shim.sh harvest-filter-metrics.sh credentials.toml pin.lock check_credential_coverage.py)
+MANAGED=(config.rendered.yaml "$LABEL.plist" "$LABEL.rotate.plist" run-proxy-wrapper.sh check_patch_sentinel.py check_pin.py parse_credentials.py rotate-logs.sh aws-sso-cred-shim.sh harvest-filter-metrics.sh credentials.toml pin.lock check_credential_coverage.py runtime_identity.py)
+# Receipt bytes or explicit absence are part of the managed input closure.
+# Never remove stale native evidence to force legacy mode, even during apply.
+if [ -e "$DEPLOY_DIR/native-build.json" ] || [ -L "$DEPLOY_DIR/native-build.json" ]; then
+  cp -p "$DEPLOY_DIR/native-build.json" "$STAGE/native-build.json"
+  MANAGED+=(native-build.json)
+elif [ -e "$CONFIG_DIR/native-build.json" ] || [ -L "$CONFIG_DIR/native-build.json" ]; then
+  die "stale installed native receipt requires an explicit reviewed transition"
+fi
+# Validate the actual staged pin/receipt, not only the earlier source observation.
+env -u PYTHONPATH -u PYTHONHOME "$PROXY_PYTHON" "$CORE_DIR/restart_control/runtime_identity.py" --receipt-state \
+  "$STAGE/pin.lock" >/dev/null 2>&1 || die "staged native pin/receipt pairing invalid"
 # Stale entry points the installer owns and must remove/rename (FR-001/F-CI-4).
 STALE=(run-local-proxy.sh launchd-wrapper.sh)
 

@@ -1,31 +1,50 @@
-# Native runtime artifact binding — authorized amendment draft
+# Native runtime artifact binding — reviewed source amendment
 
-This amends CT-006 only after independent review and implementation verification.
-Until then its existing untracked-native refusal remains effective. The owner
-selected verified-build-backed native artifact pinning, preserving Rust features;
-no production restart, bridge shutdown or operational qualification is authorized.
+The source implementation and isolated deployment-layout verification implement
+this CT-006 amendment. Actual library replacement, managed installation, platform
+qualification and restart are separate owner/operator gates; no fixture result
+or receipt grants those permissions. The installed native refusal remains until
+a reviewed deployment supplies matching expectations and the verified artifact.
 
 ## Implementation boundary
 
-The source verifier and controller receipt binding are implemented. The shared
-metadata-only `native_receipt_fact()` validates pin/receipt pairing without
-locating or importing LiteLLM; `prove_runtime()` additionally verifies the actual
-source and native artifact before its final package-path import. `check_pin.py`
-loads only its exact adjacent repository or installed helper, with bytecode writes
-disabled before helper import. Native admission requires the plain arm64 subtype
-and exactly one valid macOS `LC_BUILD_VERSION`; iOS/arm64e or inconclusive headers
-refuse. Tests are active under `tests/test_native_runtime_identity.py`, with
-controller closure and checker CLI coverage in adjacent native test modules.
+`native_receipt_fact()` validates strict pin/receipt metadata without locating or
+importing LiteLLM. `prove_runtime()` also verifies source, native bytes and ABI
+before its final package-path import. Only the plain arm64 subtype with exactly
+one valid macOS `LC_BUILD_VERSION` is supported; iOS/arm64e or inconclusive
+observations refuse. See the active native runtime, controller, CLI and deployment
+integration tests under `tests/`.
 
-**Deployment integration remains pending.** Before using this with a managed
-proxy, the installer/wrapper must ship the registered flat `runtime_identity.py`,
-run proof before every import-based sentinel, manage the fixed optional receipt
-without silently deleting stale evidence, and verify receipt/helper presence,
-absence and bytes in staging, installed-layout and drift checks. All pin gates
-must use the shared strict parser. Until those gates are implemented and tested,
-this is not an operationally complete CT-006 amendment or permission to replace
-an installed library, issue qualification, or restart a service. Old installed
-layouts missing the newly required helper fail closed; no migration is inferred.
+The installer ships `core/restart_control/runtime_identity.py` as the required
+flat `runtime_identity.py` next to the installed checker and pin. Installed
+checker invocation always selects that flat layout; an unexpected adjacent
+`restart_control` entry refuses rather than selecting unmanaged code. Repository
+checker invocation requires explicit `--repository`. Bytecode writes are disabled
+before helper import. Symlinked or hard-linked helpers refuse in startup,
+installer apply/verify and drift checks; incidental apply never repairs them.
+
+Installer and every wrapper startup (normal or `--preflight`) run full proof
+before an import-based sentinel. Existing installed native metadata and staged
+pin/receipt metadata must be coherent before any apply-target writes. Native
+receipt bytes or explicit absence are managed, verified and drift-checked using
+the shared strict parser; stale evidence is never silently deleted to select
+legacy mode. Helper and native pairing checks are non-exemptible. Drift reuses
+the controller's closed input registry and checks the flat helper against its
+actual nested source path, including cross-repository comparison.
+
+Example source and installed-layout diagnostics (no listener/service control):
+
+```sh
+"$PINNED_PYTHON" -B core/check_pin.py --repository "$DEPLOY_DIR/pin.lock"
+"$PINNED_PYTHON" -B "$CONFIG_DIR/check_pin.py" "$CONFIG_DIR/pin.lock"
+"$PINNED_PYTHON" -B core/restart_control/runtime_identity.py --receipt-state "$DEPLOY_DIR/pin.lock"
+```
+
+Old installed layouts missing the newly required helper fail closed. Unexpected
+nested layouts or incoherent old receipts require a reviewed operator transition,
+not automatic migration or evidence deletion. Successful source verification is
+not proof of native import compatibility in the serving process, live launchd
+qualification, a previous-version rollback or restart readiness.
 
 ## Narrow acceptance
 

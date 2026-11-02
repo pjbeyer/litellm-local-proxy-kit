@@ -258,6 +258,13 @@ log "classifier preflight OK: Jev classifier manifest row present"
 PROXY_PYTHON="${LITELLM_PROXY_PYTHON:?LITELLM_PROXY_PYTHON must point at the pinned build interpreter}"
 SENTINEL="${LITELLM_PATCH_SENTINEL:-args_already_complete}"
 MODULE="litellm.completion_extras.litellm_responses_transformation.transformation"
+# Every startup proves provenance BEFORE an import-based sentinel. --preflight
+# uses exactly this same proof; no unverified import serves as evidence.
+PIN_LOCK="$(dirname "$0")/pin.lock"
+[ -f "$PIN_LOCK" ] || die "startup requires the installed pin.lock"
+env -u PYTHONPATH -u PYTHONHOME "$PROXY_PYTHON" \
+  "$(dirname "$0")/check_pin.py" "$PIN_LOCK" \
+  || die "pinned-build provenance preflight FAILED"
 # Patch sentinel check lives in its own file: core/check_patch_sentinel.py
 # (avoids embedding python inside bash command substitution — shellcheck-safe).
 if ! env -u PYTHONPATH -u PYTHONHOME "$PROXY_PYTHON" \
@@ -270,11 +277,6 @@ log "patch assertion OK: sentinel '$SENTINEL' present in $MODULE"
 LITELLM_BIN="$(dirname "$PROXY_PYTHON")/litellm"
 [ -x "$LITELLM_BIN" ] || die "litellm launcher not found next to the pinned interpreter: $LITELLM_BIN"
 if [ "$PREFLIGHT_ONLY" = "1" ]; then
-  PIN_LOCK="$(dirname "$0")/pin.lock"
-  [ -f "$PIN_LOCK" ] || die "preflight requires the installed pin.lock"
-  env -u PYTHONPATH -u PYTHONHOME "$PROXY_PYTHON" \
-    "$(dirname "$0")/check_pin.py" "$PIN_LOCK" \
-    || die "pinned-build provenance preflight FAILED"
   log "preflight complete — no listener started and no process stopped"
   exit 0
 fi

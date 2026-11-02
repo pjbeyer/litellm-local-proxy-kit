@@ -164,17 +164,17 @@ def test_wrapper_fails_closed_on_renamed_master_key_var(tmp_path):
 
 def test_wrapper_master_key_gate_passes_when_var_resolved(tmp_path):
     """Control: config references the manifest-resolved var -> gate passes,
-    then the sentinel check fails on /usr/bin/true (no litellm) with exit 78.
+    then provenance refuses an unpinned runtime before the sentinel, with exit 78.
     Either way it must NOT be the master-key gate that fails."""
     creds = _write_creds(tmp_path)
     config = _write_config(tmp_path, "LITELLM_API_KEY")
     r = _run_wrapper({"LITELLM_PROXY_CONFIG": str(config), "CREDENTIALS_MANIFEST": str(creds)}, tmp_path)
     assert "master-key gate OK" in r.stdout + r.stderr, r.stdout + r.stderr
-    assert r.returncode == 78  # fails later, at sentinel on a python without litellm
+    assert r.returncode == 78  # later provenance gate refuses the unpinned runtime
     assert "master-key" not in r.stdout.split("master-key gate OK")[-1], "gate passed — later stage must be the failure"
 
 
-def test_wrapper_sentinel_negative_on_python_without_litellm(tmp_path):
+def test_wrapper_provenance_precedes_sentinel_on_unpinned_python(tmp_path):
     creds = _write_creds(tmp_path)
     config = _write_config(tmp_path, "LITELLM_API_KEY")
     r = _run_wrapper(
@@ -183,7 +183,7 @@ def test_wrapper_sentinel_negative_on_python_without_litellm(tmp_path):
         tmp_path,
     )
     assert r.returncode == 78
-    assert "patch assertion FAILED" in r.stdout + r.stderr, "stock build must be refused (F-CI-2)"
+    assert "startup requires the installed pin.lock" in r.stdout + r.stderr, "stock/unpinned build must refuse before an import (F-CI-2)"
 
 
 # ---------- coverage gate: config references vs manifest rows (FR-005) ----------

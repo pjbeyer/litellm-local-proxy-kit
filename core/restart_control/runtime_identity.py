@@ -489,9 +489,14 @@ def prove_runtime(pin_path):
 
 if __name__ == '__main__':
     try:
-        if len(sys.argv) != 2:
+        if len(sys.argv) == 3 and sys.argv[1] == '--receipt-state':
+            print(json.dumps({'native_receipt': native_receipt_fact(sys.argv[2])}))
+        elif len(sys.argv) == 3 and sys.argv[1] == '--file-state':
+            print(json.dumps({'file': file_fact(sys.argv[2])}))
+        elif len(sys.argv) == 2:
+            print(json.dumps(prove_runtime(sys.argv[1])))
+        else:
             raise ValueError('invalid_input')
-        print(json.dumps(prove_runtime(sys.argv[1])))
     except Exception:
         print('{"error":"runtime_invalid"}')
         raise SystemExit(78)

@@ -22,7 +22,7 @@ def test_direct_cli_suppresses_helper_bytecode_and_diagnostics(tmp_path,layout):
     pin.write_text('base_version = "fixture"\nbase_version = "repeated"\npatch_tip = "'+'0'*40+'"\n')
     env={k:v for k,v in os.environ.items() if k not in (
         'PYTHONPATH','PYTHONHOME','PYTHONDONTWRITEBYTECODE')}
-    result=subprocess.run([sys.executable,'-S',str(checker),str(pin)],
+    result=subprocess.run([sys.executable,'-S',str(checker),*(['--repository'] if layout=='repository' else []),str(pin)],
                           capture_output=True,text=True,env=env,timeout=10)
     assert result.returncode==1
     assert result.stdout=='' and result.stderr=='FAIL: pinned runtime provenance invalid\n'
@@ -47,5 +47,16 @@ def test_repository_layout_missing_helper_does_not_fall_back(tmp_path):
     (tmp_path/'restart_control').mkdir()
     marker=tmp_path/'fallback'
     (tmp_path/'runtime_identity.py').write_text('from pathlib import Path\nPath('+repr(str(marker))+').write_text("bad")\n')
+    result=subprocess.run([sys.executable,'-B',str(checker),'--repository','unused'],capture_output=True,text=True,timeout=10)
+    assert result.returncode==1 and not marker.exists()
+
+
+@pytest.mark.parametrize('flat_present',[False,True])
+def test_installed_cli_never_executes_unmanaged_nested_helper(tmp_path,flat_present):
+    checker=tmp_path/'check_pin.py';shutil.copy2(ROOT/'core/check_pin.py',checker)
+    nested=tmp_path/'restart_control';nested.mkdir()
+    marker=tmp_path/'executed'
+    (nested/'runtime_identity.py').write_text('from pathlib import Path\nPath('+repr(str(marker))+').write_text("bad")\n')
+    if flat_present:shutil.copy2(ROOT/'core/restart_control/runtime_identity.py',tmp_path/'runtime_identity.py')
     result=subprocess.run([sys.executable,'-B',str(checker),'unused'],capture_output=True,text=True,timeout=10)
     assert result.returncode==1 and not marker.exists()
