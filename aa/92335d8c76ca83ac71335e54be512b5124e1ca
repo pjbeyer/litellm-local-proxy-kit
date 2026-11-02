@@ -1,0 +1,50 @@
+.specify/.gitignore
+  h_c5be3b3dad7ca8 1-9
+.specify/init-options.json
+  h_c5be3b3dad7ca8 1-9
+.specify/integration.json
+  h_c5be3b3dad7ca8 1-15
+.specify/integrations/hermes.manifest.json
+  h_c5be3b3dad7ca8 1-6
+.specify/integrations/speckit.manifest.json
+  h_c5be3b3dad7ca8 1-19
+.specify/memory/.constitution-template.json
+  h_c5be3b3dad7ca8 1-4
+.specify/scripts/bash/check-prerequisites.sh
+  h_c5be3b3dad7ca8 1-243
+.specify/scripts/bash/common.sh
+  h_c5be3b3dad7ca8 1-926
+.specify/scripts/bash/create-new-feature.sh
+  h_c5be3b3dad7ca8 1-420
+.specify/scripts/bash/resolve-template.sh
+  h_c5be3b3dad7ca8 1-57
+.specify/scripts/bash/setup-plan.sh
+  h_c5be3b3dad7ca8 1-85
+.specify/scripts/bash/setup-tasks.sh
+  h_c5be3b3dad7ca8 1-94
+.specify/templates/checklist-template.md
+  h_c5be3b3dad7ca8 1-45
+.specify/templates/constitution-template.md
+  h_c5be3b3dad7ca8 1-50
+.specify/templates/plan-template.md
+  h_c5be3b3dad7ca8 1-113
+.specify/templates/spec-template.md
+  h_c5be3b3dad7ca8 1-131
+.specify/templates/tasks-template.md
+  h_c5be3b3dad7ca8 1-252
+.specify/workflows/speckit/workflow.yml
+  h_c5be3b3dad7ca8 1-74
+.specify/workflows/workflow-registry.json
+  h_c5be3b3dad7ca8 1-13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "aa92335d8c76ca83ac71335e54be512b5124e1ca",
+  "prompts": {},
+  "humans": {
+    "h_c5be3b3dad7ca8": {
+      "author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
