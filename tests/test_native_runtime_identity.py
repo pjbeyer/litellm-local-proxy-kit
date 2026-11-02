@@ -1,8 +1,4 @@
-"""Unactivated native contract cases: invoke this file explicitly with pytest.
-
-These intentionally RED cases are a design checkpoint, not an implemented feature.
-Real Git/files are exercised; metadata/nm/otool are synthetic; native loads refuse.
-"""
+"""Native runtime proof: real Git/files, synthetic metadata/nm, no native loads."""
 import ctypes
 import hashlib
 import importlib.machinery
@@ -53,7 +49,8 @@ def native_case(tmp_path, monkeypatch):
     pin_path = tmp_path/'pin.lock'
     binary = root/REL
     # Mach-O header shape only. nm is a labeled fixture; this payload is never loaded.
-    binary.write_bytes(struct.pack('<IiiIIIII',0xfeedfacf,0x0100000c,0,6,0,0,0,0)+b'fixture bytes')
+    platform_command = struct.pack('<IIIIII',0x32,24,1,0x0b0000,0x0f0000,0)
+    binary.write_bytes(struct.pack('<IiiIIIII',0xfeedfacf,0x0100000c,0,6,1,24,0,0)+platform_command+b'fixture bytes')
     baseline = {'base_version':'0.1.0','patch_tip':head}
     spec = importlib.util.spec_from_file_location('native_proof_fixture',ROOT/'core/restart_control/runtime_identity.py')
     assert spec is not None and spec.loader is not None
@@ -108,6 +105,12 @@ def native_case(tmp_path, monkeypatch):
         kwargs['env']=git_env
         return real_run(argv,**kwargs)
     module.subprocess = SimpleNamespace(run=fixture_run)
+    def fixture_observation(argv, **kwargs):
+        result = fixture_run(argv)
+        if result.returncode:
+            raise ValueError('native_observation_invalid')
+        return result.stdout
+    module._tool_output = fixture_observation
     def refuse_native(*args, **kwargs):
         raise AssertionError('native loader must not run in this fixture')
     monkeypatch.setattr(ctypes,'CDLL',refuse_native)
@@ -196,3 +199,144 @@ def test_unpaired_receipt_refuses_legacy_mode(native_case):
     c.pin.write_text(c.pin.read_text().split('[native_artifact]')[0])
     with pytest.raises(ValueError): c.module.prove_runtime(c.pin)
     assert not c.imports
+
+
+@pytest.mark.parametrize('field', sorted({
+    'version','source_head','source_tree','source_digest','source_files',
+    'cargo_lock_sha256','root_cargo_config_sha256','baseline_pin_digest',
+    'artifact_path','artifact_sha256','recipe','profile','features','default_features',
+    'target','cargo_sha256','rustc_sha256','cargo_version','rustc_version',
+    'build_recipe_sha256','build_log_sha256','abi_tag','pyo3_cfg_sha256',
+    'pyo3_ffi_cfg_sha256','pyo3_features_sha256'}))
+def test_every_receipt_field_required(native_case, field):
+    c=native_case
+    del c.receipt[field]
+    c.save()
+    with pytest.raises(ValueError): c.module.prove_runtime(c.pin)
+    assert not c.imports
+
+
+@pytest.mark.parametrize('field', ['version','path','sha256','source_tree','receipt_sha256','baseline_pin_digest'])
+def test_every_native_pin_field_required(native_case, field):
+    c=native_case
+    del c.policy[field]
+    # Save without automatically repairing the intentionally missing digest.
+    text=c.pin.read_text()
+    c.pin.write_text('\n'.join(l for l in text.splitlines() if not l.startswith(field+' ='))+'\n')
+    with pytest.raises(ValueError): c.module.prove_runtime(c.pin)
+    assert not c.imports
+
+
+@pytest.mark.parametrize('field,value', [
+    ('source_files', True),('version', True),('source_files',1.0),
+    ('default_features',1),('cargo_sha256','not-a-hash'),('cargo_version','cargo\ninjected'),
+    ('rustc_version','cargo fixture'),('pyo3_cfg_sha256',None),('source_digest','f'*64),
+    ('cargo_lock_sha256','f'*64),('root_cargo_config_sha256','f'*64),
+])
+def test_receipt_types_and_source_claims_refuse(native_case,field,value):
+    c=native_case
+    c.receipt[field]=value; c.save()
+    with pytest.raises(ValueError): c.module.prove_runtime(c.pin)
+    assert not c.imports
+
+
+def macho_command(c,command,payload=b''):
+    length=(8+len(payload)+7)//8*8
+    body=struct.pack('<II',command,length)+payload.ljust(length-8,b'\0')
+    platform_command=struct.pack('<IIIIII',0x32,24,1,0x0b0000,0x0f0000,0)
+    c.binary.write_bytes(struct.pack('<IiiIIIII',0xfeedfacf,0x0100000c,0,6,2,len(body)+24,0,0)+body+platform_command)
+    c.save(rebind_binary=True)
+
+
+@pytest.mark.parametrize('name', ['/usr/lib/libSystem.B.dylib','/usr/lib/libiconv.2.dylib',
+    '/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation',
+    '/System/Library/Frameworks/Security.framework/Versions/A/Security'])
+def test_system_dependency_is_allowed(native_case,name):
+    c=native_case
+    macho_command(c,0xc,struct.pack('<IIII',24,0,0,0)+name.encode()+b'\0')
+    c.module.prove_runtime(c.pin)
+    assert c.imports==['litellm']
+
+
+@pytest.mark.parametrize('command,name', [(0xc,'/mutable/lib.dylib'),(0xc,'@rpath/lib.dylib'),
+    (0xc,'/usr/lib/libpython3.11.dylib'),(0x80000018,'/mutable/lib.dylib'),
+    (0x8000001f,'/mutable/lib.dylib'),(0x80000023,'/mutable/lib.dylib'),
+    (0x20,'/mutable/lib.dylib'),(0x8000001c,'@loader_path'),(0x27,'DYLD_INSERT_LIBRARIES=x'),
+    (0xe,'/mutable/dyld'),(0x999,'unknown')])
+def test_dependency_and_loader_injection_refuse(native_case,command,name):
+    c=native_case
+    macho_command(c,command,struct.pack('<IIII',24,0,0,0)+name.encode()+b'\0')
+    with pytest.raises(ValueError): c.module.prove_runtime(c.pin)
+    assert not c.imports
+
+
+@pytest.mark.parametrize('variant',['symlink_source_root','extra_nested_input','execute_mode',
+    'receipt_hardlink','binary_hardlink','receipt_writable','binary_writable','native_missing_receipt_table',
+    'extra_unknown_suffix','truncated_commands','bad_command_size','bad_dependency_offset'])
+def test_source_artifact_metadata_and_header_failures(native_case,variant):
+    c=native_case
+    if variant=='symlink_source_root':
+        original=c.root/'.cargo'; target=c.root/'config-target'; original.rename(target); original.symlink_to(target.name)
+    elif variant=='extra_nested_input':
+        d=c.root/'litellm-rust/nested';d.mkdir();(d/'hidden.data').write_text('new input')
+    elif variant=='execute_mode':(c.root/'litellm-rust/Cargo.lock').chmod(0o755)
+    elif variant=='receipt_hardlink':os.link(c.pin.parent/'native-build.json',c.pin.parent/'receipt-copy')
+    elif variant=='binary_hardlink':os.link(c.binary,c.pin.parent/'binary-copy')
+    elif variant=='receipt_writable':(c.pin.parent/'native-build.json').chmod(0o666)
+    elif variant=='binary_writable':c.binary.chmod(0o777)
+    elif variant=='native_missing_receipt_table':
+        (c.pin.parent/'native-build.json').unlink();c.pin.write_text(c.pin.read_text().split('[native_artifact]')[0])
+    elif variant=='extra_unknown_suffix':(c.package/'extra').write_bytes(c.binary.read_bytes())
+    elif variant=='truncated_commands':
+        data=bytearray(c.binary.read_bytes());data[16:24]=struct.pack('<II',1,1000)
+        c.binary.write_bytes(data);c.save(rebind_binary=True)
+    elif variant=='bad_command_size':
+        macho_command(c,0xc,b'x'*24);data=bytearray(c.binary.read_bytes());data[36:40]=struct.pack('<I',7)
+        c.binary.write_bytes(data);c.save(rebind_binary=True)
+    elif variant=='bad_dependency_offset':macho_command(c,0xc,struct.pack('<IIII',0,0,0,0)+b'/usr/lib/libSystem.B.dylib\0')
+    with pytest.raises(ValueError):c.module.prove_runtime(c.pin)
+    assert not c.imports
+
+
+def test_metadata_pairing_is_shared_and_never_imports(native_case):
+    c=native_case
+    assert c.module.native_receipt_fact(c.pin)['sha256']==c.policy['receipt_sha256']
+    assert not c.imports
+    (c.pin.parent/'native-build.json').write_text('{}')
+    with pytest.raises(ValueError):c.module.native_receipt_fact(c.pin)
+    assert not c.imports
+
+
+def test_duplicate_legacy_toml_refuses_without_native(native_case):
+    c=native_case
+    c.binary.unlink();(c.pin.parent/'native-build.json').unlink()
+    base=c.pin.read_text().split('[native_artifact]')[0]
+    c.pin.write_text(base+'base_version = "0.1.0"\n')
+    with pytest.raises(ValueError):c.module.prove_runtime(c.pin)
+    assert not c.imports
+
+
+@pytest.mark.parametrize('variant',['arm64e','reserved','ios','missing_platform','duplicate_platform','bad_platform_length'])
+def test_platform_and_subtype_must_match(native_case,variant):
+    c=native_case
+    data=bytearray(c.binary.read_bytes())
+    if variant=='arm64e':data[8:12]=struct.pack('<i',2)
+    elif variant=='reserved':data[28:32]=struct.pack('<I',1)
+    elif variant=='ios':data[40:44]=struct.pack('<I',2)
+    elif variant=='missing_platform':data=bytearray(struct.pack('<IiiIIIII',0xfeedfacf,0x0100000c,0,6,0,0,0,0))
+    elif variant=='duplicate_platform':
+        data=bytearray(struct.pack('<IiiIIIII',0xfeedfacf,0x0100000c,0,6,2,48,0,0)+bytes(data[32:56])*2)
+    elif variant=='bad_platform_length':data[52:56]=struct.pack('<I',1)
+    c.binary.write_bytes(data);c.save(rebind_binary=True)
+    with pytest.raises(ValueError):c.module.prove_runtime(c.pin)
+    assert not c.imports
+
+
+def test_bounded_observer_real_child_controls():
+    spec=importlib.util.spec_from_file_location('observer_control',ROOT/'core/restart_control/runtime_identity.py')
+    m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+    assert m._tool_output([sys.executable,'-B','-c','print("OK")'],timeout=5,limit=100)==b'OK\n'
+    with pytest.raises(ValueError,match='native_observation_bound'):
+        m._tool_output([sys.executable,'-B','-c','import os; os.write(1,b"x"*10000)'],timeout=5,limit=100)
+    with pytest.raises(ValueError,match='native_observation_timeout'):
+        m._tool_output([sys.executable,'-B','-c','import time; time.sleep(5)'],timeout=0.05,limit=100)

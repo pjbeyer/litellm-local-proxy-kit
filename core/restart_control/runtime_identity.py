@@ -10,6 +10,14 @@ import importlib.util
 import json
 import marshal
 import os
+import platform
+import struct
+import selectors
+import time
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib  # provisioned strict parser on Python 3.10
 from pathlib import Path
 import re
 import stat
@@ -36,8 +44,9 @@ PROXY_INPUTS = (
     'config.rendered.yaml', 'run-proxy-wrapper.sh', 'parse_credentials.py',
     'credentials.toml', 'pin.lock', 'check_patch_sentinel.py', 'check_pin.py',
     'check_credential_coverage.py', 'aws-sso-cred-shim.sh', 'rotate-logs.sh',
-    'harvest-filter-metrics.sh',
+    'harvest-filter-metrics.sh', 'runtime_identity.py',
 )
+PROXY_OPTIONAL_INPUTS = ('native-build.json',)
 
 
 def digest(value):
@@ -50,12 +59,15 @@ def file_fact(path):
     info = path.lstat()
     if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
         raise ValueError('non_regular_input')
-    data = path.read_bytes()
+    hasher = hashlib.sha256()
+    with path.open('rb') as stream:
+        for chunk in iter(lambda: stream.read(1024*1024), b''):
+            hasher.update(chunk)
     after = path.lstat()
     if (info.st_dev, info.st_ino, info.st_mtime_ns, info.st_size) != (
             after.st_dev, after.st_ino, after.st_mtime_ns, after.st_size):
         raise ValueError('input_changed')
-    return {'sha256': hashlib.sha256(data).hexdigest(), 'mode': stat.S_IMODE(info.st_mode)}
+    return {'sha256': hasher.hexdigest(), 'mode': stat.S_IMODE(info.st_mode)}
 
 
 def source_facts(root):
@@ -82,14 +94,262 @@ def _git(root, *args):
     return result.stdout
 
 
+NATIVE_PATH = 'litellm/rust_bridge/_native.abi3.so'
+NATIVE_FIELDS = {'version', 'path', 'sha256', 'source_tree', 'receipt_sha256', 'baseline_pin_digest'}
+RECEIPT_FIELDS = {'version', 'source_head', 'source_tree', 'source_digest', 'source_files',
+    'cargo_lock_sha256', 'root_cargo_config_sha256', 'baseline_pin_digest', 'artifact_path',
+    'artifact_sha256', 'recipe', 'profile', 'features', 'default_features', 'target',
+    'cargo_sha256', 'rustc_sha256', 'cargo_version', 'rustc_version', 'build_recipe_sha256',
+    'build_log_sha256', 'abi_tag', 'pyo3_cfg_sha256', 'pyo3_ffi_cfg_sha256', 'pyo3_features_sha256'}
+SYSTEM_LIBRARIES = {'/usr/lib/libSystem.B.dylib', '/usr/lib/libiconv.2.dylib',
+    '/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation',
+    '/System/Library/Frameworks/Security.framework/Versions/A/Security'}
+MACH_MAGICS = {bytes.fromhex(s) for s in ('feedface', 'cefaedfe', 'feedfacf', 'cffaedfe',
+                                       'cafebabe', 'bebafeca', 'cafebabf', 'bfbafeca')}
+
+
+def read_pin(path):
+    """One strict TOML interpretation shared by standalone and installed gates."""
+    path = Path(path)
+    if path.lstat().st_size > 65536:
+        raise ValueError('pin_invalid')
+    fact = file_fact(path)
+    raw = path.read_bytes()
+    if len(raw) > 65536 or hashlib.sha256(raw).hexdigest() != fact['sha256']:
+        raise ValueError('pin_invalid')
+    pin = tomllib.loads(raw.decode('utf-8'))
+    if (not isinstance(pin, dict) or not isinstance(pin.get('base_version'), str)
+            or not pin['base_version'] or not isinstance(pin.get('patch_tip'), str)
+            or not re.fullmatch('[0-9a-f]{7,40}', pin['patch_tip'])):
+        raise ValueError('pin_invalid')
+    return pin
+
+
+def _strict_pairs(rows):
+    result = {}
+    for key, value in rows:
+        if key in result:
+            raise ValueError('native_receipt_invalid')
+        result[key] = value
+    return result
+
+
+def _json_constant(_):
+    raise ValueError('native_receipt_invalid')
+
+
+def native_source_facts(root):
+    """Recount all supported repository-local Cargo inputs from actual Git blobs."""
+    root = Path(root)
+    result = {}
+    entries = _git(root, 'ls-tree', '-rz', 'HEAD', '--', 'litellm-rust', '.cargo')
+    for row in entries.split(b'\0'):
+        if not row:
+            continue
+        meta, raw_name = row.split(b'\t', 1)
+        mode, kind, oid = meta.split()
+        if kind != b'blob' or mode not in (b'100644', b'100755'):
+            raise ValueError('native_source_mapping')
+        rel = raw_name.decode('utf-8')
+        path = root/rel
+        fact = file_fact(path)
+        data = path.read_bytes()
+        if (bool(fact['mode'] & 0o111) != (mode == b'100755')
+                or hashlib.sha256(data).hexdigest() != fact['sha256']
+                or hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest() != oid.decode()):
+            raise ValueError('native_source_changed')
+        result[rel] = {'git_mode': mode.decode(), 'sha256': fact['sha256']}
+        if len(result) > 20000:
+            raise ValueError('runtime_bound')
+    for required in ('litellm-rust/Cargo.toml', 'litellm-rust/Cargo.lock', '.cargo/config.toml'):
+        if required not in result:
+            raise ValueError('native_source_mapping')
+    seen = 0
+    for base in (root/'litellm-rust', root/'.cargo'):
+        if base.is_symlink() or not base.is_dir():
+            raise ValueError('native_source_mapping')
+        for directory, dirs, files in os.walk(base, followlinks=False):
+            parent = Path(directory)
+            if parent == root/'litellm-rust':
+                dirs[:] = [name for name in dirs if name != 'target']
+            if any((parent/name).is_symlink() for name in dirs):
+                raise ValueError('native_source_mapping')
+            seen += len(dirs)+len(files)
+            if seen > 50000:
+                raise ValueError('runtime_bound')
+            for name in files:
+                if (parent/name).relative_to(root).as_posix() not in result:
+                    raise ValueError('untracked_native_source')
+    return result
+
+
+def _tool_output(argv, timeout=30, limit=4*1024*1024):
+    """Bound observation during pipe reads, not after buffering all output."""
+    proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    assert proc.stdout is not None
+    chunks, total = [], 0
+    deadline = time.monotonic()+timeout
+    try:
+        with selectors.DefaultSelector() as watch:
+            watch.register(proc.stdout, selectors.EVENT_READ)
+            while watch.get_map():
+                remaining = deadline-time.monotonic()
+                if remaining <= 0:
+                    raise ValueError('native_observation_timeout')
+                events = watch.select(min(remaining, 0.1))
+                for key, _ in events:
+                    data = os.read(key.fd, min(65536, limit-total+1))
+                    if not data:
+                        watch.unregister(key.fileobj)
+                        continue
+                    total += len(data)
+                    if total > limit:
+                        raise ValueError('native_observation_bound')
+                    chunks.append(data)
+        if proc.wait(timeout=max(0.001, deadline-time.monotonic())):
+            raise ValueError('native_observation_invalid')
+        return b''.join(chunks)
+    finally:
+        if proc.poll() is None:
+            proc.kill()  # only the retained observer child, never a proxy PID
+        proc.wait(timeout=5)
+        proc.stdout.close()
+
+
+def _native_abi(path):
+    """Inspect data only; exact platform dependency allowlist, no dylib loading."""
+    if (sys.platform != 'darwin' or platform.machine() != 'arm64'
+            or sys.implementation.name != 'cpython' or sys.version_info[:2] < (3, 10)):
+        raise ValueError('native_abi_invalid')
+    with Path(path).open('rb') as stream:
+        header = stream.read(32)
+        if len(header) != 32:
+            raise ValueError('native_abi_invalid')
+        magic, cpu, subtype, kind, count, size, flags, reserved = struct.unpack('<IiiIIIII', header)
+        if (magic != 0xfeedfacf or cpu != 0x0100000c or subtype != 0 or reserved != 0
+                or kind != 6 or count > 8192 or size > 1048576):
+            raise ValueError('native_abi_invalid')
+        commands = stream.read(size)
+    if len(commands) != size:
+        raise ValueError('native_abi_invalid')
+    loads = {0xc, 0x80000018, 0x8000001f, 0x80000023, 0x20}
+    safe = {0x19, 0x80000022, 2, 0xb, 0xd, 0x1b, 0x32, 0x2a,
+            0x26, 0x29, 0x1d, 0x80000034, 0x80000033}
+    offset, macos_platform = 0, False
+    for _ in range(count):
+        if offset+8 > size:
+            raise ValueError('native_abi_invalid')
+        command, length = struct.unpack_from('<II', commands, offset)
+        if length < 8 or length % 8 or offset+length > size or command not in loads | safe:
+            raise ValueError('native_dependency_invalid')
+        if command == 0x32:  # LC_BUILD_VERSION: PLAT_MACOS, not iOS/simulator
+            if length < 24 or macos_platform:
+                raise ValueError('native_abi_invalid')
+            target, minimum, sdk, tools = struct.unpack_from('<IIII', commands, offset+8)
+            if target != 1 or tools > 128 or length != 24+8*tools:
+                raise ValueError('native_abi_invalid')
+            macos_platform = True
+        if command in loads:
+            if length < 24:
+                raise ValueError('native_dependency_invalid')
+            start = struct.unpack_from('<I', commands, offset+8)[0]
+            if not 24 <= start < length:
+                raise ValueError('native_dependency_invalid')
+            raw = commands[offset+start:offset+length]
+            if b'\0' not in raw or raw.split(b'\0', 1)[0].decode('utf-8') not in SYSTEM_LIBRARIES:
+                raise ValueError('native_dependency_invalid')
+        offset += length
+    if offset != size or not macos_platform:
+        raise ValueError('native_abi_invalid')
+    observed = _tool_output(['/usr/bin/nm', '-gU', str(path)])
+    if re.search(rb'(?m)(?:^|\s)_PyInit__native\s*$', observed) is None:
+        raise ValueError('native_abi_invalid')
+
+
+def _native_metadata(pin_path, pin, head=None):
+    receipt_path = Path(pin_path).with_name('native-build.json')
+    if 'native_artifact' not in pin:
+        if os.path.lexists(receipt_path):
+            raise ValueError('native_receipt_unpaired')
+        return None
+    item = pin['native_artifact']
+    if (not isinstance(item, dict) or set(item) != NATIVE_FIELDS
+            or type(item['version']) is not int or item['version'] != 1 or item['path'] != NATIVE_PATH
+            or any(not isinstance(item[k], str) or not re.fullmatch('[0-9a-f]{64}', item[k])
+                   for k in ('sha256', 'receipt_sha256', 'baseline_pin_digest'))
+            or not isinstance(item['source_tree'], str) or not re.fullmatch('[0-9a-f]{40}', item['source_tree'])):
+        raise ValueError('native_pin_invalid')
+    baseline = {key: value for key, value in pin.items() if key != 'native_artifact'}
+    if digest(baseline) != item['baseline_pin_digest']:
+        raise ValueError('native_baseline_changed')
+    if receipt_path.lstat().st_size > 65536:
+        raise ValueError('native_receipt_invalid')
+    receipt_fact = file_fact(receipt_path)
+    info = receipt_path.stat()
+    if info.st_uid != os.getuid() or info.st_mode & 0o022:
+        raise ValueError('native_receipt_invalid')
+    data = receipt_path.read_bytes()
+    if (len(data) > 65536 or receipt_fact['sha256'] != item['receipt_sha256']
+            or hashlib.sha256(data).hexdigest() != item['receipt_sha256']):
+        raise ValueError('native_receipt_invalid')
+    record = json.loads(data, object_pairs_hook=_strict_pairs, parse_constant=_json_constant)
+    if (not isinstance(record, dict) or set(record) != RECEIPT_FIELDS
+            or type(record['version']) is not int or record['version'] != 1
+            or type(record['source_files']) is not int or not 0 < record['source_files'] <= 20000
+            or record['default_features'] is not True or record['features'] != ['extension-module']
+            or record['profile'] != 'dev' or record['target'] != 'aarch64-apple-darwin'
+            or record['recipe'] != 'cargo-locked-offline-dev-abi3-arm64-v1' or record['abi_tag'] != 'cp310-abi3'
+            or record['artifact_path'] != NATIVE_PATH
+            or not isinstance(record['source_head'], str) or not re.fullmatch('[0-9a-f]{40}', record['source_head'])
+            or (head is not None and record['source_head'] != head)
+            or record['source_tree'] != item['source_tree'] or record['artifact_sha256'] != item['sha256']
+            or record['baseline_pin_digest'] != item['baseline_pin_digest']):
+        raise ValueError('native_receipt_invalid')
+    for key in RECEIPT_FIELDS:
+        if key.endswith('_sha256') or key in ('source_digest', 'baseline_pin_digest'):
+            if not isinstance(record[key], str) or not re.fullmatch('[0-9a-f]{64}', record[key]):
+                raise ValueError('native_receipt_invalid')
+    for name in ('cargo', 'rustc'):
+        if not isinstance(record[name+'_version'], str) or not re.fullmatch(name+r' [^\r\n]{1,200}', record[name+'_version']):
+            raise ValueError('native_receipt_invalid')
+    return item, record, receipt_fact
+
+
+def native_receipt_fact(pin_path):
+    """Metadata-only shared strict pairing; never locate/import the package."""
+    data = _native_metadata(pin_path, read_pin(pin_path))
+    return data[2] if data is not None else None
+
+
+def native_artifact_fact(root, pin_path, pin, head):
+    data = _native_metadata(pin_path, pin, head)
+    if data is None:
+        return None
+    item, record, receipt_fact = data
+    receipt_path = Path(pin_path).with_name('native-build.json')
+    sources = native_source_facts(root)
+    tree = _git(root, 'rev-parse', 'HEAD:litellm-rust').decode().strip()
+    if (tree != item['source_tree'] or len(sources) != record['source_files']
+            or digest(sources) != record['source_digest']
+            or sources['litellm-rust/Cargo.lock']['sha256'] != record['cargo_lock_sha256']
+            or sources['.cargo/config.toml']['sha256'] != record['root_cargo_config_sha256']):
+        raise ValueError('native_source_changed')
+    path = Path(root)/NATIVE_PATH
+    fact = file_fact(path)
+    info = path.stat()
+    if info.st_uid != os.getuid() or info.st_mode & 0o022 or fact['sha256'] != item['sha256']:
+        raise ValueError('native_artifact_invalid')
+    _native_abi(path)
+    if file_fact(path) != fact or file_fact(receipt_path) != receipt_fact:
+        raise ValueError('native_input_changed')
+    return {'artifact': fact, 'receipt': receipt_fact, 'source_digest': digest(sources),
+            'baseline_pin_digest': item['baseline_pin_digest']}
+
+
 def prove_runtime(pin_path):
     # All compile/marshal operations below compare data only. No cached code is
     # executed; malformed or unmatched caches fail the isolated helper process.
-    text = Path(pin_path).read_text()
-    version_match = re.search(r'base_version\s*=\s*"([^\"]+)"', text)
-    tip_match = re.search(r'patch_tip\s*=\s*"([0-9a-f]+)"', text)
-    if not version_match or not tip_match:
-        raise ValueError('pin_invalid')
+    pin = read_pin(pin_path)
     # Locate without executing a possibly stale cache. Verify the tree/caches
     # first; importing for the final path check must not repair cache evidence.
     sys.dont_write_bytecode = True
@@ -100,7 +360,7 @@ def prove_runtime(pin_path):
     root = Path(_git(package, 'rev-parse', '--show-toplevel').decode().strip()).resolve()
     head = _git(root, 'rev-parse', 'HEAD').decode().strip()
     version = importlib.metadata.version('litellm')
-    if version != version_match.group(1) or not head.startswith(tip_match.group(1)):
+    if version != pin['base_version'] or not head.startswith(pin['patch_tip']):
         raise ValueError('runtime_pin_mismatch')
     pending, roots, expected, tracked, links = [package], set(), {}, set(), set()
     while pending:
@@ -149,6 +409,8 @@ def prove_runtime(pin_path):
                 raise ValueError('runtime_bound')
     if not expected or Path(spec.origin).resolve() not in tracked:
         raise ValueError('runtime_source_mapping')
+    native = native_artifact_fact(root, pin_path, pin, head)
+    native_path = root/NATIVE_PATH if native is not None else None
     seen = 0
     for base in roots:
         paths = base.rglob('*') if base.is_dir() else [base]
@@ -162,7 +424,12 @@ def prove_runtime(pin_path):
                 continue
             if not path.is_file():
                 continue
-            if path.suffix in ('.py', '.so', '.pyd', '.dylib') and path.resolve() not in tracked:
+            with path.open('rb') as stream:
+                native_magic = stream.read(4) in MACH_MAGICS
+            if path.suffix in ('.so', '.pyd', '.dylib', '.bundle') or native_magic:
+                if native_path is None or path != native_path:
+                    raise ValueError('untracked_runtime_code')
+            if path.suffix == '.py' and path.resolve() not in tracked:
                 raise ValueError('untracked_runtime_code')
             if path.suffix != '.pyc':
                 continue
@@ -216,7 +483,7 @@ def prove_runtime(pin_path):
     identity = {'interpreter': file_fact(Path(sys.executable).resolve()),
                 'prefix': str(Path(sys.prefix).resolve()), 'package': str(package),
                 'version': version, 'head': head, 'files': expected,
-                'distribution_metadata': metadata}
+                'distribution_metadata': metadata, 'native': native}
     return {'runtime_digest': digest(identity)}
 
 

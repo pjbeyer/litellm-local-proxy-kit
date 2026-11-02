@@ -21,6 +21,8 @@ from .engine import Fault, atomic_json, canonical_digest, private_dir, _read_jso
 from .process_identity import process_identity
 from .runtime_identity import (CONTROLLER_INPUTS, PROXY_INPUTS, file_fact, source_facts)
 
+from .runtime_identity import PROXY_OPTIONAL_INPUTS, native_receipt_fact, read_pin
+
 POLICY_FIELDS = {'version', 'kit_root', 'deployment_root', 'plist', 'auto_plist',
                  'state_dir', 'scratch_dir', 'candidate_port', 'models',
                  'controller_root', 'controller_label'}
@@ -66,6 +68,18 @@ def _regular(path):
 
 def _finite(value):
     return type(value) in (int, float) and math.isfinite(value)
+
+
+def _native_receipt(pin_path, name):
+    if name not in PROXY_OPTIONAL_INPUTS:
+        raise ValueError('native_receipt_invalid')
+    pin_path = Path(pin_path)
+    expects = 'native_artifact' in read_pin(pin_path)
+    present = os.path.lexists(pin_path.parent/name)
+    fact = native_receipt_fact(pin_path)
+    if (fact is not None) != present or present != expects:
+        raise ValueError('native_receipt_unpaired')
+    return fact
 
 
 class Runtime:
@@ -325,12 +339,17 @@ class Runtime:
                 if fact != facts[name]:
                     raise ValueError('controller_copy_changed')
                 controller[name] = fact
-            proxy = {name: _regular(self.config/name) for name in
+            proxy: dict[str, object] = {name: _regular(self.config/name) for name in
                      (*PROXY_INPUTS, self.label+'.plist', self.label+'.rotate.plist')}
+            for name in PROXY_OPTIONAL_INPUTS:
+                proxy['optional/'+name] = _native_receipt(self.config/'pin.lock', name)
             inputs: dict[str, object] = {'deploy.conf.sh': _regular(self.deployment/'deploy.conf.sh'),
                       'auto_plist': _regular(self.auto_plist)}
+            deployment_pin = self.deployment/'deployments'/self.name/'pin.lock'
             for name in ('overlay.yaml', 'credentials.toml', 'pin.lock'):
                 inputs['deployment/'+name] = _regular(self.deployment/'deployments'/self.name/name)
+            for name in PROXY_OPTIONAL_INPUTS:
+                inputs['deployment/'+name] = _native_receipt(deployment_pin, name)
             exemptions = self.deployment/'drift-exemptions.yaml'
             inputs['drift-exemptions.yaml'] = _regular(exemptions) if exemptions.exists() else None
             proof = json.loads(self._capture([self.python, str(self.kit/'core/restart_control/runtime_identity.py'),
@@ -512,6 +531,9 @@ class Runtime:
                 raise Fault('candidate_cleanup_failed')
             self._candidate = None
 
+    def _optional_names(self):
+        return set(PROXY_OPTIONAL_INPUTS)
+
     def snapshot_lkg(self, path):
         if self._last_frozen is None:
             raise Fault('lkg_invalid')
@@ -523,6 +545,22 @@ class Runtime:
                 if _regular(path/name) != fact:
                     raise ValueError('snapshot_changed')
                 manifest[name] = fact
+            # Optional native receipt: frozen presence/absence is preserved
+            # exactly — copied only when present, recorded absence otherwise.
+            # A receipt that is present now but was absent when frozen (or the
+            # reverse) is a presence-drift refusal, never a silent transition.
+            for name in PROXY_OPTIONAL_INPUTS:
+                fact = _native_receipt(self.config/'pin.lock', name)
+                frozen = self._last_proxy['optional/'+name] if self._last_proxy else None
+                if (fact is None) != (frozen is None):
+                    raise ValueError('optional_presence_changed')
+                if fact is not None:
+                    if fact != frozen:
+                        raise ValueError('optional_receipt_changed')
+                    shutil.copy2(self.config/name, path/name)
+                    if _regular(path/name) != fact:
+                        raise ValueError('snapshot_changed')
+                manifest[name] = fact
             atomic_json(path/'manifest.json', manifest)
             return {k: self._last_frozen[k] for k in ('asset_digest', 'runtime_digest')}
         except Exception:
@@ -532,12 +570,26 @@ class Runtime:
         try:
             manifest = _read_json(path/'manifest.json')
             names = set(PROXY_INPUTS) | {self.label+'.plist', self.label+'.rotate.plist'}
-            if (set(manifest) != names or manifest != self._last_proxy
+            optional = self._optional_names()
+            frozen = self._last_proxy or {}
+            expected = {**{n: frozen[n] for n in names},
+                        **{n: frozen.get('optional/'+n) for n in optional}}
+            if (set(manifest) != names | optional or manifest != expected
                     or self._last_frozen is None or binding != {
-                        k: self._last_frozen[k] for k in ('asset_digest', 'runtime_digest')}):
+                    k: self._last_frozen[k] for k in ('asset_digest', 'runtime_digest')}):
                 raise ValueError('snapshot_invalid')
             if any(_regular(path/name) != manifest[name] for name in names):
                 raise ValueError('snapshot_invalid')
+            # Explicit absence: a receipt recorded absent in the manifest must
+            # be exactly absent on disk; a recorded fact must match bytes.
+            for name in optional:
+                recorded = manifest[name]
+                copy = path/name
+                if recorded is None:
+                    if copy.exists() or copy.is_symlink():
+                        raise ValueError('snapshot_invalid')
+                elif _regular(copy) != recorded:
+                    raise ValueError('snapshot_invalid')
         except Exception:
             raise Fault('lkg_invalid') from None
 
@@ -548,6 +600,8 @@ class Runtime:
         self.validate_lkg(path, binding)
         manifest = _read_json(path/'manifest.json')
         for name, fact in manifest.items():
+            if fact is None:
+                continue
             temporary = self.config/('.'+name+'.rollback')
             if temporary.exists() or temporary.is_symlink():
                 raise Fault('lkg_invalid')
@@ -555,6 +609,13 @@ class Runtime:
             if _regular(temporary) != fact:
                 raise Fault('lkg_invalid')
             os.replace(temporary, self.config/name)
+        # Exact presence/absence restore: a receipt recorded absent must
+        # already be exactly absent live; a stale receipt is never silently
+        # deleted to force success during legacy transition.
+        for name in self._optional_names():
+            live = self.config/name
+            if manifest[name] is None and (live.exists() or live.is_symlink()):
+                raise Fault('lkg_invalid')
         if self.freeze() != proof:
             raise Fault('lkg_invalid')
 

@@ -168,6 +168,9 @@ def runtime(private_root):
     (deployment/'deploy.conf.sh').write_text('fixture deployment\n')
     for name in ('overlay.yaml', 'credentials.toml', 'pin.lock'):
         (deployment/'deployments/fixture'/name).write_text('fixture source\n')
+    legacy_pin = 'base_version = "1.2.3"\npatch_tip = "'+'0'*40+'"\n'
+    (config/'pin.lock').write_text(legacy_pin)
+    (deployment/'deployments/fixture/pin.lock').write_text(legacy_pin)
     state = private_root/'state'
     policy = {'version': 1, 'kit_root': str(kit), 'deployment_root': str(deployment),
               'plist': str(config/(label+'.plist')), 'auto_plist': str(auto),

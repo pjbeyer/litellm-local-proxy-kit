@@ -5,6 +5,28 @@ Until then its existing untracked-native refusal remains effective. The owner
 selected verified-build-backed native artifact pinning, preserving Rust features;
 no production restart, bridge shutdown or operational qualification is authorized.
 
+## Implementation boundary
+
+The source verifier and controller receipt binding are implemented. The shared
+metadata-only `native_receipt_fact()` validates pin/receipt pairing without
+locating or importing LiteLLM; `prove_runtime()` additionally verifies the actual
+source and native artifact before its final package-path import. `check_pin.py`
+loads only its exact adjacent repository or installed helper, with bytecode writes
+disabled before helper import. Native admission requires the plain arm64 subtype
+and exactly one valid macOS `LC_BUILD_VERSION`; iOS/arm64e or inconclusive headers
+refuse. Tests are active under `tests/test_native_runtime_identity.py`, with
+controller closure and checker CLI coverage in adjacent native test modules.
+
+**Deployment integration remains pending.** Before using this with a managed
+proxy, the installer/wrapper must ship the registered flat `runtime_identity.py`,
+run proof before every import-based sentinel, manage the fixed optional receipt
+without silently deleting stale evidence, and verify receipt/helper presence,
+absence and bytes in staging, installed-layout and drift checks. All pin gates
+must use the shared strict parser. Until those gates are implemented and tested,
+this is not an operationally complete CT-006 amendment or permission to replace
+an installed library, issue qualification, or restart a service. Old installed
+layouts missing the newly required helper fail closed; no migration is inferred.
+
 ## Narrow acceptance
 
 - Preserve deployed `base_version`, `patch_tip`, interpreter, Python source/blob,
