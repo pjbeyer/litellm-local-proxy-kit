@@ -1,0 +1,25 @@
+specs/001-proxy-lifecycle-guard-plugin/red-team-findings-2026-11-02.md
+  s_d911d6ebd1d25a::t_0ec104011c5251 86-196
+  s_d911d6ebd1d25a::t_52de33ed4d3952 19-28
+  s_d911d6ebd1d25a::t_d0d7ee7c82f8fa 217-221
+specs/001-proxy-lifecycle-guard-plugin/checklists/requirements.md
+  s_d911d6ebd1d25a::t_25d01ef1e4ea7c 43-48
+specs/001-proxy-lifecycle-guard-plugin/spec.md
+  s_d911d6ebd1d25a::t_0aee5a8d7dd6a2 7,11-18,28,44-49,52-53,55-56,66-73,79-83,105-107,109-111,115-120,127-129,142-145,150-151,177-179,203-205,212-223,232-233,236-255,257-264,266-274,277-279,282-285,290-291,296-299,303-307,310-319,321-325,328-336,342-343,346-347,349-351,358-360,362-364,366-367,369-370,373-374,379-412,419-422,427-429
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "6f39abe2e27030ec2fe9866e4a799d8e2b3f7781",
+  "prompts": {},
+  "sessions": {
+    "s_d911d6ebd1d25a": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261102_055425_b7f94c5e",
+        "model": "glm-5.3-flash"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
