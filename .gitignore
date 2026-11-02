@@ -35,3 +35,9 @@ secrets.*
 tmp/
 reviews/*.raw.md
 reviews/*.transcript.md
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+.beads-credential-key
+.beads/proxieddb/
+*.gate.lock*
