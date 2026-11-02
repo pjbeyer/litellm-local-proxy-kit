@@ -1,0 +1,14 @@
+CLAUDE.md
+  h_c5be3b3dad7ca8 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "2f2bd639e8baaa7fd1e395a1f94e08b502d359f2",
+  "prompts": {},
+  "humans": {
+    "h_c5be3b3dad7ca8": {
+      "author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
