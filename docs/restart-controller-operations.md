@@ -127,6 +127,20 @@ restarts of the controller, clock regression and source/policy/runtime drift
 invalidate outstanding intent. Do not retry an interrupted or consumed request.
 A new prepare is not permission to ignore an uncertain previous operation.
 
+## Runtime cache and native-artifact evidence
+
+The managed installer and proxy wrapper force `PYTHONDONTWRITEBYTECODE=1` before
+Python helpers or proxy execution. This prevents those entrypoints from rewriting
+the frozen cache evidence; it neither repairs existing caches nor disables their
+verification. Preserve and reconcile pre-existing mismatches separately.
+
+An editable Rust/Maturin build can leave a Git-ignored native extension next to
+tracked Python source. Matching a local Cargo output or a wheel's own metadata is
+not independent provenance. The current contract still rejects untracked native
+code. Do not remove native capability or whitelist an observed hash to force a
+pass. Any artifact-binding extension requires an explicit reviewed contract change
+and verified build inputs before installation or live qualification.
+
 ## Failure handling
 
 - `runtime_invalid`: preserve runtime/cache evidence. Verify the deployed pin,

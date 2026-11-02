@@ -25,6 +25,8 @@
 #
 # Exit codes: 78 = EX_CONFIG (launchd backs off; no hot-loop on bad config).
 set -euo pipefail
+# Preserve the frozen runtime cache evidence during helpers and proxy execution.
+export PYTHONDONTWRITEBYTECODE=1
 
 PREFLIGHT_ONLY=0
 ARG_PORT=""

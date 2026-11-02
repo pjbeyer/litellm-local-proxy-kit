@@ -41,7 +41,11 @@ def test_preflight_flexai_value_evidence(tmp_path, command, expected, port_args)
     # This fake launcher records ANY launch, so --preflight must never reach it.
     launch = tmp_path / 'launched'
     python = tmp_path / 'python'
-    python.write_text('#!/bin/sh\nexit 0\n')
+    cache_flag = tmp_path / 'cache-flag'
+    python.write_text(f'''#!/bin/sh
+printf '%s\\n' "${{PYTHONDONTWRITEBYTECODE-unset}}" >> "{cache_flag}"
+exit 0
+''')
     python.chmod(0o755)
     litellm = tmp_path / 'litellm'
     litellm.write_text(f'#!/bin/sh\ntouch "{launch}"\n')
@@ -74,6 +78,7 @@ def test_preflight_flexai_value_evidence(tmp_path, command, expected, port_args)
     assert 'fixture-master-value' not in r.stdout + r.stderr
     if expected == 0:
         assert 'preflight complete' in r.stdout
+        assert set(cache_flag.read_text().splitlines()) == {'1'}
 
 
 def test_unknown_wrapper_argument_refused():

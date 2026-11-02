@@ -11,6 +11,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parents[1]
 INSTALLER = REPO / "core/installer.sh"
 
@@ -56,9 +58,25 @@ def sandbox(tmp_path):
 
 
 def run(root, mode):
-    env = {**os.environ, "PYTHONPATH": "", "PYTHONHOME": ""}
+    env = {**os.environ, "PYTHONPATH": "", "PYTHONHOME": "", "PYTHONDONTWRITEBYTECODE": "0"}
     return subprocess.run(["/bin/bash", str(INSTALLER), str(root), mode],
                           env=env, capture_output=True, text=True, timeout=30)
+
+
+@pytest.mark.parametrize('deployment_override', ['', 'unset PYTHONDONTWRITEBYTECODE\n', 'PYTHONDONTWRITEBYTECODE=\n'])
+def test_installer_suppresses_bytecode_writes_for_all_helpers(tmp_path, deployment_override):
+    root, _, _ = sandbox(tmp_path)
+    with (root/'deploy.conf.sh').open('a') as stream:
+        stream.write(deployment_override)
+    interpreter = tmp_path / "python"
+    trace = tmp_path / "cache-flags"
+    script = interpreter.read_text()
+    record = f'''printf '%s\\n' "${{PYTHONDONTWRITEBYTECODE-unset}}" >> {shlex.quote(str(trace))}
+'''
+    interpreter.write_text(script.replace('#!/bin/bash\n', '#!/bin/bash\n'+record, 1))
+    result = run(root, '--dry-run')
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert set(trace.read_text().splitlines()) == {'1'}
 
 
 def test_installer_ships_manifest_and_verify_detects_loss(tmp_path):

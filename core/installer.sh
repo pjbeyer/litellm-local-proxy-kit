@@ -33,6 +33,8 @@ done
 
 # shellcheck disable=SC1091
 . "$TARGET_ROOT/deploy.conf.sh" 2>/dev/null || true
+# Reassert after sourced deployment settings, including an unset/empty override.
+export PYTHONDONTWRITEBYTECODE=1
 
 DEPLOY_NAME="${LITELLM_DEPLOYMENT:?deploy.conf.sh must set LITELLM_DEPLOYMENT}"
 DEPLOY_DIR="$TARGET_ROOT/deployments/$DEPLOY_NAME"
