@@ -1,0 +1,34 @@
+core/drift_check.py
+  s_039ee6aa9f3c63::t_d2f9d54053cde1 37-41
+tests/test_native_pin_cli.py
+  s_039ee6aa9f3c63::t_cb7316e15a47d9 52-60
+  s_039ee6aa9f3c63::t_4dc449c4809c2d 50-51
+tests/test_native_deployment_integration.py
+  s_039ee6aa9f3c63::t_26d10a23051441 1-63,65-164
+  s_039ee6aa9f3c63::t_ded34ce07194c9 64,165-206
+  s_039ee6aa9f3c63::t_155fa329c0d361 207-226
+  s_039ee6aa9f3c63::t_08eaa27e115d3f 227-229
+core/installer.sh
+  s_039ee6aa9f3c63::t_fdd6df95602250 61-64,66-68,73,80
+  s_039ee6aa9f3c63::t_d5def91e641700 65,123
+  s_039ee6aa9f3c63::t_f0e0ba831d9f0b 69-72
+  s_039ee6aa9f3c63::t_29e38d5cd37d98 74-75
+  s_039ee6aa9f3c63::t_55af23d148ab8c 122
+  s_039ee6aa9f3c63::t_f57837d46d968c 124-126
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "ac1a9e521558df06ba0d7a2e355dd772cee18686",
+  "prompts": {},
+  "sessions": {
+    "s_039ee6aa9f3c63": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261101_210254_0237ce",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
