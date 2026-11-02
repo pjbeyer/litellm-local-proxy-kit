@@ -325,6 +325,30 @@ class TestGuardBasics(GuardHarness):
                                     discover=self.discover_fake)
             self.assertIsNotNone(result, args)
 
+    def test_tool_call_double_wrapped_string_unwrapped(self):
+        # A caller may JSON-encode the whole
+        # {"calls": [...]} object AS the `calls` string argument. The guard
+        # must unwrap once and evaluate the inner calls on their merits —
+        # NOT block them as a nameless single call. Innocent content inside
+        # a double-wrapped string envelope must pass.
+        inner_call = {"name": "terminal", "arguments": {"command": "echo ok"}}
+        double = json.dumps({"calls": [inner_call]})
+        self.assert_allowed("tool_call", {"calls": double})
+        # ... and a genuine kill inside a double-wrapped string must STILL
+        # block (the unwrap must not open a bypass).
+        bad_call = {"name": "terminal", "arguments": {"command": "kill -9 4711"}}
+        double_bad = json.dumps({"calls": [bad_call]})
+        self.assert_blocked("tool_call", {"calls": double_bad})
+        # nested double-wrap: the inner calls value is ITSELF a JSON object
+        # string — unwrap loop must handle it (one level of nesting here).
+        nested = json.dumps({"calls": json.dumps({"calls": [inner_call]})})
+        self.assert_allowed("tool_call", {"calls": nested})
+
+    def test_tool_call_nameless_object_string_still_blocks(self):
+        # A dict-shaped string WITHOUT a calls key stays fail-closed.
+        nameless = json.dumps({"arguments": {"command": "echo ok"}})
+        self.assert_blocked("tool_call", {"calls": nameless})
+
     # -- process_manage ------------------------------------------------------
     def test_process_manage_matrix(self):
         blocked = [("kill", "fixture-session"), ("write", "fixture-session"),

@@ -56,9 +56,15 @@ means no guard; monitor plugin load status, not just the saved enable flag.
    `lsof` and `ps` calls only when needed. Refresh `protected_sessions` when a new
    session-owned bridge is created. Listener PID protection does not need a saved
    PID. Do not put credential values or private deployment metadata in this repo.
-4. Enable with `hermes plugins enable proxy-lifecycle-guard`. This supported command
-   reloads plugins in a responding gateway; confirm that reload succeeded. Do not
-   restart the proxy, and do not assume a saved enable flag proves live activation.
+4. Enable with `hermes plugins enable proxy-lifecycle-guard`. Confirm a live
+   reload, not just the saved enable flag. Some Hermes builds return "already
+   enabled" without reloading. For that case, use the installed Hermes Python's
+   `hermes_cli.plugins_activation.reload_running_gateway()` helper in the selected
+   profile environment. It tries that profile's control socket, then the default
+   gateway socket with the selected `profile_home` for multiplexed profiles.
+   Require `reloaded: true`
+   and the guard's `pre_tool_call` activation in the responding gateway. Do not
+   toggle enforcement off or restart the proxy merely to reload this module.
 5. Verify a live denial safely: use a marker followed by `false &&` and a recognized
    protected lifecycle command. The guard must veto the entire tool call (no marker
    execution). The shell's false branch makes this probe non-destructive even if

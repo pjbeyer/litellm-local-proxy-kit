@@ -696,6 +696,23 @@ def _analyze_tool_call(arguments, policy, get_snapshot, depth=0):
         if len(calls) > MAX_TEXT_CHARS:
             raise _Block()
         calls = json.loads(calls)
+    # Double-wrap unwrapping: a model may JSON-encode the whole {"calls":
+    # [...]} envelope (or a nameless single-call object) AS the `calls`
+    # value, arbitrarily nested. Unwrap while the shape is a calls-shaped
+    # mapping; anything else falls through to the fail-closed checks below.
+    # Treat encoded envelopes as envelopes, not nameless single calls,
+    # so benign inner calls remain usable without allowing hidden mutations.
+    _unwraps = 0
+    while isinstance(calls, dict) and "calls" in calls and "name" not in calls:
+        _unwraps += 1
+        if _unwraps > MAX_TOOL_CALL_DEPTH:
+            raise _Block()
+        inner = calls["calls"]
+        if isinstance(inner, str):
+            if len(inner) > MAX_TEXT_CHARS:
+                raise _Block()
+            inner = json.loads(inner)
+        calls = inner
     if isinstance(calls, dict):
         calls = [calls]
     if not isinstance(calls, list) or not calls or len(calls) > MAX_CHUNKS:
