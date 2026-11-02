@@ -1,0 +1,25 @@
+tests/test_restart_preflight.py
+  s_039ee6aa9f3c63::t_10ae1c55a6ff54 45-48
+  s_039ee6aa9f3c63::t_dbd01ae2028e14 44
+tests/test_installer_contract.py
+  s_039ee6aa9f3c63::t_da863c8e0466ac 14-15
+  s_039ee6aa9f3c63::t_6cdf3b67908be7 66-67,69-70
+  s_039ee6aa9f3c63::t_fab9c531c4e2d5 61,68,71-79
+  s_039ee6aa9f3c63::t_6bd67c71c6aa23 80-81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "28cc443a68c8bd56f0b005c13930efb8cb7f729d",
+  "prompts": {},
+  "sessions": {
+    "s_039ee6aa9f3c63": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261101_210254_0237ce",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
