@@ -1,0 +1,372 @@
+.gitignore
+  h_c5be3b3dad7ca8 38
+.specify/extensions.yml
+  h_c5be3b3dad7ca8 3-5,8-71
+.specify/extensions/.cache/catalog-ebf165086500aab1-metadata.json
+  h_c5be3b3dad7ca8 2
+.specify/extensions/.cache/catalog-metadata.json
+  h_c5be3b3dad7ca8 2
+.specify/extensions/.registry
+  h_c5be3b3dad7ca8 18-73
+.specify/extensions/security-review/.gitignore
+  h_c5be3b3dad7ca8 1-95
+.specify/extensions/security-review/CHANGELOG.md
+  h_c5be3b3dad7ca8 1-34
+.specify/extensions/security-review/CONTRIBUTING.md
+  h_c5be3b3dad7ca8 1-52
+.specify/extensions/security-review/LICENSE
+  h_c5be3b3dad7ca8 1-21
+.specify/extensions/security-review/README.md
+  h_c5be3b3dad7ca8 1-638
+.specify/extensions/security-review/assets/logo.svg
+  h_c5be3b3dad7ca8 1-65
+.specify/extensions/security-review/commands/init.md
+  h_c5be3b3dad7ca8 1-102
+.specify/extensions/security-review/commands/security-review-apply.md
+  h_c5be3b3dad7ca8 1-167
+.specify/extensions/security-review/commands/security-review-branch.md
+  h_c5be3b3dad7ca8 1-207
+.specify/extensions/security-review/commands/security-review-export.md
+  h_c5be3b3dad7ca8 1-200
+.specify/extensions/security-review/commands/security-review-followup.md
+  h_c5be3b3dad7ca8 1-247
+.specify/extensions/security-review/commands/security-review-plan.md
+  h_c5be3b3dad7ca8 1-198
+.specify/extensions/security-review/commands/security-review-staged.md
+  h_c5be3b3dad7ca8 1-203
+.specify/extensions/security-review/commands/security-review-tasks.md
+  h_c5be3b3dad7ca8 1-199
+.specify/extensions/security-review/commands/security-review.md
+  h_c5be3b3dad7ca8 1-801
+.specify/extensions/security-review/config-template.yml
+  h_c5be3b3dad7ca8 1-317
+.specify/extensions/security-review/docs/design.md
+  h_c5be3b3dad7ca8 1-237
+.specify/extensions/security-review/docs/field-registry.md
+  h_c5be3b3dad7ca8 1-135
+.specify/extensions/security-review/docs/field-summaries.yml
+  h_c5be3b3dad7ca8 1-169
+.specify/extensions/security-review/docs/installation.md
+  h_c5be3b3dad7ca8 1-188
+.specify/extensions/security-review/docs/usage.md
+  h_c5be3b3dad7ca8 1-321
+.specify/extensions/security-review/examples/example-output.md
+  h_c5be3b3dad7ca8 1-681
+.specify/extensions/security-review/extension.yml
+  h_c5be3b3dad7ca8 1-62
+.specify/extensions/security-review/scripts/bash/detect-changed-files.sh
+  h_c5be3b3dad7ca8 1-243
+.specify/extensions/security-review/scripts/powershell/detect-changed-files.ps1
+  h_c5be3b3dad7ca8 1-228
+.specify/extensions/security-review/scripts/test-install.sh
+  h_c5be3b3dad7ca8 1-114
+.specify/extensions/security-review/scripts/update-document-headers.sh
+  h_c5be3b3dad7ca8 1-213
+.specify/extensions/spec-validate/.gitignore
+  h_c5be3b3dad7ca8 1-2
+.specify/extensions/spec-validate/CHANGELOG.md
+  h_c5be3b3dad7ca8 1-33
+.specify/extensions/spec-validate/LICENSE
+  h_c5be3b3dad7ca8 1-21
+.specify/extensions/spec-validate/README.md
+  h_c5be3b3dad7ca8 1-142
+.specify/extensions/spec-validate/commands/analytics.md
+  h_c5be3b3dad7ca8 1-83
+.specify/extensions/spec-validate/commands/gate.md
+  h_c5be3b3dad7ca8 1-64
+.specify/extensions/spec-validate/commands/review.md
+  h_c5be3b3dad7ca8 1-87
+.specify/extensions/spec-validate/commands/status.md
+  h_c5be3b3dad7ca8 1-46
+.specify/extensions/spec-validate/commands/validate-tasks.md
+  h_c5be3b3dad7ca8 1-50
+.specify/extensions/spec-validate/commands/validate.md
+  h_c5be3b3dad7ca8 1-119
+.specify/extensions/spec-validate/config-template.yml
+  h_c5be3b3dad7ca8 1-36
+.specify/extensions/spec-validate/extension.yml
+  h_c5be3b3dad7ca8 1-63
+.specify/extensions/spec-validate/scripts/bash/check-gate.sh
+  h_c5be3b3dad7ca8 1-258
+.specify/extensions/spec-validate/scripts/bash/compute-hash.sh
+  h_c5be3b3dad7ca8 1-36
+.specify/extensions/spec-validate/scripts/bash/read-approval-state.sh
+  h_c5be3b3dad7ca8 1-72
+.specify/extensions/spec-validate/scripts/bash/write-approval-state.sh
+  h_c5be3b3dad7ca8 1-60
+.specify/extensions/spec-validate/scripts/powershell/check-gate.ps1
+  h_c5be3b3dad7ca8 1-102
+.specify/extensions/spec-validate/scripts/powershell/compute-hash.ps1
+  h_c5be3b3dad7ca8 1-26
+.specify/extensions/spec-validate/scripts/powershell/read-approval-state.ps1
+  h_c5be3b3dad7ca8 1-58
+.specify/extensions/spec-validate/scripts/powershell/write-approval-state.ps1
+  h_c5be3b3dad7ca8 1-49
+.specify/extensions/spec-validate/spec-validate-config.yml
+  h_c5be3b3dad7ca8 1-36
+.specify/extensions/spec-validate/templates/approval-summary.md
+  h_c5be3b3dad7ca8 1-30
+.specify/extensions/spec-validate/templates/distractor-patterns.yml
+  h_c5be3b3dad7ca8 1-35
+.specify/extensions/verify-tasks/.github/agents/copilot-instructions.md
+  h_c5be3b3dad7ca8 1-29
+.specify/extensions/verify-tasks/.github/agents/speckit.analyze.agent.md
+  h_c5be3b3dad7ca8 1-184
+.specify/extensions/verify-tasks/.github/agents/speckit.checklist.agent.md
+  h_c5be3b3dad7ca8 1-295
+.specify/extensions/verify-tasks/.github/agents/speckit.clarify.agent.md
+  h_c5be3b3dad7ca8 1-181
+.specify/extensions/verify-tasks/.github/agents/speckit.constitution.agent.md
+  h_c5be3b3dad7ca8 1-84
+.specify/extensions/verify-tasks/.github/agents/speckit.implement.agent.md
+  h_c5be3b3dad7ca8 1-198
+.specify/extensions/verify-tasks/.github/agents/speckit.plan.agent.md
+  h_c5be3b3dad7ca8 1-90
+.specify/extensions/verify-tasks/.github/agents/speckit.specify.agent.md
+  h_c5be3b3dad7ca8 1-239
+.specify/extensions/verify-tasks/.github/agents/speckit.tasks.agent.md
+  h_c5be3b3dad7ca8 1-200
+.specify/extensions/verify-tasks/.github/agents/speckit.taskstoissues.agent.md
+  h_c5be3b3dad7ca8 1-30
+.specify/extensions/verify-tasks/.github/prompts/speckit.analyze.prompt.md
+  h_c5be3b3dad7ca8 1-3
+.specify/extensions/verify-tasks/.github/prompts/speckit.checklist.prompt.md
+  h_c5be3b3dad7ca8 1-3
+.specify/extensions/verify-tasks/.github/prompts/speckit.clarify.prompt.md
+  h_c5be3b3dad7ca8 1-3
+.specify/extensions/verify-tasks/.github/prompts/speckit.constitution.prompt.md
+  h_c5be3b3dad7ca8 1-3
+.specify/extensions/verify-tasks/.github/prompts/speckit.implement.prompt.md
+  h_c5be3b3dad7ca8 1-3
+.specify/extensions/verify-tasks/.github/prompts/speckit.plan.prompt.md
+  h_c5be3b3dad7ca8 1-3
+.specify/extensions/verify-tasks/.github/prompts/speckit.specify.prompt.md
+  h_c5be3b3dad7ca8 1-3
+.specify/extensions/verify-tasks/.github/prompts/speckit.tasks.prompt.md
+  h_c5be3b3dad7ca8 1-3
+.specify/extensions/verify-tasks/.github/prompts/speckit.taskstoissues.prompt.md
+  h_c5be3b3dad7ca8 1-3
+.specify/extensions/verify-tasks/.gitignore
+  h_c5be3b3dad7ca8 1-16
+.specify/extensions/verify-tasks/.markdownlint.json
+  h_c5be3b3dad7ca8 1-5
+.specify/extensions/verify-tasks/.specify/extensions/.cache/catalog-ebf165086500aab1-metadata.json
+  h_c5be3b3dad7ca8 1-4
+.specify/extensions/verify-tasks/.specify/extensions/.cache/catalog-ebf165086500aab1.json
+  h_c5be3b3dad7ca8 1-384
+.specify/extensions/verify-tasks/.specify/extensions/.cache/catalog-metadata.json
+  h_c5be3b3dad7ca8 1-4
+.specify/extensions/verify-tasks/.specify/extensions/.cache/catalog.json
+  h_c5be3b3dad7ca8 1-6
+.specify/extensions/verify-tasks/.specify/memory/constitution.md
+  h_c5be3b3dad7ca8 1-228
+.specify/extensions/verify-tasks/.specify/scripts/bash/check-prerequisites.sh
+  h_c5be3b3dad7ca8 1-166
+.specify/extensions/verify-tasks/.specify/scripts/bash/common.sh
+  h_c5be3b3dad7ca8 1-156
+.specify/extensions/verify-tasks/.specify/scripts/bash/create-new-feature.sh
+  h_c5be3b3dad7ca8 1-313
+.specify/extensions/verify-tasks/.specify/scripts/bash/setup-plan.sh
+  h_c5be3b3dad7ca8 1-61
+.specify/extensions/verify-tasks/.specify/scripts/bash/update-agent-context.sh
+  h_c5be3b3dad7ca8 1-855
+.specify/extensions/verify-tasks/.specify/templates/agent-file-template.md
+  h_c5be3b3dad7ca8 1-28
+.specify/extensions/verify-tasks/.specify/templates/checklist-template.md
+  h_c5be3b3dad7ca8 1-40
+.specify/extensions/verify-tasks/.specify/templates/constitution-template.md
+  h_c5be3b3dad7ca8 1-50
+.specify/extensions/verify-tasks/.specify/templates/plan-template.md
+  h_c5be3b3dad7ca8 1-104
+.specify/extensions/verify-tasks/.specify/templates/spec-template.md
+  h_c5be3b3dad7ca8 1-115
+.specify/extensions/verify-tasks/.specify/templates/tasks-template.md
+  h_c5be3b3dad7ca8 1-251
+.specify/extensions/verify-tasks/.specifyignore
+  h_c5be3b3dad7ca8 1-23
+.specify/extensions/verify-tasks/CHANGELOG.md
+  h_c5be3b3dad7ca8 1-40
+.specify/extensions/verify-tasks/LICENSE
+  h_c5be3b3dad7ca8 1-21
+.specify/extensions/verify-tasks/README.md
+  h_c5be3b3dad7ca8 1-234
+.specify/extensions/verify-tasks/commands/speckit.verify-tasks.md
+  h_c5be3b3dad7ca8 1-221
+.specify/extensions/verify-tasks/extension.yml
+  h_c5be3b3dad7ca8 1-40
+.specify/extensions/verify-tasks/specs/001-verify-tasks-phantom/checklists/requirements.md
+  h_c5be3b3dad7ca8 1-36
+.specify/extensions/verify-tasks/specs/001-verify-tasks-phantom/contracts/command-interface.md
+  h_c5be3b3dad7ca8 1-171
+.specify/extensions/verify-tasks/specs/001-verify-tasks-phantom/data-model.md
+  h_c5be3b3dad7ca8 1-152
+.specify/extensions/verify-tasks/specs/001-verify-tasks-phantom/plan.md
+  h_c5be3b3dad7ca8 1-100
+.specify/extensions/verify-tasks/specs/001-verify-tasks-phantom/quickstart.md
+  h_c5be3b3dad7ca8 1-125
+.specify/extensions/verify-tasks/specs/001-verify-tasks-phantom/research.md
+  h_c5be3b3dad7ca8 1-157
+.specify/extensions/verify-tasks/specs/001-verify-tasks-phantom/spec.md
+  h_c5be3b3dad7ca8 1-201
+.specify/extensions/verify-tasks/specs/001-verify-tasks-phantom/tasks.md
+  h_c5be3b3dad7ca8 1-223
+.specify/extensions/verify-tasks/tests/expected-verdicts.md
+  h_c5be3b3dad7ca8 1-235
+.specify/extensions/verify-tasks/tests/fixtures/edge-cases/tasks.md
+  h_c5be3b3dad7ca8 1-34
+.specify/extensions/verify-tasks/tests/fixtures/genuine-tasks/src/app.py
+  h_c5be3b3dad7ca8 1-28
+.specify/extensions/verify-tasks/tests/fixtures/genuine-tasks/src/calculator.py
+  h_c5be3b3dad7ca8 1-26
+.specify/extensions/verify-tasks/tests/fixtures/genuine-tasks/src/formatter.py
+  h_c5be3b3dad7ca8 1-17
+.specify/extensions/verify-tasks/tests/fixtures/genuine-tasks/src/pipeline.py
+  h_c5be3b3dad7ca8 1-23
+.specify/extensions/verify-tasks/tests/fixtures/genuine-tasks/src/runner.py
+  h_c5be3b3dad7ca8 1-17
+.specify/extensions/verify-tasks/tests/fixtures/genuine-tasks/src/storage.py
+  h_c5be3b3dad7ca8 1-28
+.specify/extensions/verify-tasks/tests/fixtures/genuine-tasks/src/validator.py
+  h_c5be3b3dad7ca8 1-17
+.specify/extensions/verify-tasks/tests/fixtures/genuine-tasks/tasks.md
+  h_c5be3b3dad7ca8 1-19
+.specify/extensions/verify-tasks/tests/fixtures/phantom-tasks/src/auth.py
+  h_c5be3b3dad7ca8 1-35
+.specify/extensions/verify-tasks/tests/fixtures/phantom-tasks/src/cache.py
+  h_c5be3b3dad7ca8 1-8
+.specify/extensions/verify-tasks/tests/fixtures/phantom-tasks/src/config.py
+  h_c5be3b3dad7ca8 1-13
+.specify/extensions/verify-tasks/tests/fixtures/phantom-tasks/src/db.py
+  h_c5be3b3dad7ca8 1-24
+.specify/extensions/verify-tasks/tests/fixtures/phantom-tasks/src/main.py
+  h_c5be3b3dad7ca8 1-26
+.specify/extensions/verify-tasks/tests/fixtures/phantom-tasks/src/middleware.py
+  h_c5be3b3dad7ca8 1-11
+.specify/extensions/verify-tasks/tests/fixtures/phantom-tasks/src/routes.py
+  h_c5be3b3dad7ca8 1-9
+.specify/extensions/verify-tasks/tests/fixtures/phantom-tasks/src/utils.py
+  h_c5be3b3dad7ca8 1-14
+.specify/extensions/verify-tasks/tests/fixtures/phantom-tasks/tasks.md
+  h_c5be3b3dad7ca8 1-19
+.specify/extensions/verify-tasks/tests/fixtures/scalability/README.md
+  h_c5be3b3dad7ca8 1-36
+.specify/extensions/verify-tasks/tests/fixtures/scalability/config.yml
+  h_c5be3b3dad7ca8 1-4
+.specify/extensions/verify-tasks/tests/fixtures/scalability/migrations/0001_initial.sql
+  h_c5be3b3dad7ca8 1-19
+.specify/extensions/verify-tasks/tests/fixtures/scalability/src/app.py
+  h_c5be3b3dad7ca8 1-34
+.specify/extensions/verify-tasks/tests/fixtures/scalability/src/config/__init__.py
+  h_c5be3b3dad7ca8 1-4
+.specify/extensions/verify-tasks/tests/fixtures/scalability/src/config/logging_config.py
+  h_c5be3b3dad7ca8 1-8
+.specify/extensions/verify-tasks/tests/fixtures/scalability/src/config/settings.py
+  h_c5be3b3dad7ca8 1-21
+.specify/extensions/verify-tasks/tests/fixtures/scalability/src/db/__init__.py
+  h_c5be3b3dad7ca8 1-4
+.specify/extensions/verify-tasks/tests/fixtures/scalability/src/db/connection.py
+  h_c5be3b3dad7ca8 1-34
+.specify/extensions/verify-tasks/tests/fixtures/scalability/src/db/migrations.py
+  h_c5be3b3dad7ca8 1-9
+.specify/extensions/verify-tasks/tests/fixtures/scalability/src/handlers/__init__.py
+  h_c5be3b3dad7ca8 1-5
+.specify/extensions/verify-tasks/tests/fixtures/scalability/src/handlers/order_handler.py
+  h_c5be3b3dad7ca8 1-17
+.specify/extensions/verify-tasks/tests/fixtures/scalability/src/handlers/product_handler.py
+  h_c5be3b3dad7ca8 1-13
+.specify/extensions/verify-tasks/tests/fixtures/scalability/src/handlers/user_handler.py
+  h_c5be3b3dad7ca8 1-16
+.specify/extensions/verify-tasks/tests/fixtures/scalability/src/main.py
+  h_c5be3b3dad7ca8 1-15
+.specify/extensions/verify-tasks/tests/fixtures/scalability/src/middleware/__init__.py
+  h_c5be3b3dad7ca8 1-5
+.specify/extensions/verify-tasks/tests/fixtures/scalability/src/middleware/auth_middleware.py
+  h_c5be3b3dad7ca8 1-20
+.specify/extensions/verify-tasks/tests/fixtures/scalability/src/middleware/cors_middleware.py
+  h_c5be3b3dad7ca8 1-10
+.specify/extensions/verify-tasks/tests/fixtures/scalability/src/middleware/logging_middleware.py
+  h_c5be3b3dad7ca8 1-10
+.specify/extensions/verify-tasks/tests/fixtures/scalability/src/models/__init__.py
+  h_c5be3b3dad7ca8 1-5
+.specify/extensions/verify-tasks/tests/fixtures/scalability/src/models/order.py
+  h_c5be3b3dad7ca8 1-24
+.specify/extensions/verify-tasks/tests/fixtures/scalability/src/models/product.py
+  h_c5be3b3dad7ca8 1-13
+.specify/extensions/verify-tasks/tests/fixtures/scalability/src/models/user.py
+  h_c5be3b3dad7ca8 1-16
+.specify/extensions/verify-tasks/tests/fixtures/scalability/src/repos/__init__.py
+  h_c5be3b3dad7ca8 1-5
+.specify/extensions/verify-tasks/tests/fixtures/scalability/src/repos/order_repo.py
+  h_c5be3b3dad7ca8 1-17
+.specify/extensions/verify-tasks/tests/fixtures/scalability/src/repos/product_repo.py
+  h_c5be3b3dad7ca8 1-20
+.specify/extensions/verify-tasks/tests/fixtures/scalability/src/repos/user_repo.py
+  h_c5be3b3dad7ca8 1-17
+.specify/extensions/verify-tasks/tests/fixtures/scalability/src/router.py
+  h_c5be3b3dad7ca8 1-21
+.specify/extensions/verify-tasks/tests/fixtures/scalability/src/services/__init__.py
+  h_c5be3b3dad7ca8 1-5
+.specify/extensions/verify-tasks/tests/fixtures/scalability/src/services/order_service.py
+  h_c5be3b3dad7ca8 1-19
+.specify/extensions/verify-tasks/tests/fixtures/scalability/src/services/product_service.py
+  h_c5be3b3dad7ca8 1-14
+.specify/extensions/verify-tasks/tests/fixtures/scalability/src/services/user_service.py
+  h_c5be3b3dad7ca8 1-14
+.specify/extensions/verify-tasks/tests/fixtures/scalability/src/utils/__init__.py
+  h_c5be3b3dad7ca8 1-5
+.specify/extensions/verify-tasks/tests/fixtures/scalability/src/utils/pagination.py
+  h_c5be3b3dad7ca8 1-8
+.specify/extensions/verify-tasks/tests/fixtures/scalability/src/utils/serializers.py
+  h_c5be3b3dad7ca8 1-24
+.specify/extensions/verify-tasks/tests/fixtures/scalability/src/utils/validators.py
+  h_c5be3b3dad7ca8 1-17
+.specify/extensions/verify-tasks/tests/fixtures/scalability/tasks.md
+  h_c5be3b3dad7ca8 1-104
+.specify/extensions/verify-tasks/tests/fixtures/scalability/tests/integration/test_order_service.py
+  h_c5be3b3dad7ca8 1-12
+.specify/extensions/verify-tasks/tests/fixtures/scalability/tests/unit/test_pagination.py
+  h_c5be3b3dad7ca8 1-16
+.specify/extensions/verify-tasks/tests/fixtures/scalability/tests/unit/test_product_service.py
+  h_c5be3b3dad7ca8 1-10
+.specify/extensions/verify-tasks/tests/fixtures/scalability/tests/unit/test_user_service.py
+  h_c5be3b3dad7ca8 1-18
+.specify/extensions/verify-tasks/tests/fixtures/scalability/tests/unit/test_validators.py
+  h_c5be3b3dad7ca8 1-14
+.specify/extensions/verify-tasks/tests/setup-fixture.sh
+  h_c5be3b3dad7ca8 1-119
+.specify/extensions/verify-tasks/tests/teardown-fixture.sh
+  h_c5be3b3dad7ca8 1-47
+.specify/presets/.cache/catalog-ff86b51b80a289e5-metadata.json
+  h_c5be3b3dad7ca8 1-4
+.specify/presets/.cache/catalog-ff86b51b80a289e5.json
+  h_c5be3b3dad7ca8 1-1221
+.specify/presets/.cache/catalog-metadata.json
+  h_c5be3b3dad7ca8 1-4
+.specify/presets/.cache/catalog.json
+  h_c5be3b3dad7ca8 1-53
+.specify/presets/.registry
+  h_c5be3b3dad7ca8 1-23
+.specify/presets/explicit-task-dependencies/CHANGELOG.md
+  h_c5be3b3dad7ca8 1-10
+.specify/presets/explicit-task-dependencies/LICENSE
+  h_c5be3b3dad7ca8 1-21
+.specify/presets/explicit-task-dependencies/README.md
+  h_c5be3b3dad7ca8 1-39
+.specify/presets/explicit-task-dependencies/commands/speckit.tasks.md
+  h_c5be3b3dad7ca8 1-205
+.specify/presets/explicit-task-dependencies/preset.yml
+  h_c5be3b3dad7ca8 1-33
+.specify/presets/explicit-task-dependencies/templates/tasks-template.md
+  h_c5be3b3dad7ca8 1-291
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "7e10fb74826d902f2af314b5beefe6e50281d560",
+  "prompts": {},
+  "humans": {
+    "h_c5be3b3dad7ca8": {
+      "author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
