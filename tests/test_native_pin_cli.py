@@ -60,3 +60,26 @@ def test_installed_cli_never_executes_unmanaged_nested_helper(tmp_path,flat_pres
     if flat_present:shutil.copy2(ROOT/'core/restart_control/runtime_identity.py',tmp_path/'runtime_identity.py')
     result=subprocess.run([sys.executable,'-B',str(checker),'unused'],capture_output=True,text=True,timeout=10)
     assert result.returncode==1 and not marker.exists()
+
+
+@pytest.mark.parametrize('layout',['flat','repository'])
+def test_valid_timestamp_cache_cannot_replace_verified_helper_source(tmp_path,layout):
+    import importlib.util
+    import marshal
+    import struct
+    checker=tmp_path/'check_pin.py';shutil.copy2(ROOT/'core/check_pin.py',checker)
+    helper=(tmp_path/'runtime_identity.py' if layout=='flat' else tmp_path/'restart_control/runtime_identity.py')
+    helper.parent.mkdir(exist_ok=True)
+    helper.write_text('def prove_runtime(path):\n    raise ValueError("fixture refusal")\n')
+    marker=tmp_path/'cache-executed'
+    bad='from pathlib import Path\nPath('+repr(str(marker))+').write_text("bad")\ndef prove_runtime(path): pass\n'
+    info=helper.stat()
+    cache=Path(importlib.util.cache_from_source(str(helper)))
+    cache.parent.mkdir(exist_ok=True)
+    cache.write_bytes(importlib.util.MAGIC_NUMBER+struct.pack('<III',0,int(info.st_mtime),info.st_size)+
+                      marshal.dumps(compile(bad,str(helper),'exec')))
+    before=cache.read_bytes()
+    result=subprocess.run([sys.executable,'-B',str(checker),*(['--repository'] if layout=='repository' else []),'unused'],
+                          capture_output=True,text=True,timeout=10)
+    assert result.returncode==1 and not marker.exists()
+    assert cache.read_bytes()==before

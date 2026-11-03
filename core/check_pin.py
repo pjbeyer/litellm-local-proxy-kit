@@ -31,7 +31,9 @@ def _helper(repository=False):
     if spec is None or spec.loader is None:
         raise ValueError('runtime_helper_missing')
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    # Execute this exact adjacent source, never a timestamp/hash-valid .pyc.
+    # -B only suppresses cache writes; it does not suppress cache reads.
+    exec(compile(path.read_bytes(), str(path), 'exec', dont_inherit=True), module.__dict__)
     return module
 
 

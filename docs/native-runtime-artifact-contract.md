@@ -20,7 +20,9 @@ flat `runtime_identity.py` next to the installed checker and pin. Installed
 checker invocation always selects that flat layout; an unexpected adjacent
 `restart_control` entry refuses rather than selecting unmanaged code. Repository
 checker invocation requires explicit `--repository`. Bytecode writes are disabled
-before helper import. Symlinked or hard-linked helpers refuse in startup,
+before helper import. The checker compiles exact adjacent helper source bytes,
+never its cached bytecode; disabling writes alone does not disable cache reads.
+Symlinked or hard-linked helpers refuse in startup,
 installer apply/verify and drift checks; incidental apply never repairs them.
 
 Installer and every wrapper startup (normal or `--preflight`) run full proof
