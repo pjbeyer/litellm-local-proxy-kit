@@ -1,0 +1,29 @@
+specs/001-proxy-lifecycle-guard-plugin/research.md
+  s_d911d6ebd1d25a::t_c26ccf6b55f2b6 1-127
+specs/001-proxy-lifecycle-guard-plugin/contracts/hook-contract.md
+  s_d911d6ebd1d25a::t_3c9d067bb48d7f 1-57
+specs/001-proxy-lifecycle-guard-plugin/data-model.md
+  s_d911d6ebd1d25a::t_8429e7e4349d81 1-85
+specs/001-proxy-lifecycle-guard-plugin/quickstart.md
+  s_d911d6ebd1d25a::t_15a9ca2153fe26 1-65
+specs/001-proxy-lifecycle-guard-plugin/plan.md
+  s_d911d6ebd1d25a::t_7c3a7a353180e4 1-122
+specs/001-proxy-lifecycle-guard-plugin/contracts/policy-schema.json
+  s_d911d6ebd1d25a::t_fbb076d8def2cd 1-85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "a07f6064aae21febb79d231a2d9bb893fe48c423",
+  "prompts": {},
+  "sessions": {
+    "s_d911d6ebd1d25a": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261102_055425_b7f94c5e",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
