@@ -1,0 +1,14 @@
+.specify/extensions/spec-validate/status/001-proxy-lifecycle-guard-plugin.json
+  h_c5be3b3dad7ca8 3,5-6,8-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "f876c83a88923785ca3b8cd66d6d76be29decde5",
+  "prompts": {},
+  "humans": {
+    "h_c5be3b3dad7ca8": {
+      "author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
