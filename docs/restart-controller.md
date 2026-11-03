@@ -248,6 +248,7 @@ Kit source paths:
 - `core/restart_control/runtime_identity.py`
 - `core/restart_control/process_identity.py`
 - `core/restart_control/shutdown.py`
+- `core/restart_control/recovery.py`
 
 Reject additional executable/source helpers under `core/` (excluding bytecode
 cache directories); adding one requires updating this registry and review.

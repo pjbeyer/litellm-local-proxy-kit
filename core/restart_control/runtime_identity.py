@@ -37,6 +37,7 @@ KIT_INPUTS = (
     'core/restart_control/engine.py', 'core/restart_control/wire.py',
     'core/restart_control/runtime.py', 'core/restart_control/runtime_identity.py',
     'core/restart_control/process_identity.py', 'core/restart_control/shutdown.py',
+    'core/restart_control/recovery.py',
 )
 CONTROLLER_INPUTS = tuple(p for p in KIT_INPUTS if '/restart_control/' in p or
                           p in ('core/restart_controller.py', 'core/install_restart_controller.py'))
