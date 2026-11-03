@@ -1,0 +1,22 @@
+docs/restart-controller-shutdown-contract.md
+  s_039ee6aa9f3c63::t_e913626608ff3c 1-217
+  s_039ee6aa9f3c63::t_7f7a1299a06005 218-220
+docs/restart-controller-operations.md
+  s_039ee6aa9f3c63::t_88c049294bcf65 13-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "c68de75474c07e331263c62e638398d0153276d2",
+  "prompts": {},
+  "sessions": {
+    "s_039ee6aa9f3c63": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261101_210254_0237ce",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
