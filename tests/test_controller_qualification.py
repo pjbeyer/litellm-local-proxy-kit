@@ -65,6 +65,7 @@ def loaded_text(context, changes=None):
             f'\targuments = {{\n{args}\n\t}}\n'
             f'\tenvironment = {{\n{environment}\n\t}}\n'
             f'\tminimum runtime = {job["ThrottleInterval"]}\n'
+            f'\texit timeout = {job["ExitTimeOut"]}\n'
             f'\tpid = {context.identity["pid"]}\n\truns = 1\n}}\n')
 
 
@@ -84,7 +85,7 @@ def test_matching_generated_and_loaded_controller_is_fixture_control(context):
     qualify(context)
 
 
-@pytest.mark.parametrize('variant', ['program', 'argv', 'policy_argv', 'path', 'workdir', 'environment', 'extra_environment', 'service_name', 'throttle'])
+@pytest.mark.parametrize('variant', ['program', 'argv', 'policy_argv', 'path', 'workdir', 'environment', 'extra_environment', 'service_name', 'throttle', 'exit_timeout'])
 def test_matching_birth_cannot_hide_wrong_loaded_controller(context, variant):
     qualify(context)  # green control before the single metadata mutation
     expected = context.expected
@@ -98,6 +99,7 @@ def test_matching_birth_cannot_hide_wrong_loaded_controller(context, variant):
     elif variant == 'environment': changes['EnvironmentVariables'] = dict(expected['EnvironmentVariables'], PATH='/usr/bin')
     elif variant == 'extra_environment': changes['EnvironmentVariables'] = dict(expected['EnvironmentVariables'], FIXTURE_UNEXPECTED='1')
     elif variant == 'service_name': changes['EnvironmentVariables'] = dict(expected['EnvironmentVariables'], XPC_SERVICE_NAME='fixture.wrong')
+    elif variant == 'exit_timeout': changes['ExitTimeOut'] = 60
     else: changes['ThrottleInterval'] = 90
     with pytest.raises(Fault, match='qualification_invalid'):
         qualify(context, loaded_text(context, changes))
@@ -155,7 +157,7 @@ def test_controller_plist_must_be_private_owned_and_exact(context, variant):
             qualify(context)
 
 
-@pytest.mark.parametrize('field', ['program', 'working directory', 'minimum runtime'])
+@pytest.mark.parametrize('field', ['program', 'working directory', 'minimum runtime', 'exit timeout'])
 def test_unavailable_loaded_controller_fields_are_not_inferred(context, field):
     qualify(context)
     text = '\n'.join(line for line in loaded_text(context).splitlines() if not line.strip().startswith(field+' ='))
@@ -167,3 +169,17 @@ def test_installer_and_qualification_share_generated_definition(context):
     from restart_control.runtime import controller_job
     with mock.patch('restart_control.runtime.Path.home', return_value=context.home):
         assert controller_job(context.runtime.policy, context.runtime.policy_path, context.runtime.python) == context.expected
+
+
+@pytest.mark.parametrize('variant', ['duplicate', 'nested_only', 'malformed', 'wrong_with_nested_match'])
+def test_loaded_exit_timeout_observation_is_unique_top_level_and_exact(context, variant):
+    qualify(context)
+    line='\texit timeout = 1000\n'
+    text=loaded_text(context)
+    assert text.count(line)==1
+    if variant=='duplicate':text=text.replace(line,line+'\texit timeout = 60\n')
+    elif variant=='nested_only':text=text.replace(line,'\tresource coalition = {\n\t\texit timeout = 1000\n\t}\n')
+    elif variant=='malformed':text=text.replace(line,'\texit timeout = true\n')
+    else:text=text.replace(line,'\texit timeout = 60\n\tresource coalition = {\n\t\texit timeout = 1000\n\t}\n')
+    with pytest.raises(Fault, match='qualification_invalid'):
+        qualify(context,text)

@@ -75,7 +75,14 @@ The operator-issued `qualification.json` is a 0600 regular, non-symlink file und
 Bind the current daemon epoch, exact source/policy/proxy-plist digests, dynamic
 UID and kernel PID/microsecond birth identity. Both lifetimes are at most 24
 hours. The controller must have PPID 1 and match its loaded launchd label's
-PID/birth. The controller plist must be an owned 0600 regular non-symlink file
+PID/birth. The controller's unique top-level loaded `exit timeout` must also
+exactly match the generated `ExitTimeOut`; missing, duplicate, nested-only,
+malformed or clamped observations refuse. A configured long timeout is not
+proof that the platform supplies that shutdown grace period. Do not lower the
+expected timeout merely to qualify a host while request/drain bounds remain
+longer. Extra explicit environment remains rejected except the matching
+`XPC_SERVICE_NAME`; unexplained platform logging settings are not silently
+whitelisted. The controller plist must be an owned 0600 regular non-symlink file
 matching the definition shared by installer and verifier. Available loaded fields
 must agree; only launchd's matching `XPC_SERVICE_NAME` is allowed as additional
 explicit environment metadata. The operator's real canary evidence binds the

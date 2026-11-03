@@ -294,10 +294,15 @@ class Runtime:
                       and field('minimum runtime') == str(expected['ThrottleInterval']))
             if controller_check:
                 # launchd may add only its matching service-name metadata.
+                # Read the unique top-level observation; nested or duplicate
+                # fields cannot attest the controller's shutdown grace period.
+                exit_timeouts = re.findall(r'(?m)^\texit timeout = ([^\r\n]+)$', text)
+                exit_parity = (len(exit_timeouts) == 1 and
+                               exit_timeouts[0].strip() == str(expected['ExitTimeOut']))
                 explicit = dict(actual_env)
                 if explicit.get('XPC_SERVICE_NAME') == label:
                     explicit.pop('XPC_SERVICE_NAME')
-                parity = (parity and field('program') == expected['ProgramArguments'][0]
+                parity = (parity and exit_parity and field('program') == expected['ProgramArguments'][0]
                           and field('working directory') == expected['WorkingDirectory']
                           and explicit == expected['EnvironmentVariables'])
             return {'identity': identity, 'runs': int(runs) if runs and runs.isdigit() else None,
