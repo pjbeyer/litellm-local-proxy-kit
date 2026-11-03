@@ -1,0 +1,67 @@
+docs/restart-controller.md
+  s_eb50b203a11d2b::t_dbd9c46f9fd571 251
+core/restart_control/runtime_identity.py
+  s_eb50b203a11d2b::t_dbd9c46f9fd571 40
+docs/plans/2026-11-03-controller-shutdown.md
+  s_f424e0f6238316::t_ec0646c130e67d 75
+  s_eb50b203a11d2b::t_dbd9c46f9fd571 76
+tests/test_controller_recovery.py
+  s_87ca89aa78ac62::t_7e6025526b3e72 307-308,399-405
+  s_3da2ed30825e96::t_4a548b9e8e4a74 374-390,594
+  s_87ca89aa78ac62::t_df220d28ff9df9 482,484-490,501-508
+  s_eb50b203a11d2b::t_20ed27d3f4b387 1-3,5-49,192-200,202-223,225-306,309-326,511-560,562-593,595-625
+  s_f424e0f6238316::t_5b9da2fc54ab91 79-87
+  s_f424e0f6238316::t_3852d4461900c3 50-55,57-60,62-78,88-95,99-191
+  s_f424e0f6238316::t_834830adbb2b13 56,61
+  s_eb50b203a11d2b::t_03b9768f6b228b 627-668
+  s_87ca89aa78ac62::t_26f201e62699c2 327-373,391-398,406-481,483,491-500,509-510
+  s_f424e0f6238316::t_3010df34dbbf9a 96-98
+  s_eb50b203a11d2b::t_62c87f14e3dffe 224,561,626
+  s_eb50b203a11d2b::t_fab93beee0fff3 4,201
+core/restart_control/recovery.py
+  s_f424e0f6238316::t_0e38e8d1746101 87,90,98-115
+  s_eb50b203a11d2b::t_f27477b41d86a5 1-35,38-40,48-86,88-89,91-97,116-151,154-169,171-222,224-255,258-263,267-293,297-300
+  s_eb50b203a11d2b::t_a8ee3f03ecb718 223,256-257,264-266
+  s_eb50b203a11d2b::t_62c87f14e3dffe 294-296
+  s_87ca89aa78ac62::t_11b76049a3f087 36-37,41-47,152-153,170
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "62aa9b770177e4d3d6e067bfbbf5956689ce423d",
+  "prompts": {},
+  "sessions": {
+    "s_3da2ed30825e96": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a045-1f4e-7c50-bf4a-ae8b3604866c",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_87ca89aa78ac62": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a041-11c5-7d11-a007-0b7251887f00",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_eb50b203a11d2b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a039-1944-70b1-8fea-53c823894dc8",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_f424e0f6238316": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a290-b880-7fd0-85b4-bbcbe727f74f",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
