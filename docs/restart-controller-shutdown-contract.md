@@ -1,6 +1,6 @@
 # Cap-aware controller shutdown amendment
 
-**DRAFT FOR OWNER REVIEW — not implemented, deployed or platform-qualified.**
+**OWNER-APPROVED WRITTEN DESIGN — implementation plan/execution review pending. Not implemented, deployed or platform-qualified.**
 
 This proposed amendment extends [the controller contract](restart-controller.md)
 and [operations guide](restart-controller-operations.md). It does not create a
@@ -234,7 +234,7 @@ This amendment does not claim successful availability recovery after interruptio
 or impose a promise that 900 seconds of work fits into 60 seconds. It replaces
 that assumption with bounded quiescence and explicit uncertain-state handling.
 
-**Current deliverable:** reviewed draft amendment only. No implementation tests
+**Current deliverable:** owner-approved written amendment only. No implementation tests
 or live canary results are claimed for this proposed behavior. Existing deployed
 behavior remains governed by the current contract and qualification refusal until
 a separately reviewed generation implements and proves the amendment.

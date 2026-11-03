@@ -10,10 +10,11 @@ The executable contract is [restart-controller.md](restart-controller.md). Insta
 activate a job, qualify a platform, grant approval, or take over a bridge.
 This is accident prevention for trusted same-user automation, not OS isolation.
 
-A proposed [cap-aware shutdown amendment](restart-controller-shutdown-contract.md)
-is a draft for owner review, not current implemented behavior or qualification.
-Its new supervision generation and interruption tests must not be inferred from
-this release's existing activation or source-only checks.
+The [cap-aware shutdown amendment](restart-controller-shutdown-contract.md) is an
+owner-approved written design, not current implemented behavior or qualification.
+Its [implementation plan](plans/2026-11-03-controller-shutdown.md) awaits owner
+review and execution-method approval. New supervision/interruption behavior must
+not be inferred from this release's existing activation or source-only checks.
 
 ## Provision and install
 
