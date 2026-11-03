@@ -1,0 +1,24 @@
+docs/restart-controller-operations.md
+  s_039ee6aa9f3c63::t_5d2ae829e9394a 78-85
+tests/test_controller_qualification.py
+  s_039ee6aa9f3c63::t_6a84351a85e35d 172-185
+core/restart_control/runtime.py
+  s_039ee6aa9f3c63::t_337d525f0ca26f 297-301
+  s_039ee6aa9f3c63::t_1a373af584bfe3 305
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "c155049b85094bd2b00b2262a8b322afa2e1a7b3",
+  "prompts": {},
+  "sessions": {
+    "s_039ee6aa9f3c63": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261101_210254_0237ce",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
