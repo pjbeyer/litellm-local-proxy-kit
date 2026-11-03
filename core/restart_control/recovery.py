@@ -1,15 +1,20 @@
 """Strict recovery record schemas and bounded private-state inventory.
 
-This module does not admit an operation or perform journal transitions. Callers
-must supply the engine's trusted storage callbacks and perform cross-record
-admission before interpreting an inventory as clear.
+This module validates records and persists child transitions. It does not admit
+an operation or grant permission to spawn or signal. Callers must supply the
+engine's trusted storage callbacks and perform cross-record admission before
+interpreting an inventory as clear.
 """
 
 from dataclasses import dataclass
+from contextlib import contextmanager
+import fcntl
+import json
 import os
 from pathlib import Path
 import re
 import stat
+import time
 
 
 _ID = re.compile(r"[0-9a-f]{32}\Z")
@@ -80,6 +85,25 @@ class RecoveryInventory:
     canary_uncertain: bool
 
 
+@dataclass(frozen=True, eq=False)
+class OperationTicket:
+    """Exact journal snapshot; neither admission nor permission to start a child."""
+
+    request_id: str
+    binding: tuple
+    operation_snapshot: str
+
+
+@dataclass(frozen=True, eq=False)
+class SpawnHandle:
+    """Store-issued record locator; never signal or ownership authority."""
+
+    spawn_id: str
+    request_id: str
+    binding: tuple
+    purpose: str
+
+
 class RecoveryStore:
     """Validate records and enumerate fixed state views within hard bounds."""
 
@@ -93,6 +117,9 @@ class RecoveryStore:
         self._private_path = private_path
         self._private_dir = private_dir
         self._sync_fd = sync_fd
+        self._tickets = set()
+        self._handles = set()
+        self._uncertain = False
         self.state_dir = Path(state_dir)
         try:
             self._checked_dir(self.state_dir)
@@ -110,11 +137,175 @@ class RecoveryStore:
                     _require(not os.path.lexists(path))
                     self._private_dir(path)
                     self._checked_dir(path)
+                    self._sync_directory(path.parent)
+                # The caller created state_dir; sync its entry before any
+                # caller can use this newly initialized journal.
+                parent_fd = os.open(self.state_dir.parent, os.O_RDONLY |
+                                    getattr(os, "O_DIRECTORY", 0))
+                try:
+                    self._sync_fd(parent_fd)
+                finally:
+                    os.close(parent_fd)
             else:
                 for path in views:
                     self._checked_dir(path)
         except Exception:
             raise RecoveryError() from None
+
+    @property
+    def uncertain(self):
+        """Sticky same-process indication of an ambiguous journal write."""
+        return self._uncertain
+
+    def _sync_directory(self, path):
+        self._checked_dir(path)
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+        try:
+            self._sync_fd(fd)
+        finally:
+            os.close(fd)
+
+    @staticmethod
+    def _binding_tuple(value):
+        return tuple((key, value[key]) for key in sorted(_BINDING))
+
+    def _operation_row(self, request_id):
+        _require(_token(request_id, _ID))
+        return self.validate_operation(
+            self._checked_file(self.operations_dir / (request_id + ".json")),
+            request_id=request_id)
+
+    def operation_ticket(self, request_id):
+        """Read one existing operation exactly; T006 still owns admission."""
+        row = self._operation_row(request_id)
+        ticket = OperationTicket(request_id, self._binding_tuple(row["binding"]),
+                                 json.dumps(row, sort_keys=True, separators=(",", ":")))
+        self._tickets.add(ticket)
+        return ticket
+
+    def _check_ticket(self, ticket):
+        _require(type(ticket) is OperationTicket and ticket in self._tickets)
+        row = self._operation_row(ticket.request_id)
+        _require(ticket.binding == self._binding_tuple(row["binding"])
+                 and ticket.operation_snapshot == json.dumps(
+                     row, sort_keys=True, separators=(",", ":")))
+        return row
+
+    def _spawn_row(self, handle):
+        _require(type(handle) is SpawnHandle and handle in self._handles)
+        operation = self._operation_row(handle.request_id)
+        _require(handle.binding == self._binding_tuple(operation["binding"]))
+        row = self.validate_spawn(
+            self._checked_file(self.spawns_dir / (handle.spawn_id + ".json")),
+            spawn_id=handle.spawn_id)
+        _require(row["binding"] == operation["binding"]
+                 and row["purpose"] == handle.purpose)
+        return row
+
+    @contextmanager
+    def _spawn_transition_lock(self):
+        """Bounded process-shared lock for the entire spawn check/write transition."""
+        fd = None
+        try:
+            self._checked_dir(self.state_dir)
+            fd = os.open(self.state_dir, os.O_RDONLY | os.O_DIRECTORY |
+                         getattr(os, "O_NOFOLLOW", 0))
+            info = os.fstat(fd)
+            path_info = self.state_dir.lstat()
+            _require(stat.S_ISDIR(info.st_mode) and info.st_uid == os.getuid()
+                     and stat.S_IMODE(info.st_mode) == 0o700
+                     and (info.st_dev, info.st_ino) == (path_info.st_dev, path_info.st_ino))
+            deadline = time.monotonic() + 1.0
+            while True:
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        raise RecoveryError()
+                    time.sleep(0.01)
+            yield
+        except RecoveryError:
+            raise
+        except Exception:
+            raise RecoveryError() from None
+        finally:
+            if fd is not None:
+                os.close(fd)
+
+    def _write_spawn(self, row):
+        self.validate_spawn(row, spawn_id=row["spawn_id"])
+        try:
+            self._atomic_json(self.spawns_dir / (row["spawn_id"] + ".json"), row)
+        except Exception:
+            self._uncertain = True
+            raise RecoveryError() from None
+        # A reentrant uncertainty mark can run inside an injected writer.
+        # Its sticky state must not be hidden by an otherwise successful write.
+        _require(not self._uncertain or row["state"] == "uncertain")
+
+    def spawn_intent(self, ticket, spawn_id, purpose):
+        """Persist a child intent before the caller performs any external action."""
+        with self._spawn_transition_lock():
+            _require(not self._uncertain)
+            operation = self._check_ticket(ticket)
+            _require(operation["outcome"] is None
+                     and operation["phase"] not in _OUTCOMES
+                     and operation["phase"] != "shutdown_pending")
+            _require(_token(spawn_id, _ID))
+            _require(type(purpose) is str and purpose in _PURPOSES)
+            # Also refuses stray atomic temp files, population overflow and bad views.
+            view = self.inventory()
+            _require(spawn_id not in view.spawns)
+            row = {"version": 1, "spawn_id": spawn_id,
+                   "binding": operation["binding"].copy(), "purpose": purpose,
+                   "state": "intent", "identity": None}
+            self.validate_spawn(row, spawn_id=spawn_id)
+            _require(sum(item["binding"]["request_id"] == ticket.request_id
+                         for item in view.spawns.values()) < 64)
+            self._write_spawn(row)
+            handle = SpawnHandle(spawn_id, ticket.request_id, ticket.binding, purpose)
+            self._handles.add(handle)
+            return handle
+
+    def spawn_owned(self, handle, identity):
+        """Record caller-acquired identity; no ownership from an unknown identity."""
+        _require(type(handle) is SpawnHandle and handle in self._handles)
+        try:
+            with self._spawn_transition_lock():
+                _require(not self._uncertain)
+                row = self._spawn_row(handle)
+                _require(row["state"] == "intent" and row["identity"] is None)
+                self._validate_identity(identity)
+                self._write_spawn({**row, "state": "owned", "identity": identity})
+        except Exception:
+            self._uncertain = True
+            raise
+
+    def spawn_closed(self, handle, identity, *, cleanup_proven):
+        """Close only after the caller proves cleanup of the exact owned identity."""
+        _require(type(handle) is SpawnHandle and handle in self._handles)
+        _require(cleanup_proven is True)
+        self._validate_identity(identity)
+        try:
+            with self._spawn_transition_lock():
+                _require(not self._uncertain)
+                row = self._spawn_row(handle)
+                _require(row["state"] == "owned" and row["identity"] == identity)
+                self._write_spawn({**row, "state": "closed"})
+        except Exception:
+            self._uncertain = True
+            raise
+
+    def mark_uncertain(self, handle):
+        """Retain an interrupted intent or owned identity without granting control."""
+        _require(type(handle) is SpawnHandle and handle in self._handles)
+        self._uncertain = True
+        with self._spawn_transition_lock():
+            row = self._spawn_row(handle)
+            _require(row["state"] in ("intent", "owned", "uncertain"))
+            if row["state"] != "uncertain":
+                self._write_spawn({**row, "state": "uncertain"})
 
     def validate_binding(self, value):
         _keys(value, _BINDING)
@@ -174,15 +365,19 @@ class RecoveryStore:
         if identity is None:
             _require(value["state"] in ("intent", "uncertain"))
         else:
-            _keys(identity, _IDENTITY)
-            _require(type(identity["pid"]) is int and identity["pid"] > 0
-                     and type(identity["uid"]) is int and identity["uid"] >= 0
-                     and type(identity["pgid"]) is int and identity["pgid"] > 0)
-            birth = identity["birth"]
-            _require(type(birth) is list and len(birth) == 2
-                     and type(birth[0]) is int and birth[0] > 0
-                     and type(birth[1]) is int and 0 <= birth[1] < 1000000)
+            self._validate_identity(identity)
         return value
+
+    @staticmethod
+    def _validate_identity(identity):
+        _keys(identity, _IDENTITY)
+        _require(type(identity["pid"]) is int and identity["pid"] > 0
+                 and type(identity["uid"]) is int and identity["uid"] >= 0
+                 and type(identity["pgid"]) is int and identity["pgid"] > 0)
+        birth = identity["birth"]
+        _require(type(birth) is list and len(birth) == 2
+                 and type(birth[0]) is int and birth[0] > 0
+                 and type(birth[1]) is int and 0 <= birth[1] < 1000000)
 
     def validate_fence(self, value):
         _keys(value, _FENCE)

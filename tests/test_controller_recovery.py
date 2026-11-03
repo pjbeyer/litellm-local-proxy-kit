@@ -4,7 +4,10 @@ import copy
 import importlib.util
 import json
 import os
+import fcntl
 from pathlib import Path
+import threading
+import time
 
 import pytest
 
@@ -666,3 +669,568 @@ def test_schema_canary_scope_contents_refuse_until_receipt_schema(tmp_path):
     write(tmp_path / "state/canary" / RID / "worker.json", {})
     with pytest.raises(RecoveryError):
         journal.inventory()
+
+
+def _spawn_ready(tmp_path, *, atomic_json=engine.atomic_json, sync_fd=engine._sync_fd):
+    from core.restart_control.recovery import RecoveryStore
+    journal = store(tmp_path)
+    state = tmp_path / "state"
+    engine.atomic_json(state / "recovery/operations" / (RID + ".json"), operation())
+    if atomic_json is not engine.atomic_json or sync_fd is not engine._sync_fd:
+        journal = RecoveryStore(state, read_json=engine._read_json,
+                                atomic_json=atomic_json, private_path=engine._private_path,
+                                private_dir=engine.private_dir, sync_fd=sync_fd)
+    return journal, state
+
+
+def test_spawn_intent_is_durable_before_outside_action_and_identity_follows(tmp_path):
+    journal, state = _spawn_ready(tmp_path)
+    ticket = journal.operation_ticket(RID)
+    handle = journal.spawn_intent(ticket, SID, "candidate")
+
+    def outside_action():
+        assert load(state).inventory().spawns[SID] == {
+            "version": 1, "spawn_id": SID, "binding": binding(),
+            "purpose": "candidate", "state": "intent", "identity": None}
+        return copy.deepcopy(spawn()["identity"])
+
+    identity = outside_action()
+    journal.spawn_owned(handle, identity)
+    assert load(state).inventory().spawns[SID] == spawn()
+    journal.spawn_closed(handle, identity, cleanup_proven=True)
+    assert load(state).inventory().spawns[SID]["state"] == "closed"
+
+
+def test_spawn_intent_without_identity_cannot_be_owned_or_closed(tmp_path):
+    from core.restart_control.recovery import RecoveryError
+    journal, state = _spawn_ready(tmp_path)
+    handle = journal.spawn_intent(journal.operation_ticket(RID), SID, "candidate")
+    with pytest.raises(RecoveryError):
+        journal.spawn_closed(handle, spawn()["identity"], cleanup_proven=True)
+    with pytest.raises(RecoveryError):
+        journal.spawn_owned(handle, None)
+    assert load(state).inventory().spawns[SID]["state"] == "intent"
+    assert load(state).inventory().spawns[SID]["identity"] is None
+
+
+def test_spawn_exact_operation_handle_binding_and_order(tmp_path):
+    from dataclasses import replace
+    from core.restart_control.recovery import RecoveryError
+    journal, state = _spawn_ready(tmp_path)
+    ticket = journal.operation_ticket(RID)
+    other = operation()
+    other["binding"]["request_id"] = "d" * 32
+    engine.atomic_json(state / "recovery/operations" / ("d" * 32 + ".json"), other)
+    other_ticket = journal.operation_ticket("d" * 32)
+    with pytest.raises(RecoveryError):
+        journal.spawn_intent(replace(ticket, request_id="d" * 32), SID, "candidate")
+    handle = journal.spawn_intent(ticket, SID, "candidate")
+    for bad in (replace(handle, spawn_id="e" * 32),
+                replace(handle, binding=other_ticket.binding),
+                replace(handle, purpose="diagnostic")):
+        with pytest.raises(RecoveryError):
+            journal.spawn_owned(bad, spawn()["identity"])
+    with pytest.raises(RecoveryError):
+        journal.spawn_intent(ticket, SID, "candidate")
+    other_store = load(state)
+    with pytest.raises(RecoveryError):
+        other_store.spawn_owned(handle, spawn()["identity"])
+    changed = operation()
+    changed["binding"]["controller_epoch"] = "e" * 32
+    engine.atomic_json(state / "recovery/operations" / (RID + ".json"), changed)
+    with pytest.raises(RecoveryError):
+        journal.spawn_owned(handle, spawn()["identity"])
+    assert engine._read_json(state / "recovery/spawns" / (SID + ".json"))["state"] == "intent"
+
+
+@pytest.mark.parametrize("fault", ["before", "after"])
+def test_spawn_intent_write_fault_never_invokes_action(tmp_path, fault):
+    from core.restart_control.recovery import RecoveryError
+    def failing_atomic(path, value):
+        if fault == "before":
+            raise OSError("injected")
+        engine.atomic_json(path, value)
+        raise OSError("injected")
+    journal, state = _spawn_ready(tmp_path, atomic_json=failing_atomic)
+    called = []
+    with pytest.raises(RecoveryError):
+        handle = journal.spawn_intent(journal.operation_ticket(RID), SID, "candidate")
+        called.append(handle)
+    assert called == []
+    if fault == "after":
+        assert load(state).inventory().spawns[SID]["state"] == "intent"
+    assert journal.uncertain is True
+    with pytest.raises(RecoveryError):
+        journal.spawn_intent(journal.operation_ticket(RID), "e" * 32, "candidate")
+
+
+@pytest.mark.parametrize("fault", ["before", "after"])
+def test_spawn_identity_write_fault_retains_uncertainty(tmp_path, fault):
+    from core.restart_control.recovery import RecoveryError
+    writes = 0
+    def failing_atomic(path, value):
+        nonlocal writes
+        writes += 1
+        if writes == 2 and fault == "before":
+            raise OSError("injected")
+        engine.atomic_json(path, value)
+        if writes == 2:
+            raise OSError("injected")
+    journal, state = _spawn_ready(tmp_path, atomic_json=failing_atomic)
+    handle = journal.spawn_intent(journal.operation_ticket(RID), SID, "candidate")
+    with pytest.raises(RecoveryError):
+        journal.spawn_owned(handle, spawn()["identity"])
+    assert journal.uncertain is True
+    assert load(state).inventory().spawns[SID]["state"] in ("intent", "owned")
+    with pytest.raises(RecoveryError):
+        journal.spawn_closed(handle, spawn()["identity"], cleanup_proven=True)
+
+
+@pytest.mark.parametrize("point", ["file_sync", "before_replace", "after_replace",
+                                   "directory_sync"])
+def test_spawn_identity_atomic_fault_points_keep_durable_uncertainty(tmp_path, monkeypatch,
+                                                                     point):
+    from core.restart_control.recovery import RecoveryError
+    journal, state = _spawn_ready(tmp_path)
+    handle = journal.spawn_intent(journal.operation_ticket(RID), SID, "candidate")
+    original_sync = engine._sync_fd
+    original_replace = os.replace
+    sync_calls = 0
+
+    def sync_fault(fd):
+        nonlocal sync_calls
+        sync_calls += 1
+        if (point == "file_sync" and sync_calls == 1) or (
+                point == "directory_sync" and sync_calls == 2):
+            raise OSError("injected")
+        original_sync(fd)
+
+    def replace_fault(src, dst):
+        if point == "before_replace":
+            raise OSError("injected")
+        original_replace(src, dst)
+        if point == "after_replace":
+            raise OSError("injected")
+
+    monkeypatch.setattr(engine, "_sync_fd", sync_fault)
+    monkeypatch.setattr(os, "replace", replace_fault)
+    with pytest.raises(RecoveryError):
+        journal.spawn_owned(handle, spawn()["identity"])
+    assert journal.uncertain is True
+    row = load(state).inventory().spawns[SID]
+    assert row["state"] == ("owned" if point in ("after_replace", "directory_sync")
+                            else "intent")
+
+
+def test_spawn_mark_uncertain_preserves_identity_and_refuses_reopening(tmp_path):
+    from core.restart_control.recovery import RecoveryError
+    journal, state = _spawn_ready(tmp_path)
+    handle = journal.spawn_intent(journal.operation_ticket(RID), SID, "candidate")
+    journal.spawn_owned(handle, spawn()["identity"])
+    journal.mark_uncertain(handle)
+    row = load(state).inventory().spawns[SID]
+    assert row["state"] == "uncertain" and row["identity"] == spawn()["identity"]
+    with pytest.raises(RecoveryError):
+        journal.spawn_closed(handle, spawn()["identity"], cleanup_proven=True)
+    with pytest.raises(RecoveryError):
+        journal.spawn_owned(handle, spawn()["identity"])
+
+
+def test_spawn_close_requires_exact_identity_and_cleanup_proof(tmp_path):
+    from core.restart_control.recovery import RecoveryError
+    journal, state = _spawn_ready(tmp_path)
+    handle = journal.spawn_intent(journal.operation_ticket(RID), SID, "candidate")
+    identity = spawn()["identity"]
+    journal.spawn_owned(handle, identity)
+    with pytest.raises(RecoveryError):
+        journal.spawn_closed(handle, identity, cleanup_proven=False)
+    assert load(state).inventory().spawns[SID]["state"] == "owned"
+    journal.spawn_closed(handle, identity, cleanup_proven=True)
+    with pytest.raises(RecoveryError):
+        journal.spawn_owned(handle, identity)
+    with pytest.raises(RecoveryError):
+        journal.spawn_closed(handle, identity, cleanup_proven=True)
+    with pytest.raises(RecoveryError):
+        journal.spawn_intent(journal.operation_ticket(RID), SID, "candidate")
+
+
+def test_valid_close_missing_spawn_record_latches_even_when_inventory_is_empty(tmp_path):
+    from core.restart_control.recovery import RecoveryError
+    journal, state = _spawn_ready(tmp_path)
+    handle = journal.spawn_intent(journal.operation_ticket(RID), SID, "candidate")
+    identity = spawn()["identity"]
+    journal.spawn_owned(handle, identity)
+    (state / "recovery/spawns" / (SID + ".json")).unlink()
+
+    with pytest.raises(RecoveryError):
+        journal.spawn_closed(handle, identity, cleanup_proven=True)
+    assert journal.uncertain is True
+    assert load(state).inventory().spawns == {}
+    with pytest.raises(RecoveryError):
+        journal.spawn_intent(journal.operation_ticket(RID), "e" * 32, "candidate")
+
+
+def test_valid_close_unreadable_spawn_record_latches(tmp_path):
+    from core.restart_control.recovery import RecoveryError, RecoveryStore
+    _, state = _spawn_ready(tmp_path)
+    spawn_path = state / "recovery/spawns" / (SID + ".json")
+    unreadable = False
+
+    def read_json(path):
+        if unreadable and path == spawn_path:
+            raise OSError("injected read failure")
+        return engine._read_json(path)
+
+    journal = RecoveryStore(state, read_json=read_json, atomic_json=engine.atomic_json,
+                            private_path=engine._private_path, private_dir=engine.private_dir,
+                            sync_fd=engine._sync_fd)
+    handle = journal.spawn_intent(journal.operation_ticket(RID), SID, "candidate")
+    identity = spawn()["identity"]
+    journal.spawn_owned(handle, identity)
+    unreadable = True
+    with pytest.raises(RecoveryError):
+        journal.spawn_closed(handle, identity, cleanup_proven=True)
+    unreadable = False
+    assert journal.uncertain is True
+    assert load(state).inventory().spawns[SID]["state"] == "owned"
+    with pytest.raises(RecoveryError):
+        journal.spawn_intent(journal.operation_ticket(RID), "e" * 32, "candidate")
+
+
+def test_valid_close_lock_timeout_latches_uncertainty(tmp_path):
+    from core.restart_control.recovery import RecoveryError
+    journal, state = _spawn_ready(tmp_path)
+    handle = journal.spawn_intent(journal.operation_ticket(RID), SID, "candidate")
+    identity = spawn()["identity"]
+    journal.spawn_owned(handle, identity)
+    fd = os.open(state, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        start = time.monotonic()
+        with pytest.raises(RecoveryError):
+            journal.spawn_closed(handle, identity, cleanup_proven=True)
+        assert time.monotonic() - start < 1.5
+    finally:
+        os.close(fd)
+    assert journal.uncertain is True
+    assert load(state).inventory().spawns[SID]["state"] == "owned"
+    with pytest.raises(RecoveryError):
+        journal.spawn_intent(journal.operation_ticket(RID), "e" * 32, "candidate")
+
+
+def test_invalid_close_handle_does_not_poison_valid_store(tmp_path):
+    from dataclasses import replace
+    from core.restart_control.recovery import RecoveryError
+    journal, state = _spawn_ready(tmp_path)
+    handle = journal.spawn_intent(journal.operation_ticket(RID), SID, "candidate")
+    identity = spawn()["identity"]
+    journal.spawn_owned(handle, identity)
+    with pytest.raises(RecoveryError):
+        journal.spawn_closed(replace(handle), identity, cleanup_proven=True)
+    with pytest.raises(RecoveryError):
+        load(state).spawn_closed(handle, identity, cleanup_proven=True)
+    assert journal.uncertain is False
+    journal.spawn_closed(handle, identity, cleanup_proven=True)
+    assert load(state).inventory().spawns[SID]["state"] == "closed"
+
+
+def test_reentrant_uncertainty_during_close_remains_sticky(tmp_path):
+    from core.restart_control.recovery import RecoveryError, RecoveryStore
+    _, state = _spawn_ready(tmp_path)
+    handle = None
+
+    def atomic_with_reentrant_mark(path, row):
+        if row["state"] == "closed":
+            with pytest.raises(RecoveryError):
+                journal.mark_uncertain(handle)
+        engine.atomic_json(path, row)
+
+    journal = RecoveryStore(state, read_json=engine._read_json,
+                            atomic_json=atomic_with_reentrant_mark,
+                            private_path=engine._private_path,
+                            private_dir=engine.private_dir, sync_fd=engine._sync_fd)
+    handle = journal.spawn_intent(journal.operation_ticket(RID), SID, "candidate")
+    identity = spawn()["identity"]
+    journal.spawn_owned(handle, identity)
+    with pytest.raises(RecoveryError):
+        journal.spawn_closed(handle, identity, cleanup_proven=True)
+    assert journal.uncertain is True
+    assert load(state).inventory().spawns[SID]["state"] == "closed"
+    with pytest.raises(RecoveryError):
+        journal.spawn_intent(journal.operation_ticket(RID), "e" * 32, "candidate")
+
+
+@pytest.mark.parametrize("field,value", [("pid", 12.0), ("uid", True),
+                                            ("pgid", 12.0), ("birth", [True, 0])])
+def test_spawn_close_rejects_equal_numeric_lookalikes(tmp_path, field, value):
+    from core.restart_control.recovery import RecoveryError
+    journal, state = _spawn_ready(tmp_path)
+    handle = journal.spawn_intent(journal.operation_ticket(RID), SID, "candidate")
+    identity = spawn()["identity"]
+    journal.spawn_owned(handle, identity)
+    with pytest.raises(RecoveryError):
+        journal.spawn_closed(handle, {**identity, field: value}, cleanup_proven=True)
+    assert load(state).inventory().spawns[SID]["state"] == "owned"
+
+
+def test_spawn_owned_invalid_observation_sticks_uncertainty(tmp_path):
+    from core.restart_control.recovery import RecoveryError
+    journal, state = _spawn_ready(tmp_path)
+    handle = journal.spawn_intent(journal.operation_ticket(RID), SID, "candidate")
+    with pytest.raises(RecoveryError):
+        journal.spawn_owned(handle, {**spawn()["identity"], "pid": True})
+    assert journal.uncertain is True
+    assert load(state).inventory().spawns[SID]["state"] == "intent"
+
+
+def test_spawn_owned_row_state_failure_sticks_uncertainty(tmp_path):
+    from core.restart_control.recovery import RecoveryError
+    journal, state = _spawn_ready(tmp_path)
+    handle = journal.spawn_intent(journal.operation_ticket(RID), SID, "candidate")
+    identity = spawn()["identity"]
+    journal.spawn_owned(handle, identity)
+    with pytest.raises(RecoveryError):
+        journal.spawn_owned(handle, identity)
+    assert journal.uncertain is True
+    assert load(state).inventory().spawns[SID]["state"] == "owned"
+    with pytest.raises(RecoveryError):
+        journal.spawn_intent(journal.operation_ticket(RID), "e" * 32, "candidate")
+
+
+def test_invalid_spawn_owned_handle_does_not_poison_valid_handle(tmp_path):
+    from dataclasses import replace
+    from core.restart_control.recovery import RecoveryError
+    journal, state = _spawn_ready(tmp_path)
+    handle = journal.spawn_intent(journal.operation_ticket(RID), SID, "candidate")
+    with pytest.raises(RecoveryError):
+        journal.spawn_owned(replace(handle), spawn()["identity"])
+    with pytest.raises(RecoveryError):
+        load(state).spawn_owned(handle, spawn()["identity"])
+    assert journal.uncertain is False
+    identity = spawn()["identity"]
+    journal.spawn_owned(handle, identity)
+    journal.spawn_closed(handle, identity, cleanup_proven=True)
+    assert load(state).inventory().spawns[SID]["state"] == "closed"
+
+
+def test_mark_uncertain_sticks_before_missing_row_read(tmp_path):
+    from core.restart_control.recovery import RecoveryError
+    journal, state = _spawn_ready(tmp_path)
+    handle = journal.spawn_intent(journal.operation_ticket(RID), SID, "candidate")
+    (state / "recovery/spawns" / (SID + ".json")).unlink()
+    with pytest.raises(RecoveryError):
+        journal.mark_uncertain(handle)
+    assert journal.uncertain is True
+
+
+@pytest.mark.parametrize("phase,outcome", [("prepared", "prepared"),
+                                            ("restarted", "restarted")])
+def test_terminal_or_prepared_operation_refuses_child_intent(tmp_path, phase, outcome):
+    from core.restart_control.recovery import RecoveryError
+    journal, state = _spawn_ready(tmp_path)
+    terminal = operation()
+    terminal.update(phase=phase, outcome=outcome)
+    engine.atomic_json(state / "recovery/operations" / (RID + ".json"), terminal)
+    with pytest.raises(RecoveryError):
+        journal.spawn_intent(journal.operation_ticket(RID), SID, "candidate")
+    assert load(state).inventory().spawns == {}
+
+
+@pytest.mark.parametrize("phase,kind,purpose", [
+    ("prepared", "proxy", "candidate"),
+    ("blocked", "proxy", "candidate"),
+    ("restarted", "proxy", "candidate"),
+    ("rolled_back", "proxy", "candidate"),
+    ("manual_recovery_required", "proxy", "candidate"),
+    ("shutdown_pending", "proxy", "candidate"),
+    ("canary_passed", "platform-canary", "canary-query"),
+    ("canary_blocked", "platform-canary", "canary-query"),
+])
+def test_null_outcome_terminal_or_stopped_operation_refuses_child_intent(
+        tmp_path, phase, kind, purpose):
+    from core.restart_control.recovery import RecoveryError
+    journal, state = _spawn_ready(tmp_path)
+    row = operation()
+    row.update(binding=binding(kind, frozen=kind == "proxy"), phase=phase,
+               outcome=None)
+    assert journal.validate_operation(row) == row
+    engine.atomic_json(state / "recovery/operations" / (RID + ".json"), row)
+    with pytest.raises(RecoveryError):
+        journal.spawn_intent(journal.operation_ticket(RID), SID, purpose)
+    assert load(state).inventory().spawns == {}
+
+
+@pytest.mark.parametrize("phase,kind,purpose", [
+    ("preparing", "proxy", "candidate"),
+    ("canary_running", "platform-canary", "canary-query"),
+])
+def test_active_null_outcome_operation_allows_child_intent(tmp_path, phase, kind, purpose):
+    journal, state = _spawn_ready(tmp_path)
+    row = operation()
+    row.update(binding=binding(kind, frozen=kind == "proxy"), phase=phase)
+    engine.atomic_json(state / "recovery/operations" / (RID + ".json"), row)
+    handle = journal.spawn_intent(journal.operation_ticket(RID), SID, purpose)
+    assert handle.spawn_id == SID
+    assert load(state).inventory().spawns[SID]["state"] == "intent"
+
+
+@pytest.mark.parametrize("point", ["file_sync", "before_replace", "after_replace",
+                                   "directory_sync"])
+def test_spawn_intent_atomic_fault_preserves_pending_precursor(tmp_path, monkeypatch, point):
+    from core.restart_control.recovery import RecoveryError
+    journal, state = _spawn_ready(tmp_path)
+    original_sync, original_replace = engine._sync_fd, os.replace
+    sync_calls = 0
+
+    def sync_fault(fd):
+        nonlocal sync_calls
+        sync_calls += 1
+        if (point == "file_sync" and sync_calls == 1) or (
+                point == "directory_sync" and sync_calls == 2):
+            raise OSError("injected")
+        original_sync(fd)
+
+    def replace_fault(src, dst):
+        if point == "before_replace":
+            raise OSError("injected")
+        original_replace(src, dst)
+        if point == "after_replace":
+            raise OSError("injected")
+
+    monkeypatch.setattr(engine, "_sync_fd", sync_fault)
+    monkeypatch.setattr(os, "replace", replace_fault)
+    called = []
+    with pytest.raises(RecoveryError):
+        handle = journal.spawn_intent(journal.operation_ticket(RID), SID, "candidate")
+        called.append(handle)
+    assert called == []
+    assert journal.uncertain is True
+    fresh = load(state).inventory()
+    assert fresh.operations[RID]["outcome"] is None
+    assert fresh.operations[RID]["phase"] == "preparing"
+    if point in ("file_sync", "before_replace"):
+        assert SID not in fresh.spawns
+    else:
+        assert fresh.spawns[SID]["state"] == "intent"
+
+
+def test_directory_fd_lock_excludes_distinct_descriptors(tmp_path):
+    root = tmp_path / "private"
+    engine.private_dir(root)
+    first = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+    second = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        fcntl.flock(first, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(BlockingIOError):
+            fcntl.flock(second, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(first, fcntl.LOCK_UN)
+        fcntl.flock(second, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    finally:
+        os.close(first)
+        os.close(second)
+
+
+def test_spawn_lock_contention_refuses_within_bound(tmp_path):
+    from core.restart_control.recovery import RecoveryError
+    journal, state = _spawn_ready(tmp_path)
+    fd = os.open(state, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        start = time.monotonic()
+        with pytest.raises(RecoveryError):
+            journal.spawn_intent(journal.operation_ticket(RID), SID, "candidate")
+        assert time.monotonic() - start < 1.5
+    finally:
+        os.close(fd)
+    assert load(state).inventory().spawns == {}
+
+
+def test_spawn_owned_lock_contention_sticks_uncertainty(tmp_path):
+    from core.restart_control.recovery import RecoveryError
+    journal, state = _spawn_ready(tmp_path)
+    handle = journal.spawn_intent(journal.operation_ticket(RID), SID, "candidate")
+    fd = os.open(state, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        start = time.monotonic()
+        with pytest.raises(RecoveryError):
+            journal.spawn_owned(handle, spawn()["identity"])
+        assert time.monotonic() - start < 1.5
+    finally:
+        os.close(fd)
+    assert journal.uncertain is True
+    assert load(state).inventory().spawns[SID]["state"] == "intent"
+    with pytest.raises(RecoveryError):
+        journal.spawn_intent(journal.operation_ticket(RID), "e" * 32, "candidate")
+
+
+def test_reentrant_uncertainty_cannot_be_swallowed_by_identity_write(tmp_path):
+    from core.restart_control.recovery import RecoveryError, RecoveryStore
+    _, state = _spawn_ready(tmp_path)
+    handle = None
+
+    def atomic_with_reentrant_mark(path, row):
+        if row["state"] == "owned":
+            with pytest.raises(RecoveryError):
+                journal.mark_uncertain(handle)
+        engine.atomic_json(path, row)
+
+    journal = RecoveryStore(state, read_json=engine._read_json,
+                            atomic_json=atomic_with_reentrant_mark,
+                            private_path=engine._private_path,
+                            private_dir=engine.private_dir, sync_fd=engine._sync_fd)
+    handle = journal.spawn_intent(journal.operation_ticket(RID), SID, "candidate")
+    with pytest.raises(RecoveryError):
+        journal.spawn_owned(handle, spawn()["identity"])
+    assert journal.uncertain is True
+    assert load(state).inventory().spawns[SID]["identity"] == spawn()["identity"]
+
+
+@pytest.mark.parametrize("distinct_stores", [False, True])
+def test_same_spawn_id_transition_is_serialized_and_closed_record_stays_closed(tmp_path,
+                                                                                 distinct_stores):
+    from core.restart_control.recovery import RecoveryError, RecoveryStore
+    journal, state = _spawn_ready(tmp_path)
+    entered = threading.Event()
+    second_done = threading.Event()
+    outcomes = []
+    errors = []
+    original_atomic = engine.atomic_json
+
+    def delayed_first(path, row):
+        if row.get("state") == "intent" and threading.current_thread().name == "first":
+            entered.set()
+            second_done.wait(0.2)
+        original_atomic(path, row)
+
+    first_store = RecoveryStore(state, read_json=engine._read_json,
+                                atomic_json=delayed_first, private_path=engine._private_path,
+                                private_dir=engine.private_dir, sync_fd=engine._sync_fd)
+    second_store = load(state) if distinct_stores else first_store
+    first_ticket = first_store.operation_ticket(RID)
+    second_ticket = second_store.operation_ticket(RID)
+
+    def run(store, ticket, tag):
+        try:
+            handle = store.spawn_intent(ticket, SID, "candidate")
+            store.spawn_owned(handle, spawn()["identity"])
+            store.spawn_closed(handle, spawn()["identity"], cleanup_proven=True)
+            outcomes.append(tag)
+        except RecoveryError:
+            errors.append(tag)
+        finally:
+            if tag == "second":
+                second_done.set()
+
+    first = threading.Thread(target=run, args=(first_store, first_ticket, "first"),
+                             name="first", daemon=True)
+    second = threading.Thread(target=run, args=(second_store, second_ticket, "second"),
+                              name="second", daemon=True)
+    first.start()
+    assert entered.wait(1)
+    second.start()
+    first.join(2)
+    second.join(2)
+    assert not first.is_alive() and not second.is_alive()
+    assert len(outcomes) == 1 and len(errors) == 1
+    assert load(state).inventory().spawns[SID]["state"] == "closed"
