@@ -1,0 +1,19 @@
+docs/native-runtime-artifact-contract.md
+  s_039ee6aa9f3c63::t_ef72aabe2b2dd2 97-134
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "aee69ab86ad3d001a975d7ae459182a224aa53b4",
+  "prompts": {},
+  "sessions": {
+    "s_039ee6aa9f3c63": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261101_210254_0237ce",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
