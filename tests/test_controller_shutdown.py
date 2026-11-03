@@ -6,10 +6,13 @@ simulated in-handler calls and threads, never delivered OS signals.
 """
 
 import importlib.util
+import dataclasses
 import math
+import sys
 import threading
 import time
 from types import SimpleNamespace
+import weakref
 
 import pytest
 
@@ -458,7 +461,222 @@ def test_remaining_limit_validation_fails_closed():
             latch.wait(bad)
 
 
-def test_commit_is_deferred_to_t002():
+def test_commitment_permit_is_bound_immutable_and_one_use():
     from core.restart_control.shutdown import Shutdown
     latch = Shutdown(clock=lambda: 0.0)
-    assert not hasattr(latch, "commit")
+    assert callable(getattr(latch, "commit", None)), "commit API missing"
+    permit = latch.commit("candidate-create")
+    assert permit.purpose == "candidate-create"
+    with pytest.raises((AttributeError, TypeError)):
+        permit.purpose = "primary-stop"
+    with pytest.raises((AttributeError, TypeError)):
+        permit.extra = "action"
+    other = Shutdown(clock=lambda: 0.0)
+    with pytest.raises(ValueError, match="permit_invalid"):
+        other.claim(permit)
+    assert latch.claim(permit) == "candidate-create"
+    with pytest.raises(ValueError, match="permit_consumed"):
+        latch.claim(permit)
+
+
+def test_permit_import_and_claim_with_python310_dataclass_signature(monkeypatch):
+    """The isolated decorator shim accepts exactly Python 3.10 keywords."""
+    from core.restart_control import shutdown as current_module
+
+    real_dataclass = dataclasses.dataclass
+
+    def python310_dataclass(cls=None, /, *, init=True, repr=True, eq=True,
+                            order=False, unsafe_hash=False, frozen=False,
+                            match_args=True, kw_only=False, slots=False):
+        return real_dataclass(cls, init=init, repr=repr, eq=eq, order=order,
+                              unsafe_hash=unsafe_hash, frozen=frozen,
+                              match_args=match_args, kw_only=kw_only, slots=slots)
+
+    name = "core.restart_control._shutdown_python310_probe"
+    spec = importlib.util.spec_from_file_location(name, current_module.__file__)
+    assert spec is not None and spec.loader is not None
+    isolated = importlib.util.module_from_spec(spec)
+    import_error = None
+    with monkeypatch.context() as patch:
+        patch.setitem(sys.modules, name, isolated)
+        patch.setattr(dataclasses, "dataclass", python310_dataclass)
+        try:
+            spec.loader.exec_module(isolated)
+        except TypeError as exc:
+            import_error = exc
+    assert import_error is None, f"Python 3.10 dataclass import rejected: {import_error}"
+
+    latch = isolated.Shutdown(clock=lambda: 0.0)
+    permit = latch.commit("primary-stop")
+    assert weakref.ref(permit)() is permit
+    latch.request()
+    assert latch.claim(permit) == "primary-stop"
+    with pytest.raises(ValueError, match="permit_consumed"):
+        latch.claim(permit)
+
+
+def test_request_during_permit_allocation_keeps_commitment_claimable(monkeypatch):
+    from core.restart_control import shutdown as module
+    latch = module.Shutdown(clock=lambda: 0.0)
+    permit_type = module._ActionPermit
+
+    def request_during_allocation(purpose, issuer):
+        latch.request()  # immediately after commit's final shutdown-open read
+        return permit_type(purpose, issuer)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(module, "_ActionPermit", request_during_allocation)
+        permit = latch.commit("primary-stop")
+
+    assert latch.requested
+    assert latch.claim(permit) == "primary-stop"
+    with pytest.raises(module.ShutdownRequested, match="controller_stopping"):
+        latch.commit("primary-start")
+
+
+def test_concurrent_claim_of_one_permit_has_exactly_one_winner():
+    from core.restart_control.shutdown import Shutdown
+    latch = Shutdown(clock=lambda: 0.0)
+    permit = latch.commit("primary-stop")
+    barrier = threading.Barrier(9)
+    outcomes = []
+    unexpected = []
+
+    def claim_once():
+        try:
+            barrier.wait(timeout=0.75)
+            outcomes.append(("success", latch.claim(permit)))
+        except ValueError as exc:
+            outcomes.append(("closed", str(exc)))
+        except BaseException as exc:
+            unexpected.append(exc)
+
+    threads = [threading.Thread(target=claim_once, daemon=True) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    barrier.wait(timeout=0.75)
+    deadline = time.monotonic() + 0.75
+    for thread in threads:
+        thread.join(max(0, deadline - time.monotonic()))
+
+    assert all(not thread.is_alive() for thread in threads), "claim race did not finish"
+    assert unexpected == []
+    assert outcomes.count(("success", "primary-stop")) == 1
+    assert outcomes.count(("closed", "permit_consumed")) == 7
+
+
+def test_commitment_latch_first_refuses_without_action():
+    from core.restart_control.shutdown import Shutdown, ShutdownRequested
+    latch = Shutdown(clock=lambda: 0.0)
+    actions = []
+    latch.request()
+    with pytest.raises(ShutdownRequested, match="controller_stopping"):
+        permit = latch.commit("primary-stop")
+        actions.append(latch.claim(permit))
+    assert actions == []
+
+
+def test_commitment_before_latch_allows_only_its_action_to_finish():
+    from core.restart_control.shutdown import Shutdown, ShutdownRequested
+    latch = Shutdown(clock=lambda: 0.0)
+    committed = threading.Event()
+    finish = threading.Event()
+    actions = []
+    errors = []
+
+    def submit():
+        try:
+            permit = latch.commit("primary-stop")
+            committed.set()
+            assert finish.wait(0.75), "test submission release timed out"
+            actions.append(latch.claim(permit))
+        except BaseException as exc:
+            errors.append(exc)
+
+    worker = threading.Thread(target=submit, daemon=True)
+    worker.start()
+    try:
+        assert committed.wait(0.75), "commitment did not complete"
+        latch.request()
+        with pytest.raises(ShutdownRequested, match="controller_stopping"):
+            latch.commit("primary-start")
+    finally:
+        finish.set()
+        worker.join(0.75)
+    assert not worker.is_alive(), "submission stand-in did not finish"
+    assert errors == []
+    assert actions == ["primary-stop"]
+
+
+def test_commitment_request_does_not_wait_for_submission_gate():
+    from core.restart_control.shutdown import Shutdown, ShutdownRequested
+    latch = Shutdown(clock=lambda: 0.0)
+    errors = []
+
+    def stop():
+        try:
+            latch.request()
+        except BaseException as exc:
+            errors.append(exc)
+
+    assert hasattr(latch, "_submission_gate"), "submission gate missing"
+    with latch._submission_gate:
+        worker = threading.Thread(target=stop, daemon=True)
+        worker.start()
+        worker.join(0.3)
+        assert not worker.is_alive(), "request waited for submission gate"
+    assert errors == []
+    assert latch.requested
+    with pytest.raises(ShutdownRequested):
+        latch.commit("primary-stop")
+
+
+def test_commitment_waiting_on_gate_refuses_when_latch_wins():
+    from core.restart_control.shutdown import Shutdown, ShutdownRequested
+    latch = Shutdown(clock=lambda: 0.0)
+    entered = threading.Event()
+    outcomes = []
+
+    def attempt():
+        entered.set()
+        try:
+            outcomes.append(latch.commit("primary-stop"))
+        except ShutdownRequested:
+            outcomes.append("stopped")
+
+    with latch._submission_gate:
+        worker = threading.Thread(target=attempt, daemon=True)
+        worker.start()
+        assert entered.wait(0.75)
+        latch.request()
+    worker.join(0.75)
+    assert not worker.is_alive(), "commitment did not resolve"
+    assert outcomes == ["stopped"]
+
+
+def test_commitment_rejects_nonprimitive_or_unbounded_purpose():
+    from core.restart_control.shutdown import Shutdown
+    latch = Shutdown(clock=lambda: 0.0)
+    for bad in (None, True, 1, b"primary-stop", "", "A", "has space",
+                "a/b", "a\ncommand", "a" * 65):
+        with pytest.raises(ValueError, match="purpose_invalid"):
+            latch.commit(bad)
+    assert latch.commit("a" * 64).purpose == "a" * 64
+
+
+def test_commitment_clock_reentry_cannot_admit_after_latch():
+    from core.restart_control.shutdown import Shutdown, ShutdownRequested
+    holder = []
+    fired = [False]
+
+    def clock():
+        if holder and not fired[0]:
+            fired[0] = True
+            holder[0].request()
+        return 0.0
+
+    latch = Shutdown(clock=clock)
+    holder.append(latch)
+    with pytest.raises(ShutdownRequested, match="controller_stopping"):
+        latch.commit("primary-stop")
+    assert latch.requested

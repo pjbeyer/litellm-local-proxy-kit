@@ -10,8 +10,8 @@ never a fresh budget per worker or phase.
 No dependency on engine/runtime; no credentials, environment knobs or I/O.
 Production constants are fixed at import time; there are no environment
 overrides and no configurable production budgets. Tests may inject a
-monotonic clock. ``commit(purpose)`` (ordered one-use permit) is a separate
-concern (T002) and is deliberately absent here.
+monotonic clock. ``commit(purpose)`` admits one action; ``claim(permit)``
+consumes that permit once, including when submission happens after the latch.
 
 Time semantics: the injected ``clock`` (default ``time.monotonic``) owns
 deadline/checkpoint/remaining arithmetic. ``wait`` bounds its real sleep
@@ -21,9 +21,11 @@ wait; the shared deadline itself is always evaluated on ``clock``.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import sys
 import threading
 import time
+import weakref
 
 __all__ = ["SHUTDOWN_CONTRACT", "ShutdownRequested", "Shutdown"]
 
@@ -111,6 +113,16 @@ class ShutdownRequested(RuntimeError):
     """Closed refusal for normal-action admission after the latch."""
 
 
+@dataclass(frozen=True, eq=False)
+class _ActionPermit:
+    """Immutable metadata only; it cannot execute or submit an action."""
+
+    __slots__ = ("purpose", "_issuer", "__weakref__")
+
+    purpose: str
+    _issuer: Shutdown
+
+
 class _StickyWakeup:
     """Event-like wakeup safe for same-thread signal reentry in wait/set."""
 
@@ -146,6 +158,8 @@ class Shutdown:
         self._request_state = {}
         self._last_now = initial
         self._clock_failed = False
+        self._submission_gate = threading.Lock()
+        self._permits = weakref.WeakKeyDictionary()
 
     @property
     def requested(self):
@@ -204,6 +218,45 @@ class Shutdown:
             self._now()
             if self._request_state:
                 raise ShutdownRequested("controller_stopping")
+
+    def commit(self, purpose):
+        """Admit one named action at the final shutdown-open read.
+
+        The short submission gate orders commitments. The permit carries no
+        execution capability, and OS submission may happen after the latch.
+        Purpose is a bounded metadata tag; RecoveryStore owns the purpose
+        enum. ``claim`` must be called once for the particular submission.
+        """
+        if (type(purpose) is not str or not 1 <= len(purpose) <= 64
+                or not "a" <= purpose[0] <= "z"
+                or any(char not in "abcdefghijklmnopqrstuvwxyz0123456789_-"
+                       for char in purpose)):
+            raise ValueError("purpose_invalid")
+        with self._submission_gate:
+            with self._lock:
+                if self._request_state:
+                    raise ShutdownRequested("controller_stopping")
+                self._now()
+                if self._request_state:  # linearization: one action admitted
+                    raise ShutdownRequested("controller_stopping")
+                permit = _ActionPermit(purpose, self)
+                self._permits[permit] = False
+                return permit
+
+    def claim(self, permit):
+        """Consume this instance's committed permit once, without readmission.
+
+        Returns its purpose metadata. The caller owns the one corresponding
+        action; this method does not run it or grant another commitment.
+        """
+        with self._lock:
+            if (type(permit) is not _ActionPermit or permit._issuer is not self
+                    or permit not in self._permits):
+                raise ValueError("permit_invalid")
+            if self._permits[permit]:
+                raise ValueError("permit_consumed")
+            self._permits[permit] = True
+            return permit.purpose
 
     def remaining(self, limit, cleanup=False):
         """Remaining budget, capped at ``limit`` seconds.
