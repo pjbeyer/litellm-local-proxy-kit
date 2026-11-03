@@ -10,6 +10,11 @@ The executable contract is [restart-controller.md](restart-controller.md). Insta
 activate a job, qualify a platform, grant approval, or take over a bridge.
 This is accident prevention for trusted same-user automation, not OS isolation.
 
+A proposed [cap-aware shutdown amendment](restart-controller-shutdown-contract.md)
+is a draft for owner review, not current implemented behavior or qualification.
+Its new supervision generation and interruption tests must not be inferred from
+this release's existing activation or source-only checks.
+
 ## Provision and install
 
 Use the pinned proxy Python with PyYAML. Provision an operator-owned policy JSON
