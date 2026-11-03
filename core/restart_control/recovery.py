@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from contextlib import contextmanager
 import fcntl
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -27,6 +28,11 @@ _OPERATION = frozenset(("version", "binding", "scope", "phase", "outcome",
 _SPAWN = frozenset(("version", "spawn_id", "binding", "purpose", "state", "identity"))
 _FENCE = frozenset(("version", "binding", "phase", "state"))
 _IDENTITY = frozenset(("pid", "uid", "pgid", "birth"))
+_PREPARED_REQUEST = frozenset(("request_id", "phase", "controller_epoch", "scope",
+    "shared_state_side_effects", "uid", "label", "original_identity",
+    "asset_digest", "runtime_digest", "policy_digest", "controller_digest",
+    "candidate_binding", "lkg_binding", "primary_checks", "candidate_checks",
+    "prepared_at", "prepared_monotonic", "expires_at", "expires_monotonic"))
 _PHASES = frozenset(("preparing", "prepared", "blocked", "restart_pending",
     "intent_consumed", "stopping", "starting", "postchecking", "restarted",
     "rollback_stopping", "rollback_restoring", "rollback_starting",
@@ -243,6 +249,241 @@ class RecoveryStore:
         # A reentrant uncertainty mark can run inside an injected writer.
         # Its sticky state must not be hidden by an otherwise successful write.
         _require(not self._uncertain or row["state"] == "uncertain")
+
+    def _write_operation(self, row):
+        self.validate_operation(row, request_id=row["binding"]["request_id"])
+        try:
+            self._atomic_json(self.operations_dir / (row["binding"]["request_id"] + ".json"), row)
+        except Exception:
+            self._uncertain = True
+            raise RecoveryError() from None
+        _require(not self._uncertain)
+
+    def _refreshed_ticket(self, row):
+        ticket = OperationTicket(row["binding"]["request_id"],
+                                 self._binding_tuple(row["binding"]),
+                                 json.dumps(row, sort_keys=True, separators=(",", ":")))
+        self._tickets.add(ticket)
+        return ticket
+
+    def reopen_restart(self, ticket):
+        """Persist a prepared proxy operation as pending before intent consumption."""
+        with self._spawn_transition_lock():
+            _require(not self._uncertain)
+            row = self._check_ticket(ticket)
+            _require(row["binding"]["kind"] == "proxy"
+                     and row["binding"]["asset_digest"] is not None
+                     and row["phase"] == "prepared" and row["outcome"] == "prepared"
+                     and row["primary_control_committed"] is False)
+            view = self.inventory()
+            _require(view.fence is None)
+            self._matching_approval(view, row, consumed=False, prepared=True)
+            pending = {**row, "phase": "restart_pending", "outcome": None}
+            self._write_operation(pending)
+            return self._refreshed_ticket(pending)
+
+    def arm_mutation(self, ticket):
+        """Sync the single fixed proxy fence before primary control commitment."""
+        with self._spawn_transition_lock():
+            _require(not self._uncertain)
+            row = self._check_ticket(ticket)
+            _require(row["binding"]["kind"] == "proxy"
+                     and row["binding"]["asset_digest"] is not None
+                     and row["binding"]["runtime_digest"] is not None
+                     and row["phase"] == "restart_pending"
+                     and row["outcome"] is None
+                     and row["primary_control_committed"] is False)
+            _require(self.inventory().fence is None)
+            fence = {"version": 1, "binding": row["binding"].copy(),
+                     "phase": "restart_pending", "state": "armed"}
+            try:
+                self._atomic_json(self.recovery / "mutation.json", fence)
+            except Exception:
+                self._uncertain = True
+                raise RecoveryError() from None
+            _require(not self._uncertain)
+            return ticket
+
+    def mark_mutation_uncertain(self, ticket):
+        """Retain a fenced operation after outside consumption or control failure."""
+        _require(type(ticket) is OperationTicket and ticket in self._tickets)
+        self._uncertain = True
+        with self._spawn_transition_lock():
+            row = self._check_ticket(ticket)
+            _require(row["phase"] not in _OUTCOMES and row["outcome"] is None)
+            fence = self.inventory().fence
+            _require(fence is not None and fence["binding"] == row["binding"])
+            if fence["state"] == "armed":
+                try:
+                    self._atomic_json(self.recovery / "mutation.json",
+                                      {**fence, "state": "uncertain"})
+                except Exception:
+                    raise RecoveryError() from None
+
+    def phase(self, ticket, phase, *, committed_action=None):
+        """Index a nonterminal phase; a claimed Shutdown permit records commitment."""
+        from .shutdown import Shutdown
+
+        _require(type(phase) is str and phase in (
+            "intent_consumed", "stopping", "starting", "postchecking",
+            "rollback_stopping", "rollback_restoring", "rollback_starting",
+            "rollback_postchecking", "manual_recovery_required"))
+        with self._spawn_transition_lock():
+            _require(not self._uncertain)
+            row = self._check_ticket(ticket)
+            view = self.inventory()
+            fence = view.fence
+            _require(row["binding"]["kind"] == "proxy"
+                     and row["outcome"] is None
+                     and row["phase"] in ("restart_pending", "intent_consumed",
+                         "stopping", "starting", "postchecking", "rollback_stopping",
+                         "rollback_restoring", "rollback_starting", "rollback_postchecking")
+                     and fence is not None and fence["binding"] == row["binding"]
+                     and fence["phase"] == row["phase"] and fence["state"] == "armed"
+                     and view.approvals.get(ticket.request_id, (False,))[0] is True)
+            self._matching_consumed(view, row)
+            committed = row["primary_control_committed"]
+            if committed_action is not None:
+                _require(not committed and type(committed_action) is tuple
+                         and len(committed_action) == 2
+                         and type(committed_action[0]) is Shutdown)
+                purpose = ("service-stop" if phase in ("stopping", "rollback_stopping")
+                           else "service-start" if phase in ("starting", "rollback_starting")
+                           else None)
+                _require(purpose is not None
+                         and getattr(committed_action[1], "purpose", None) == purpose)
+                try:
+                    _require(committed_action[0].claim(committed_action[1]) == purpose)
+                except Exception:
+                    raise RecoveryError() from None
+                committed = True
+            updated = {**row, "phase": phase,
+                       "primary_control_committed": committed}
+            self._write_operation(updated)
+            try:
+                self._atomic_json(self.recovery / "mutation.json",
+                                  {**fence, "phase": phase,
+                                   "state": "uncertain" if phase == "manual_recovery_required"
+                                   else "armed"})
+            except Exception:
+                self._uncertain = True
+                raise RecoveryError() from None
+            _require(not self._uncertain)
+            return self._refreshed_ticket(updated)
+
+    def _matching_approval(self, view, row, *, consumed, prepared=False):
+        """Validate an existing engine request and the approval at one stage."""
+        from . import engine
+
+        request_id = row["binding"]["request_id"]
+        _require(request_id in view.requests and request_id in view.approvals
+                 and view.approvals[request_id][0] is consumed)
+        plan = self._checked_file(self.requests_dir / (request_id + ".json"))
+        approval = self._checked_file(self.approvals_dir / (request_id +
+                                      (".consumed" if consumed else ".json")))
+        _require(type(plan) is dict and type(approval) is dict
+                 and plan == view.requests[request_id]
+                 and approval == view.approvals[request_id][1]
+                 and plan.get("request_id") == request_id
+                 and plan.get("scope") == row["scope"])
+        if prepared:
+            _require(plan.keys() == _PREPARED_REQUEST and plan["phase"] == "prepared")
+        else:
+            _require(_PREPARED_REQUEST <= plan.keys())
+        _require(type(plan["phase"]) is str
+                 and type(plan["shared_state_side_effects"]) is bool
+                 and plan["shared_state_side_effects"] is (row["scope"] == "production")
+                 and type(plan["uid"]) is int and plan["uid"] >= 0
+                 and type(plan["label"]) is str and bool(plan["label"])
+                 and engine._valid_identity(plan["original_identity"])
+                 and plan["original_identity"]["uid"] == plan["uid"]
+                 and type(plan["primary_checks"]) is dict
+                 and type(plan["candidate_checks"]) is dict)
+        for key in ("controller_epoch", "asset_digest", "runtime_digest",
+                    "policy_digest", "controller_digest"):
+            _require(_token(plan[key], _ID if key == "controller_epoch" else _DIGEST)
+                     and plan[key] == row["binding"][key])
+        frozen = {key: plan[key] for key in ("asset_digest", "runtime_digest")}
+        _require(plan["candidate_binding"] == frozen and plan["lkg_binding"] == frozen
+                 and type(plan["candidate_binding"]) is dict
+                 and type(plan["lkg_binding"]) is dict)
+        try:
+            expected = engine.approval_binding(plan)
+        except (KeyError, TypeError):
+            raise RecoveryError() from None
+        times = ("issued_at", "issued_monotonic", "expires_at",
+                 "expires_monotonic")
+        _require(approval.keys() == ({"version", "owner_uid"} | expected.keys() | set(times))
+                 and type(approval["version"]) is int and approval["version"] == 1
+                 and type(approval["owner_uid"]) is int
+                 and approval["owner_uid"] == plan["uid"]
+                 and all(type(approval[key]) in (int, float) and
+                         math.isfinite(approval[key]) for key in times))
+        _require(engine.canonical_digest({key: approval[key] for key in expected})
+                 == engine.canonical_digest(expected))
+        _require(all(type(plan.get(key)) in (int, float) and
+                     math.isfinite(plan[key]) for key in
+                     ("prepared_at", "prepared_monotonic", "expires_at",
+                      "expires_monotonic")))
+        _require(plan["prepared_at"] <= approval["issued_at"] < approval["expires_at"]
+                 <= plan["expires_at"]
+                 and plan["prepared_monotonic"] <= approval["issued_monotonic"]
+                 < approval["expires_monotonic"] <= plan["expires_monotonic"]
+                 and 0 < approval["expires_at"] - approval["issued_at"] <= 300
+                 and 0 < approval["expires_monotonic"] - approval["issued_monotonic"] <= 300
+                 and plan["prepared_at"] < plan["expires_at"]
+                 and plan["prepared_monotonic"] < plan["expires_monotonic"])
+        return plan
+
+    def _matching_consumed(self, view, row):
+        return self._matching_approval(view, row, consumed=True)
+
+    def _accepted_terminal(self, view, row):
+        """Reread accepted payload; the request is authority, journal is index."""
+        from . import engine
+
+        fence = view.fence
+        _require(fence is not None and fence["binding"] == row["binding"]
+                 and fence["phase"] == row["phase"] and fence["state"] == "armed"
+                 and row["primary_control_committed"] is True
+                 and all(child["state"] == "closed" for child in view.spawns.values()))
+        plan = self._matching_consumed(view, row)
+        terminal = plan.get("phase")
+        _require((terminal == "restarted" and row["phase"] == "postchecking")
+                 or (terminal == "rolled_back" and
+                     row["phase"] == "rollback_postchecking"))
+        _require(plan.keys() == (_PREPARED_REQUEST |
+                 {"started" if terminal == "restarted" else "rollback"}))
+        accepted = plan.get("started" if terminal == "restarted" else "rollback")
+        _require(type(accepted) is dict and accepted.keys() == {"identity", "checks"}
+                 and engine._valid_identity(accepted["identity"])
+                 and type(accepted["checks"]) is dict
+                 and engine._valid_identity(plan.get("original_identity"))
+                 and accepted["identity"]["uid"] == plan.get("uid")
+                 and accepted["identity"] != plan["original_identity"])
+        return terminal
+
+    def finish(self, ticket):
+        """Index accepted terminal evidence, then unlink and sync the fence."""
+        with self._spawn_transition_lock():
+            _require(not self._uncertain)
+            row = self._check_ticket(ticket)
+            _require(row["outcome"] is None)
+            view = self.inventory()
+            terminal = self._accepted_terminal(view, row)
+            updated = {**row, "phase": terminal, "outcome": terminal}
+            self._write_operation(updated)
+            try:
+                # A changed or missing fence is never an unlink target.
+                _require(self.validate_fence(self._checked_file(
+                    self.recovery / "mutation.json")) == view.fence)
+                os.unlink(self.recovery / "mutation.json")
+                self._sync_directory(self.recovery)
+            except Exception:
+                self._uncertain = True
+                raise RecoveryError() from None
+            _require(not self._uncertain)
+            return self._refreshed_ticket(updated)
 
     def spawn_intent(self, ticket, spawn_id, purpose):
         """Persist a child intent before the caller performs any external action."""

@@ -1234,3 +1234,444 @@ def test_same_spawn_id_transition_is_serialized_and_closed_record_stays_closed(t
     assert not first.is_alive() and not second.is_alive()
     assert len(outcomes) == 1 and len(errors) == 1
     assert load(state).inventory().spawns[SID]["state"] == "closed"
+
+
+def _mutation_ready(tmp_path):
+    journal, state = _spawn_ready(tmp_path)
+    prepared = operation()
+    prepared.update(phase="prepared", outcome="prepared")
+    engine.atomic_json(state / "recovery/operations" / (RID + ".json"), prepared)
+    _prepared_records(state)
+    return journal, state, journal.operation_ticket(RID)
+
+
+@pytest.mark.parametrize("defect", ["request_missing", "approval_missing", "consumed",
+                                    "request_field", "binding", "approval_binding",
+                                    "scope", "wrong_phase"])
+def test_reopen_requires_complete_prepared_request_and_unconsumed_approval(tmp_path, defect):
+    from core.restart_control.recovery import RecoveryError
+    journal, state, ticket = _mutation_ready(tmp_path)
+    request_path = state / "requests" / (RID + ".json")
+    approval_path = state / "approvals" / (RID + ".json")
+    plan = engine._read_json(request_path)
+    approval = engine._read_json(approval_path)
+    if defect == "request_missing":
+        request_path.unlink()
+    elif defect == "approval_missing":
+        approval_path.unlink()
+    elif defect == "consumed":
+        approval_path.rename(approval_path.with_suffix(".consumed"))
+    elif defect == "request_field":
+        del plan["primary_checks"]
+        engine.atomic_json(request_path, plan)
+    elif defect == "binding":
+        plan["candidate_binding"]["runtime_digest"] = "d" * 64
+        engine.atomic_json(request_path, plan)
+    elif defect == "approval_binding":
+        approval["label"] = "other"
+        engine.atomic_json(approval_path, approval)
+    elif defect == "scope":
+        plan["scope"] = "production"
+        engine.atomic_json(request_path, plan)
+    else:
+        plan["phase"] = "restarted"
+        engine.atomic_json(request_path, plan)
+    with pytest.raises(RecoveryError):
+        journal.reopen_restart(ticket)
+    assert load(state).inventory().operations[RID]["phase"] == "prepared"
+    assert journal.uncertain is False
+
+
+def test_reopen_returns_refreshed_ticket_and_refuses_replay(tmp_path):
+    from core.restart_control.recovery import RecoveryError
+    journal, state, old = _mutation_ready(tmp_path)
+    refreshed = journal.reopen_restart(old)
+    assert refreshed is not old
+    assert load(state).inventory().operations[RID]["phase"] == "restart_pending"
+    with pytest.raises(RecoveryError):
+        journal.reopen_restart(old)
+    with pytest.raises(RecoveryError):
+        journal.reopen_restart(refreshed)
+
+
+def test_mutation_pending_and_fence_are_durable_before_outside_control(tmp_path):
+    from core.restart_control.shutdown import Shutdown, ShutdownRequested
+    journal, state, ticket = _mutation_ready(tmp_path)
+    ticket = journal.reopen_restart(ticket)
+    assert load(state).inventory().operations[RID]["phase"] == "restart_pending"
+    assert load(state).inventory().operations[RID]["outcome"] is None
+    ticket = journal.arm_mutation(ticket)
+    assert load(state).inventory().fence == {
+        "version": 1, "binding": binding(), "phase": "restart_pending",
+        "state": "armed"}
+    _consume_approval(state)
+    assert load(state).inventory().approvals[RID][0] is True
+
+    controls = []
+    shutdown = Shutdown()
+    shutdown.request()
+    with pytest.raises(ShutdownRequested):
+        shutdown.commit("service-stop")
+        controls.append("stop")
+    assert controls == []
+    assert load(state).inventory().fence["state"] == "armed"
+
+
+def _prepared_records(state):
+    identity = {"pid": 12, "uid": os.getuid(), "birth": [1, 0]}
+    plan = {"request_id": RID, "phase": "prepared", "scope": "fixture",
+            "shared_state_side_effects": False,
+            "controller_epoch": SID, "uid": os.getuid(), "label": "fixture",
+            "original_identity": identity, "asset_digest": DIGEST,
+            "runtime_digest": DIGEST, "policy_digest": DIGEST,
+            "controller_digest": DIGEST,
+            "candidate_binding": {"asset_digest": DIGEST, "runtime_digest": DIGEST},
+            "lkg_binding": {"asset_digest": DIGEST, "runtime_digest": DIGEST},
+            "primary_checks": {}, "candidate_checks": {},
+            "prepared_at": 1.0, "prepared_monotonic": 1.0,
+            "expires_at": 301.0, "expires_monotonic": 301.0}
+    approval = {"version": 1, "owner_uid": os.getuid(),
+                **engine.approval_binding(plan), "issued_at": 2.0,
+                "issued_monotonic": 2.0, "expires_at": 300.0,
+                "expires_monotonic": 300.0}
+    engine.atomic_json(state / "requests" / (RID + ".json"), plan)
+    engine.atomic_json(state / "approvals" / (RID + ".json"), approval)
+    return plan, approval
+
+
+def _accepted_records(state, terminal="restarted"):
+    plan, approval = _prepared_records(state)
+    plan["phase"] = terminal
+    plan["started" if terminal == "restarted" else "rollback"] = {
+        "identity": {"pid": 13, "uid": os.getuid(), "birth": [2, 0]},
+        "checks": {"accepted": True}}
+    engine.atomic_json(state / "requests" / (RID + ".json"), plan)
+    (state / "approvals" / (RID + ".json")).unlink(missing_ok=True)
+    engine.atomic_json(state / "approvals" / (RID + ".consumed"), approval)
+    return plan, approval
+
+
+def _consume_approval(state):
+    approvals = state / "approvals"
+    os.replace(approvals / (RID + ".json"), approvals / (RID + ".consumed"))
+    fd = os.open(approvals, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        engine._sync_fd(fd)
+    finally:
+        os.close(fd)
+
+
+def _postchecking(tmp_path, terminal="restarted"):
+    from core.restart_control.shutdown import Shutdown
+    journal, state, ticket = _mutation_ready(tmp_path)
+    ticket = journal.arm_mutation(journal.reopen_restart(ticket))
+    _consume_approval(state)
+    shutdown = Shutdown()
+    permit = shutdown.commit("service-stop")
+    phase = "postchecking" if terminal == "restarted" else "rollback_postchecking"
+    ticket = journal.phase(ticket, "stopping", committed_action=(shutdown, permit))
+    ticket = journal.phase(ticket, phase)
+    return journal, state, ticket
+
+
+@pytest.mark.parametrize("purpose,phase", [("diagnostic", "stopping"),
+                                             ("candidate", "stopping"),
+                                             ("canary-query", "stopping"),
+                                             ("service-start", "stopping"),
+                                             ("service-stop", "starting")])
+def test_phase_refuses_nonprimary_or_wrong_phase_permit_before_write(tmp_path,
+                                                                    purpose, phase):
+    from core.restart_control.recovery import RecoveryError
+    from core.restart_control.shutdown import Shutdown
+    journal, state, ticket = _mutation_ready(tmp_path)
+    ticket = journal.arm_mutation(journal.reopen_restart(ticket))
+    _accepted_records(state)
+    shutdown = Shutdown()
+    permit = shutdown.commit(purpose)
+    before = tree_bytes(state)
+    with pytest.raises(RecoveryError):
+        journal.phase(ticket, phase, committed_action=(shutdown, permit))
+    assert tree_bytes(state) == before
+    assert load(state).inventory().operations[RID]["primary_control_committed"] is False
+    assert shutdown.claim(permit) == purpose
+
+
+def test_phase_primary_commit_once_then_progress_without_new_attestation(tmp_path):
+    from core.restart_control.recovery import RecoveryError
+    from core.restart_control.shutdown import Shutdown
+    journal, state, ticket = _mutation_ready(tmp_path)
+    ticket = journal.arm_mutation(journal.reopen_restart(ticket))
+    _accepted_records(state)
+    shutdown = Shutdown()
+    ticket = journal.phase(ticket, "stopping",
+                           committed_action=(shutdown, shutdown.commit("service-stop")))
+    assert load(state).inventory().operations[RID]["primary_control_committed"] is True
+    second = shutdown.commit("service-start")
+    with pytest.raises(RecoveryError):
+        journal.phase(ticket, "starting", committed_action=(shutdown, second))
+    assert shutdown.claim(second) == "service-start"
+    journal.phase(ticket, "starting")
+    assert load(state).inventory().operations[RID]["phase"] == "starting"
+
+
+@pytest.mark.parametrize("terminal", ["restarted", "rolled_back"])
+def test_finish_requires_authoritative_accepted_terminal_before_unlink(tmp_path, terminal):
+    from core.restart_control.recovery import RecoveryError
+    journal, state, ticket = _postchecking(tmp_path, terminal)
+    with pytest.raises(RecoveryError):
+        journal.finish(ticket)
+    assert load(state).inventory().fence is not None
+    _accepted_records(state, terminal)
+    journal.finish(ticket)
+    view = load(state).inventory()
+    assert view.fence is None
+    assert view.operations[RID]["phase"] == terminal
+    assert view.operations[RID]["outcome"] == terminal
+    assert view.approvals[RID][0] is True
+    with pytest.raises(RecoveryError):
+        journal.reopen_restart(ticket)
+
+
+@pytest.mark.parametrize("defect", ["approval_missing", "approval_wrong", "request_wrong",
+                                    "acceptance_missing", "child_open"])
+def test_finish_refuses_incomplete_or_mismatched_proof(tmp_path, defect):
+    from core.restart_control.recovery import RecoveryError
+    journal, state, ticket = _postchecking(tmp_path)
+    plan, approval = _accepted_records(state)
+    if defect == "approval_missing":
+        (state / "approvals" / (RID + ".consumed")).unlink()
+    elif defect == "approval_wrong":
+        approval["controller_digest"] = "d" * 64
+        engine.atomic_json(state / "approvals" / (RID + ".consumed"), approval)
+    elif defect == "request_wrong":
+        plan["asset_digest"] = "d" * 64
+        engine.atomic_json(state / "requests" / (RID + ".json"), plan)
+    elif defect == "acceptance_missing":
+        del plan["started"]
+        engine.atomic_json(state / "requests" / (RID + ".json"), plan)
+    else:
+        child = spawn()
+        child.update(state="intent", identity=None)
+        engine.atomic_json(state / "recovery/spawns" / (SID + ".json"), child)
+    with pytest.raises(RecoveryError):
+        journal.finish(ticket)
+    assert load(state).inventory().fence is not None
+
+
+@pytest.mark.parametrize("defect", ["missing_shared", "wrong_shared", "missing_checks",
+                                    "wrong_checks", "wrong_identity", "wrong_lkg",
+                                    "extra_field", "malformed_accepted", "wrong_accepted_uid"])
+def test_finish_requires_complete_engine_terminal_record(tmp_path, defect):
+    from core.restart_control.recovery import RecoveryError
+    journal, state, ticket = _postchecking(tmp_path)
+    plan, _ = _accepted_records(state)
+    if defect == "missing_shared":
+        del plan["shared_state_side_effects"]
+    elif defect == "wrong_shared":
+        plan["shared_state_side_effects"] = True
+    elif defect == "missing_checks":
+        del plan["candidate_checks"]
+    elif defect == "wrong_checks":
+        plan["primary_checks"] = []
+    elif defect == "wrong_identity":
+        plan["original_identity"]["uid"] += 1
+    elif defect == "wrong_lkg":
+        plan["lkg_binding"]["runtime_digest"] = "d" * 64
+    elif defect == "extra_field":
+        plan["unexpected"] = True
+    elif defect == "malformed_accepted":
+        plan["started"]["checks"] = []
+    else:
+        plan["started"]["identity"]["uid"] += 1
+    engine.atomic_json(state / "requests" / (RID + ".json"), plan)
+    with pytest.raises(RecoveryError):
+        journal.finish(ticket)
+    assert load(state).inventory().fence is not None
+
+
+@pytest.mark.parametrize("clock", ["wall", "mono"])
+def test_finish_rejects_approval_duration_over_300_without_freshness_gate(tmp_path, clock):
+    from core.restart_control.recovery import RecoveryError
+    journal, state, ticket = _postchecking(tmp_path)
+    plan, approval = _accepted_records(state)
+    key = "expires_at" if clock == "wall" else "expires_monotonic"
+    plan[key] = 401.0
+    approval[key] = 303.0
+    engine.atomic_json(state / "requests" / (RID + ".json"), plan)
+    engine.atomic_json(state / "approvals" / (RID + ".consumed"), approval)
+    with pytest.raises(RecoveryError):
+        journal.finish(ticket)
+    assert load(state).inventory().fence is not None
+
+
+def test_finish_accepts_engine_legacy_empty_checks_and_expired_consumed_approval(tmp_path):
+    journal, state, ticket = _postchecking(tmp_path)
+    plan, approval = _accepted_records(state)
+    plan["started"]["checks"] = {}
+    engine.atomic_json(state / "requests" / (RID + ".json"), plan)
+    assert approval["expires_at"] < time.time()
+    journal.finish(ticket)
+    assert load(state).inventory().fence is None
+
+
+def _fault_store(state, *, atomic_json=engine.atomic_json, sync_fd=engine._sync_fd):
+    from core.restart_control.recovery import RecoveryStore
+    return RecoveryStore(state, read_json=engine._read_json,
+                         atomic_json=atomic_json, private_path=engine._private_path,
+                         private_dir=engine.private_dir, sync_fd=sync_fd)
+
+
+@pytest.mark.parametrize("stage,point", [(stage, point)
+    for stage in ("pending", "fence")
+    for point in ("file_sync", "before_replace", "after_replace", "directory_sync")])
+def test_mutation_atomic_faults_stick_and_never_reach_control(tmp_path, monkeypatch,
+                                                               stage, point):
+    from core.restart_control.recovery import RecoveryError
+    _, state, _ = _mutation_ready(tmp_path)
+    journal = _fault_store(state)
+    ticket = journal.operation_ticket(RID)
+    if stage == "fence":
+        ticket = journal.reopen_restart(ticket)
+    original_sync, original_replace = engine._sync_fd, os.replace
+    sync_calls = 0
+
+    def sync_fault(fd):
+        nonlocal sync_calls
+        sync_calls += 1
+        if (point == "file_sync" and sync_calls == 1) or (
+                point == "directory_sync" and sync_calls == 2):
+            raise OSError("injected")
+        original_sync(fd)
+
+    def replace_fault(src, dst):
+        if point == "before_replace":
+            raise OSError("injected")
+        original_replace(src, dst)
+        if point == "after_replace":
+            raise OSError("injected")
+
+    monkeypatch.setattr(engine, "_sync_fd", sync_fault)
+    monkeypatch.setattr(os, "replace", replace_fault)
+    controls = []
+    with pytest.raises(RecoveryError):
+        if stage == "pending":
+            ticket = journal.reopen_restart(ticket)
+        else:
+            ticket = journal.arm_mutation(ticket)
+        controls.append("stop")
+    assert controls == [] and journal.uncertain is True
+    view = load(state).inventory()
+    if stage == "pending":
+        assert view.operations[RID]["phase"] in ("prepared", "restart_pending")
+        assert view.fence is None
+    else:
+        assert view.operations[RID]["phase"] == "restart_pending"
+        assert (view.fence is not None) == (point in ("after_replace", "directory_sync"))
+    with pytest.raises(RecoveryError):
+        journal.arm_mutation(ticket)
+
+
+def test_fence_refuses_duplicate_foreign_and_stale_ticket(tmp_path):
+    from core.restart_control.recovery import RecoveryError
+    journal, state, old = _mutation_ready(tmp_path)
+    pending = journal.reopen_restart(old)
+    with pytest.raises(RecoveryError):
+        journal.arm_mutation(old)
+    journal.arm_mutation(pending)
+    with pytest.raises(RecoveryError):
+        journal.arm_mutation(pending)
+    assert load(state).inventory().fence["binding"] == binding()
+    other = operation()
+    other["binding"]["request_id"] = "d" * 32
+    other.update(phase="restart_pending", outcome=None)
+    engine.atomic_json(state / "recovery/operations" / ("d" * 32 + ".json"), other)
+    with pytest.raises(RecoveryError):
+        journal.arm_mutation(journal.operation_ticket("d" * 32))
+    assert load(state).inventory().fence["binding"] == binding()
+
+
+@pytest.mark.parametrize("kind,frozen", [("platform-canary", False), ("proxy", False)])
+def test_fence_refuses_canary_and_null_proxy(tmp_path, kind, frozen):
+    from core.restart_control.recovery import RecoveryError
+    journal, state, _ = _mutation_ready(tmp_path)
+    row = operation()
+    row.update(binding=binding(kind, frozen=frozen), phase="preparing", outcome=None)
+    if kind == "platform-canary":
+        row["phase"] = "canary_running"
+    engine.atomic_json(state / "recovery/operations" / (RID + ".json"), row)
+    with pytest.raises(RecoveryError):
+        journal.arm_mutation(journal.operation_ticket(RID))
+    assert load(state).inventory().fence is None
+
+
+@pytest.mark.parametrize("point", ["before_unlink", "after_unlink", "directory_sync"])
+def test_finish_unlink_fault_is_sticky_and_terminal_never_reopens(tmp_path, monkeypatch,
+                                                                  point):
+    from core.restart_control.recovery import RecoveryError
+    journal, state, ticket = _postchecking(tmp_path)
+    _accepted_records(state)
+    original_unlink = os.unlink
+    original_sync = journal._sync_fd
+
+    def unlink_fault(path, *args, **kwargs):
+        if Path(path) == state / "recovery/mutation.json":
+            if point == "before_unlink":
+                raise OSError("injected")
+            original_unlink(path, *args, **kwargs)
+            if point == "after_unlink":
+                raise OSError("injected")
+            return
+        original_unlink(path, *args, **kwargs)
+
+    def sync_fault(fd):
+        if point == "directory_sync":
+            raise OSError("injected")
+        original_sync(fd)
+
+    monkeypatch.setattr(os, "unlink", unlink_fault)
+    journal._sync_fd = sync_fault
+    with pytest.raises(RecoveryError):
+        journal.finish(ticket)
+    assert journal.uncertain is True
+    view = load(state).inventory()
+    assert view.operations[RID]["outcome"] == "restarted"
+    assert (view.fence is not None) == (point == "before_unlink")
+    with pytest.raises(RecoveryError):
+        journal.reopen_restart(ticket)
+
+
+@pytest.mark.parametrize("point", ["before_replace", "after_replace", "directory_sync"])
+def test_consumed_intent_fault_marks_fence_uncertain_without_control(tmp_path, point):
+    from core.restart_control.recovery import RecoveryError
+    journal, state, ticket = _mutation_ready(tmp_path)
+    ticket = journal.arm_mutation(journal.reopen_restart(ticket))
+    _, approval = _accepted_records(state)
+    consumed = state / "approvals" / (RID + ".consumed")
+    unconsumed = state / "approvals" / (RID + ".json")
+    consumed.rename(unconsumed)
+    approval_dir = state / "approvals"
+    controls = []
+
+    def consume():
+        if point == "before_replace":
+            raise OSError("injected")
+        os.replace(unconsumed, consumed)
+        if point == "after_replace":
+            raise OSError("injected")
+        fd = os.open(approval_dir, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            if point == "directory_sync":
+                raise OSError("injected")
+            engine._sync_fd(fd)
+        finally:
+            os.close(fd)
+
+    with pytest.raises(OSError):
+        consume()
+        controls.append("stop")
+    journal.mark_mutation_uncertain(ticket)
+    assert controls == [] and journal.uncertain is True
+    assert load(state).inventory().fence["state"] == "uncertain"
+    assert load(state).inventory().operations[RID]["phase"] == "restart_pending"
+    with pytest.raises(RecoveryError):
+        journal.phase(ticket, "stopping")
