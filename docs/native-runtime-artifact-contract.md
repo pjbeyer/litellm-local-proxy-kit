@@ -208,7 +208,8 @@ The normalized JSON receipt has exactly: `version`, `source_head`, `source_tree`
 `source_digest`, `source_files`, `cargo_lock_sha256`, `root_cargo_config_sha256`,
 `baseline_pin_digest`, `artifact_path`, `artifact_sha256`, `recipe`, `profile`,
 `features`, `default_features`, `target`, `cargo_sha256`, `rustc_sha256`,
-`cargo_version`, `rustc_version`, `build_recipe_sha256` and `build_log_sha256`.
+`cargo_version`, `rustc_version`, `build_recipe_sha256`, `build_log_sha256`,
+`abi_tag`, `pyo3_cfg_sha256`, `pyo3_ffi_cfg_sha256` and `pyo3_features_sha256`.
 Hashes are lowercase hex of the stated algorithm; HEAD/tree are complete Git
 SHA-1 values for this supported source repository. `version` is integer 1 and
 `source_files` a positive integer, never booleans. `default_features` is true;
