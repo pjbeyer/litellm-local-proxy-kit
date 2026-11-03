@@ -1,0 +1,25 @@
+tests/test_lifecycle_guard.py
+  s_b1a18a0bb18a46::t_9f6d991d510b5f 1928-1929,1934-1938
+  s_b1a18a0bb18a46::t_f45c657bedff99 1845
+  s_b1a18a0bb18a46::t_6c4223c5f07593 1764-1816,1826-1844,1846-1904,1911-1927,1930-1933,1939-1968,1970-1984
+  s_b1a18a0bb18a46::t_c133775d1c2832 1910
+  s_b1a18a0bb18a46::t_574ca6ee3633f6 1969
+  s_b1a18a0bb18a46::t_acb4d7bcdf85b2 1905-1909
+  s_b1a18a0bb18a46::t_025c03e7a118c1 1817-1825
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "4d7171de99834457c643be12c9bfd0aedd3cfe2c",
+  "prompts": {},
+  "sessions": {
+    "s_b1a18a0bb18a46": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261103_122930_556d2b",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
