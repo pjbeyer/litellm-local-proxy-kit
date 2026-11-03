@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python stdlib, pytest/unittest, Darwin libproc, Unix sockets, disposable loopback children; launchd only in a separately permitted live-canary lane.
 
-**Status:** Written design approved; implementation plan/execution method awaiting owner review. No implementation or test execution for proposed behavior is claimed. This is the repository's established documentation-contract workflow, not a full Spec Kit CLI run.
+**Status:** Written design, implementation plan and subagent-driven execution approved. Offline implementation is in progress in an isolated worktree; per-task spec/quality reviews remain mandatory. No completed new behavior, live canary or production qualification is claimed. This is the repository's established documentation-contract workflow, not a full Spec Kit CLI run.
 
 ## Scope, source and execution gates
 
@@ -305,4 +305,4 @@ Subagents may execute only nonconflicting independent slices; shared source regi
 
 Offline completion requires real executed passing fixtures, meaningful mutation failures, reviewed registry/installer closure, no production mutation and no unresolved material review finding. It does not close live qualification or production handoff. The live-canary/context evidence and intended generation still need separate permission and actual observed results; no artifact or review substitutes for them.
 
-Owner review is needed now for this plan and the recommended subagent-driven execution method. No implementation subagent is dispatched before that approval.
+Owner approved this plan and subagent-driven execution. Implementation proceeds task-by-task with spec-compliance then code-quality review; live canary, generation activation and production handoff remain separately gated.

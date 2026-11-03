@@ -1,6 +1,6 @@
 # Cap-aware controller shutdown amendment
 
-**OWNER-APPROVED WRITTEN DESIGN — implementation plan/execution review pending. Not implemented, deployed or platform-qualified.**
+**OWNER-APPROVED DESIGN AND IMPLEMENTATION PLAN — offline implementation in progress. Not deployed or platform-qualified.**
 
 This proposed amendment extends [the controller contract](restart-controller.md)
 and [operations guide](restart-controller-operations.md). It does not create a

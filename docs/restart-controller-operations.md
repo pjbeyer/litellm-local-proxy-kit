@@ -12,8 +12,8 @@ This is accident prevention for trusted same-user automation, not OS isolation.
 
 The [cap-aware shutdown amendment](restart-controller-shutdown-contract.md) is an
 owner-approved written design, not current implemented behavior or qualification.
-Its [implementation plan](plans/2026-11-03-controller-shutdown.md) awaits owner
-review and execution-method approval. New supervision/interruption behavior must
+Its [implementation plan](plans/2026-11-03-controller-shutdown.md) and execution
+method are approved; offline implementation is in progress. New behavior must
 not be inferred from this release's existing activation or source-only checks.
 
 ## Provision and install
