@@ -1,0 +1,19 @@
+specs/001-proxy-lifecycle-guard-plugin/quickstart.md
+  s_b1a18a0bb18a46::t_3b732d3a60a9ca 42-46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "86116cdd90439e52dbfb0eed61b122a3c11dc958",
+  "prompts": {},
+  "sessions": {
+    "s_b1a18a0bb18a46": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261103_122930_556d2b",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
