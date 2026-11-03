@@ -1,0 +1,58 @@
+specs/001-proxy-lifecycle-guard-plugin/checklists/requirements.md
+  s_d911d6ebd1d25a::t_db797127897aaa 32-35
+specs/001-proxy-lifecycle-guard-plugin/contracts/policy-schema.json
+  s_d911d6ebd1d25a::t_d6441e06cb275f 55-56,61-62,67-68,73-74,79
+.specify/memory/constitution.md
+  s_d911d6ebd1d25a::t_26af3069e1391f 111-119
+  s_d911d6ebd1d25a::t_5b713eb728e2b5 18-23
+specs/001-proxy-lifecycle-guard-plugin/plan.md
+  s_d911d6ebd1d25a::t_9184e77fd60274 52
+  s_d911d6ebd1d25a::t_21ddb40442add2 102,107,109,113,115
+  s_d911d6ebd1d25a::t_38f519d67efa3e 9-10
+  s_d911d6ebd1d25a::t_0a0ed08b285d0a 19
+  s_d911d6ebd1d25a::t_e3aea4312f426e 20-21
+specs/001-proxy-lifecycle-guard-plugin/research.md
+  s_d911d6ebd1d25a::t_c70cfb48e1120a 68-79
+specs/001-proxy-lifecycle-guard-plugin/spec.md
+  s_d911d6ebd1d25a::t_ae95a254a751a9 281-292
+  s_d911d6ebd1d25a::t_25c228ff106aff 149-153
+  s_d911d6ebd1d25a::t_4b31ef33fd833b 349-358
+  s_d911d6ebd1d25a::t_9bef8a7368a5cb 303-308
+  s_d911d6ebd1d25a::t_c9f0bfc8de484f 435-454
+specs/001-proxy-lifecycle-guard-plugin/red-team-findings-2026-11-02.md
+  s_d911d6ebd1d25a::t_de2cd191ef1f1d 165-169
+specs/001-proxy-lifecycle-guard-plugin/tasks.md
+  s_d911d6ebd1d25a::t_852f8176f3912e 8-9
+  s_d911d6ebd1d25a::t_e267c5f4068bcf 66
+  s_d911d6ebd1d25a::t_fff28549d3ebac 31
+  s_d911d6ebd1d25a::t_9e139e05e5c86d 134-136
+  s_d911d6ebd1d25a::t_f1ae830e89819d 30
+  s_d911d6ebd1d25a::t_36d179a6b62110 39
+  s_d911d6ebd1d25a::t_37ed7bef173e4e 73
+  s_d911d6ebd1d25a::t_847dd0550ce93c 48-55
+  s_d911d6ebd1d25a::t_254ce49d73e35d 40
+  s_d911d6ebd1d25a::t_0dee5ecf4aebfb 81
+specs/001-proxy-lifecycle-guard-plugin/security-review-findings-2026-11-03.md
+  s_d911d6ebd1d25a::t_18f41496e0f22e 24
+  s_d911d6ebd1d25a::t_238bc3f7297490 1-23,25-54
+specs/001-proxy-lifecycle-guard-plugin/quickstart.md
+  s_d911d6ebd1d25a::t_6a87ccd7c4aeea 44-49
+specs/001-proxy-lifecycle-guard-plugin/contracts/hook-contract.md
+  s_d911d6ebd1d25a::t_748b79bf116218 27-36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "d55e68ecdb9c357bfe6f5cfdd2e29ecf37210897",
+  "prompts": {},
+  "sessions": {
+    "s_d911d6ebd1d25a": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261102_055425_b7f94c5e",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
