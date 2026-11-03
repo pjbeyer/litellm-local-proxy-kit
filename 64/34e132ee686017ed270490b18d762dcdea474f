@@ -1,0 +1,21 @@
+docs/safe-restart-contract.md
+  s_b1a18a0bb18a46::t_9076570f717eae 87-91
+integrations/hermes/proxy-lifecycle-guard/README.md
+  s_b1a18a0bb18a46::t_477b3683a5f8e3 8,10,13-66,71-74,76-81,85-96,100-144
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "6434e132ee686017ed270490b18d762dcdea474f",
+  "prompts": {},
+  "sessions": {
+    "s_b1a18a0bb18a46": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261103_122930_556d2b",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
