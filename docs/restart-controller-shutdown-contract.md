@@ -70,6 +70,18 @@ owned-child cleanup, evidence writes and socket cleanup. It is not a fresh budge
 per worker or phase. Normal-operation and shutdown deadlines are distinct; use
 the earlier applicable deadline for ongoing work.
 
+Owner-approved primitive semantics: `checkpoint()` permits normal work before
+shutdown and raises `ShutdownRequested` afterward, rather than reporting elapsed
+time. Cleanup waits genuinely sleep for at most their requested real-time
+interval or the remaining shared deadline; false means the interval ended with
+budget remaining, true means the deadline expired. A new latch may wake an
+already waiting cleanup caller for recheck without claiming deadline expiry.
+Frozen injected clocks must not make interval waits unbounded or busy-spin.
+Finite negative clock origins are valid; booleans/nonfinite values and observed
+backward progression fail closed. Limits/intervals remain finite and nonnegative,
+with positive wait intervals. Prove actual same-thread signal-style reentry into
+state handling, not merely sequential requests after the latch.
+
 The 50-second deadline leaves headroom before the declared 60-second platform
 limit, but is not an assurance against scheduler starvation, hung kernel I/O,
 power loss or earlier forced death. Such failures require durable recovery state.
