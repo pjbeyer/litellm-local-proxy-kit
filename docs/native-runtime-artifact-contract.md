@@ -94,6 +94,44 @@ chain attestation claim. Record tool/config/dependency provenance and explicitly
 surface any input whose verification cannot be established. A locally matching
 old Cargo output alone is insufficient.
 
+## Versioned runtime preparation
+
+Do not qualify a new native layout by replacing libraries underneath a serving
+process. That process may lazily import the replacement before the filesystem
+transition finishes; restoring files cannot unload an extension already mapped.
+PID/birth and HTTP health parity are not evidence of unchanged process memory.
+
+Prepare a separate versioned source tree and virtual environment instead:
+
+- Use independent Git objects at the unchanged pinned HEAD; do not depend on a
+  shared object store that the old checkout can prune.
+- Preserve both old native variants outside the **new** import roots and leave
+  the serving tree untouched. Only the reviewed verified ABI3 file enters the
+  new package. Never attest a legacy artifact from its observed hash.
+- Reuse the exact resolved CPython binary hash, but bind the new executable path,
+  prefix, package root and editable distribution metadata explicitly. Regenerate
+  the new installation's RECORD, including its path configuration files. A new
+  prefix or metadata mapping produces a new runtime digest; old approvals do not
+  transfer to it.
+- Disable site initialization when preparing the environment from an old Python;
+  inspect path files as data before using them. A literal dependency-site path
+  must not execute that site's old path-file hooks. Record any shared third-party
+  dependencies: a read-only source/native tree is not a fully immutable environment.
+- Seal the new source/environment without following links into original files.
+  Run the unchanged full proof before native import, verify the exact loaded
+  native path/hash, and exercise offline native behavior. Re-run the proof after
+  the smoke check. Snapshot the original source, caches and native file identity
+  before/after preparation; do not credit staged-tree proof as that comparison.
+- Exercise real installer apply/verify and flat-layout proof in isolated targets.
+  Those results qualify preparation, not the live service or its credentials.
+
+Managed configuration changes, candidate traffic and platform/controller
+qualification remain separate gates. Never attribute the staged runtime digest
+to a still-serving process using the old environment. Activation requires its
+own exact-runtime authorization and verified handoff; staging grants no restart
+permission. Production-impacting assertion-based operator scripts must refuse
+optimized Python before any work, or use unconditional checks instead.
+
 ## Required verification
 
 Positive fixture and actual verified-build proof; missing/extra/wrong-type pin or
