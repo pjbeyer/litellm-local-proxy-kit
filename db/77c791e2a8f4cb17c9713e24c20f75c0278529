@@ -1,0 +1,39 @@
+tests/test_controller_group_identity.py
+  s_98343c28157d0e::t_c16c7cfc4626d2 5,382-387
+  s_98343c28157d0e::t_227edb195e3b69 122
+  s_98343c28157d0e::t_219c9c54b228ca 145,223
+  s_a5916ecbe9086c::t_04e7cc7fcc4f11 9,16-31,90-100,103,147-220,222,293-304
+  s_98343c28157d0e::t_e0715118639910 1-4,6-8,10-15,32-89,101-102,104-113,127-144,146,221,224-250,253-261,263-270,273-288,307-333,341,346,356-360,372-377
+  s_98343c28157d0e::t_8177b9c31c8809 114-121,123-126,251-252,262,271-272,289-292,305-306
+  s_a5916ecbe9086c::t_603f8bc6d7065b 334-340,342-345,347-355,361-371,378-381
+docs/plans/2026-11-03-controller-shutdown.md
+  s_98343c28157d0e::t_50183e08fd2109 91-92
+core/restart_control/process_identity.py
+  s_98343c28157d0e::t_6d9e8983483d09 88-89,132,134-135
+  s_98343c28157d0e::t_9f0d680d215a85 9,43-87,90-131,133,136-144
+  s_98343c28157d0e::t_dbf1e9d4f24f61 145-146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "db77c791e2a8f4cb17c9713e24c20f75c0278529",
+  "prompts": {},
+  "sessions": {
+    "s_98343c28157d0e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a635-bd73-7791-b73f-792317ea599a",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_a5916ecbe9086c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a876-e6f7-7632-83e4-34d509731d97",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
