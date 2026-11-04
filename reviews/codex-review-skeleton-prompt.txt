@@ -1,0 +1,13 @@
+You are an independent code reviewer. Review the staged changes in this repository only.
+
+Context:
+- This is an OSS-oriented LiteLLM local proxy configuration and methodology kit.
+- Imported content was sanitized from a local experiment; raw logs, backups, personal agent config, and service files are deliberately excluded.
+- Do not modify files. Do not commit. Do not run network commands.
+
+Tasks:
+1. Inspect `git diff --cached` and repository files.
+2. Check for publication hygiene risks: secrets, private paths/identifiers, misleading provider or free-tier claims, raw logs, zero-byte placeholders, unsafe service guidance, and missing validation.
+3. Check callback/preflight logic for security, correctness, resource handling, and test coverage.
+4. Return a structured review with Critical, Warnings, Suggestions, and Looks Good.
+5. Distinguish blockers for this commit from requirements for any future public release.

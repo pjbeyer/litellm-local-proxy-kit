@@ -1,0 +1,11 @@
+# Drift-check exemptions — ENUMERATED AND JUSTIFIED (spec 015 FR-011).
+# Each entry is a live file the installer does NOT own yet. Adding an entry
+# is a reviewed code change, never a runtime dodge. Remove entries as the
+# installer takes ownership (R6 migration).
+exempt:
+  - path: "deploy.conf.sh"
+    reason: "day-one unowned live file; identity migration lands in T013/T014 (US2)"
+  - path: "config.local-patched.yaml"
+    reason: "legacy live config name; the managed name is config.rendered.yaml — retired at takeover"
+  - path: "config.local-patched.candidate.yaml"
+    reason: "stale render candidate (R-FP-3); scheduled for deletion, not managed"

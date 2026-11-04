@@ -1,0 +1,6 @@
+name: proxy-lifecycle-guard
+version: "0.1.0"
+description: "Block recognizable local proxy kill/restart commands before tool execution; bounded accident protection, not OS process isolation."
+author: "Phil Beyer"
+provides_hooks:
+  - pre_tool_call

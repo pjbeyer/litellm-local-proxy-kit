@@ -1,0 +1,10 @@
+# Stable isolated-validation candidate; not a production lockfile or migration command.
+# NOTE (security): pinned to 1.101.3 because 1.101.0 (the version the 37 offline
+# tests / router lifecycle / tool transport validation ran against) is affected by
+# a high-severity LiteLLM privilege-escalation advisory (salt-key cross-domain
+# reuse) fixed in 1.101.3. 1.101.3 has NOT yet been re-validated against the
+# kit's matrix; see docs/stable-candidate-validation.md for the 1.101.0 record.
+litellm[proxy]==1.101.3
+# Required by the tested proxy authentication error path.
+prisma==0.15.0
+PyYAML>=6

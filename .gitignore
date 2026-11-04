@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Local LiteLLM / proxy runtime state
+.env
+.env.*
+!.env.example
+*.log
+logs/
+proxy.log
+litellm_proxy.log
+*.sqlite
+*.db
+
+# Secrets and local auth material
+secrets.*
+*.key
+*.pem
+*.p12
+*.mobileprovision
+
+# macOS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Generated review / scratch artifacts
+/tmp/
+tmp/
+reviews/*.raw.md
+reviews/*.transcript.md
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+.beads-credential-key
+.beads/proxieddb/
+*.gate.lock*

@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Template: placeholders are substituted by core/install_launchagent.sh.
+     Do not install this file directly. (spec 015, Contract 4)
+
+     Placeholders: {{LABEL}} {{PORT}} {{LOG_DIR}} {{WRAPPER_PATH}} -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{{LABEL}}</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>{{WRAPPER_PATH}}</string>
+        <string>{{PORT}}</string>
+    </array>
+
+    <!-- launchd's minimal environment: the wrapper rebuilds everything else.
+         OP_* settings keep the 1Password CLI from touching the desktop app or
+         its cache (launchd-safe op behavior, mirrors the live wrapper). -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HOME</key>
+        <string>{{HOME}}</string>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>LITELLM_LOCAL_PORT</key>
+        <string>{{PORT}}</string>
+        <key>LITELLM_PROXY_LABEL</key>
+        <string>{{LABEL}}</string>
+        <key>LITELLM_PROXY_LOG_DIR</key>
+        <string>{{LOG_DIR}}</string>
+        <key>LITELLM_DEPLOYMENT</key>
+        <string>{{DEPLOYMENT}}</string>
+        <key>LITELLM_PROXY_CONFIG</key>
+        <string>{{WRAPPER_DIR}}/config.rendered.yaml</string>
+        <key>CREDENTIALS_MANIFEST</key>
+        <string>{{WRAPPER_DIR}}/credentials.toml</string>
+        <key>LITELLM_PROXY_PYTHON</key>
+        <string>{{PROXY_PYTHON}}</string>
+        <key>OP_KEYCHAIN_SERVICE</key>
+        <string>{{OP_KEYCHAIN_SERVICE}}</string>
+        <key>OP_KEYCHAIN_ACCOUNT</key>
+        <string>{{OP_KEYCHAIN_ACCOUNT}}</string>
+        <key>OP_CACHE</key>
+        <string>false</string>
+        <key>OP_LOAD_DESKTOP_APP_SETTINGS</key>
+        <string>false</string>
+    </dict>
+
+    <key>LimitLoadToSessionType</key>
+    <array>
+        <string>Aqua</string>
+        <string>Background</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <dict>
+        <!-- Restart on nonzero exit, including EX_CONFIG (78). Launchd does not
+             special-case 78: ThrottleInterval below bounds retries to 30s.
+             A clean exit is not restarted. -->
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+    <key>WorkingDirectory</key>
+    <string>{{WORK_DIR}}</string>
+
+    <key>StandardOutPath</key>
+    <string>{{LOG_DIR}}/proxy.log</string>
+    <key>StandardErrorPath</key>
+    <string>{{LOG_DIR}}/proxy.err.log</string>
+</dict>
+</plist>

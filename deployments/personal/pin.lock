@@ -1,0 +1,17 @@
+# pin.lock — personal deployment (PinnedBuild, spec 015 data-model)
+#
+# The personal deployment initially runs the SAME patched build family
+# (one shared artifact per research R4); its config surface differs
+# (oMLX + free-cloud), not the patch. Drift check compares both pins.
+base_version = "1.103.0"
+base_upstream = "BerriAI/litellm"
+base_ref = "fba00f508"
+patch_branch = "fix/responses-falsy-argument-delta"
+patch_remote = "https://github.com/pjbeyer/litellm.git"
+patch_commits = [
+    "a01ac33996",  # treat empty or absent stream deltas as no-op frames (hlite-qmb)
+    "1da7971bf3",  # stop duplicating arguments already sent on output_item.added
+    "fffbc4be45",  # stop assigning provider metadata as an attribute on a dict
+]
+patch_tip = "fffbc4be45"
+sentinel = "args_already_complete"  # patch-introduced per-stream state (1da7971bf3); positive assertion target

@@ -1,0 +1,188 @@
+# auto-free: local SIMPLE/MEDIUM; ordered free-tier cloud COMPLEX/REASONING.
+# Read README.md and run preflight.py with THE SAME Python as your LiteLLM.
+# Requires current LiteLLM deployment-attempt hooks and ordered failover.
+# Assumes Gemini/Groq/Cloudflare remain on unbilled FREE plans.
+# Never enable paid billing on those accounts without revisiting this policy.
+
+model_list:
+  - model_name: local
+    litellm_params:
+      model: openai/gemma-4-12b-coder-fable5-composer2.5-4bit
+      api_base: http://127.0.0.1:8000/v1
+      api_key: os.environ/LOCAL_OMLX_API_KEY
+      temperature: 0.7
+      top_p: 0.95
+      max_tokens: 8192 # Output allowance, NOT the context window.
+      timeout: 180
+      num_retries: 0
+      max_parallel_requests: 1
+    model_info:
+      id: omlx-local
+      # No invented context limit: confirm the actual loaded oMLX model.
+
+  # All cloud entries intentionally have the SAME model_name.
+  # 'order' provides preference + failover, not random choice across providers.
+  # Gemini model names should be verified with preflight.py --catalogs.
+  # Dashboard history peaks are NOT today's remaining quota.
+  - model_name: cloud-free
+    litellm_params:
+      model: gemini/gemini-3.8-flash
+      api_key: os.environ/GEMINI_API_KEY
+      order: 1
+      rpm: 5
+      tpm: 250000
+      max_parallel_requests: 1
+      max_tokens: 16384
+      timeout: 180
+      num_retries: 0
+    model_info:
+      id: gemini-38-free
+      max_input_tokens: 200000 # Intentional operating cap, not model context size.
+
+  - model_name: cloud-free
+    litellm_params:
+      model: gemini/gemini-3.7-flash
+      api_key: os.environ/GEMINI_API_KEY
+      order: 2
+      rpm: 5
+      tpm: 250000
+      max_parallel_requests: 1
+      max_tokens: 16384
+      timeout: 180
+      num_retries: 0
+    model_info:
+      id: gemini-37-free
+      max_input_tokens: 200000
+
+  - model_name: cloud-free
+    litellm_params:
+      model: gemini/gemini-3.6-flash
+      api_key: os.environ/GEMINI_API_KEY
+      order: 3
+      rpm: 5
+      tpm: 250000
+      max_parallel_requests: 1
+      max_tokens: 16384
+      timeout: 180
+      num_retries: 0
+    model_info:
+      id: gemini-36-free
+      max_input_tokens: 200000
+
+  - model_name: cloud-free
+    litellm_params:
+      model: gemini/gemini-3.5-flash
+      api_key: os.environ/GEMINI_API_KEY
+      order: 4
+      rpm: 5
+      tpm: 250000
+      max_parallel_requests: 1
+      max_tokens: 16384
+      timeout: 180
+      num_retries: 0
+    model_info:
+      id: gemini-35-free
+      max_input_tokens: 200000
+
+  - model_name: cloud-free
+    litellm_params:
+      model: openrouter/openrouter/free
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      order: 5
+      rpm: 20
+      max_parallel_requests: 2
+      max_tokens: 16384
+      timeout: 180
+      num_retries: 0
+      # Callback also reapplies these controls on every attempt.
+      extra_body:
+        provider:
+          require_parameters: true
+          max_price:
+            prompt: 0
+            completion: 0
+            request: 0
+    model_info:
+      id: openrouter-free
+      # Dynamic free router has no guaranteed fixed context size.
+
+  - model_name: cloud-free
+    litellm_params:
+      # Use explicit OpenAI-compatible endpoint, not the legacy /ai/run adapter.
+      model: openai/@cf/openai/gpt-oss-120b
+      api_key: os.environ/CLOUDFLARE_API_KEY
+      api_base: os.environ/CLOUDFLARE_API_BASE # Set by sourcing proxy-env.sh.
+      order: 6
+      max_parallel_requests: 2
+      max_tokens: 16384
+      timeout: 180
+      num_retries: 0
+    model_info:
+      id: cloudflare-oss120-free
+      max_input_tokens: 110000 # Reserve output headroom within 128K context.
+
+  - model_name: cloud-free
+    litellm_params:
+      model: groq/openai/gpt-oss-120b
+      api_key: os.environ/GROQ_API_KEY
+      order: 7
+      rpm: 30
+      # 8K TPM checked in the callback after its 4K output cap is applied.
+      max_parallel_requests: 1
+      max_tokens: 4096
+      timeout: 90
+      num_retries: 0
+    model_info:
+      id: groq-oss120-free
+      # Small practical free-tier envelope, NOT GPT-OSS's model context size.
+      max_input_tokens: 3500
+
+  - model_name: auto-free
+    litellm_params:
+      model: auto_router/complexity_router
+      complexity_router_default_model: local
+      complexity_router_config:
+        classifier_type: heuristic # No paid classifier/embedding calls.
+        adaptive: false
+        tiers:
+          SIMPLE: local
+          MEDIUM: local
+          COMPLEX: cloud-free
+          REASONING: cloud-free
+        session_affinity: false
+        classification_mode: user_turn
+        return_raw_model_name: false # Stable alias for agent clients.
+        enable_context_window_escalation: false # No automatic local-to-cloud spill.
+        # Do NOT force SIMPLE/MEDIUM on 'hi', 'explain', 'summarize', etc.
+        # Those rules short-circuit the scorer and can under-route hard tasks.
+        keyword_tier_rules:
+          - keywords: ["distributed architecture", "system design", "refactor", "debug", "root cause", "optimize", "kubernetes", "security review"]
+            tier: COMPLEX
+          - keywords: ["step by step", "think through", "analyze deeply", "formal proof", "prove", "derive", "paxos", "raft"]
+            tier: REASONING
+
+router_settings:
+  routing_strategy: simple-shuffle # Order filters first; one deployment/order.
+  enable_pre_call_checks: true
+  optional_pre_call_checks: [] # No affinity; upstream rate limits are authoritative.
+  num_retries: 0
+  max_fallbacks: 12 # Sufficient headroom for seven ordered cloud deployments.
+  allowed_fails: 0
+  cooldown_time: 5 # Brief native cooldown; callback honors longer quota resets.
+  fallbacks: [] # No cloud-to-local downgrade; no local-to-cloud fallback.
+  context_window_fallbacks: [] # Oversized requests fail; no history truncation.
+  content_policy_fallbacks: []
+
+litellm_settings:
+  telemetry: false
+  drop_params: false # Do not silently discard tools / structured-output requests.
+  # RC/oMLX caveat: LiteLLM omits explicit stream:false downstream; this local endpoint then ignores forced tools. See docs/local-tool-compatibility.md.
+  modify_params: false
+  num_retries: 0
+  request_timeout: 600 # Whole-request ceiling; individual attempts capped above.
+  callbacks:
+    - custom_callbacks.proxy_modifier
+
+# Bind the CLI to 127.0.0.1 (see README). No unauthenticated LAN exposure.
+# Deliberately no cache-control injection or response cache.

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Template: placeholders are substituted by core/install_launchagent.sh.
+     Do not install this file directly.
+
+     Separate job from the proxy: launchd has no rotation feature and the proxy
+     must not restart to rotate its own logs. Placeholders: {{LABEL}}
+     {{LOG_DIR}} {{WRAPPER_DIR}} -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{{LABEL}}.rotate</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>{{WRAPPER_DIR}}/rotate-logs.sh</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>LITELLM_PROXY_LABEL</key>
+        <string>{{LABEL}}</string>
+        <key>LITELLM_PROXY_LOG_DIR</key>
+        <string>{{LOG_DIR}}</string>
+        <key>LITELLM_LOG_MAX_BYTES</key>
+        <string>5242880</string>
+        <key>LITELLM_LOG_KEEP</key>
+        <string>3</string>
+    </dict>
+
+    <key>StartInterval</key>
+    <integer>3600</integer>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>{{LOG_DIR}}/rotate.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>{{LOG_DIR}}/rotate.err.log</string>
+</dict>
+</plist>
