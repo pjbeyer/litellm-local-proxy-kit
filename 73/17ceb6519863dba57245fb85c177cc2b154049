@@ -1,0 +1,25 @@
+specs/001-proxy-lifecycle-guard-plugin/contracts/hook-contract.md
+  s_965ae04812f20b::t_abefef07c6b55c 27-32
+specs/001-proxy-lifecycle-guard-plugin/spec.md
+  s_965ae04812f20b::t_a38ede8c77ef5b 120-125
+  s_965ae04812f20b::t_b46eb946574141 302-307
+  s_965ae04812f20b::t_14559594fc0f3e 208-215
+  s_965ae04812f20b::t_5f4fec4327a086 7-8
+  s_965ae04812f20b::t_8c6a64ae68d56c 20-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "7317ceb6519863dba57245fb85c177cc2b154049",
+  "prompts": {},
+  "sessions": {
+    "s_965ae04812f20b": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261103_191802_f5511f",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
