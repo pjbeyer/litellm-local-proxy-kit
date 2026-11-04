@@ -1,0 +1,21 @@
+integrations/hermes/proxy-lifecycle-guard/README.md
+  s_b1a18a0bb18a46::t_8f3436747a5125 141-146,148-151,158-167
+  s_b1a18a0bb18a46::t_ebfd3fd6b83de8 152
+  s_b1a18a0bb18a46::t_61af0a050e0f82 168
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "4d95d678e433b67e58b83221ebdbc5ef0cf7e45a",
+  "prompts": {},
+  "sessions": {
+    "s_b1a18a0bb18a46": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261103_122930_556d2b",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
