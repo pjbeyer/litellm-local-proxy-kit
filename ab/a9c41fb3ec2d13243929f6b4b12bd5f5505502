@@ -1,0 +1,26 @@
+core/install_launchagent.py
+  h_c5be3b3dad7ca8 6
+core/parse_credentials.py
+  h_c5be3b3dad7ca8 21
+core/restart_control/runtime.py
+  h_c5be3b3dad7ca8 348-349
+core/run-proxy-wrapper.sh
+  h_c5be3b3dad7ca8 121,123-126,137,140,142,145
+docs/macos-managed-service.md
+  h_c5be3b3dad7ca8 17-18
+docs/safe-restart-contract.md
+  h_c5be3b3dad7ca8 10-11
+tests/test_restart_preflight.py
+  h_c5be3b3dad7ca8 17,21,24,27,40,52-54,62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "aba9c41fb3ec2d13243929f6b4b12bd5f5505502",
+  "prompts": {},
+  "humans": {
+    "h_c5be3b3dad7ca8": {
+      "author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
