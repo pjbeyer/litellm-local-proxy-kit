@@ -1,0 +1,34 @@
+specs/001-proxy-lifecycle-guard-plugin/plan.md
+  s_965ae04812f20b::t_b304bb0835924f 1,3
+specs/001-proxy-lifecycle-guard-plugin/tasks.md
+  s_965ae04812f20b::t_fa559c53fb318f 73
+  s_965ae04812f20b::t_dab15cf2922935 85-90
+  s_965ae04812f20b::t_24ce926ef2e066 131-133
+specs/001-proxy-lifecycle-guard-plugin/spec.md
+  s_965ae04812f20b::t_575d5abb189cea 215-218
+  s_965ae04812f20b::t_dd2bffb97f1750 22
+  s_965ae04812f20b::t_5dbbb96903aa45 310-314
+specs/001-proxy-lifecycle-guard-plugin/contracts/hook-contract.md
+  s_965ae04812f20b::t_74d947bac657b7 45
+  s_965ae04812f20b::t_ed41acb4228c6b 37,42
+  s_965ae04812f20b::t_932f05ac4fdce8 51
+  s_965ae04812f20b::t_09fa3bec70cc9c 49
+specs/001-proxy-lifecycle-guard-plugin/security-review-findings-2026-11-03.md
+  s_965ae04812f20b::t_e987cdc2f36d6c 30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "e8823b244f39af8e3cee183a71e96b762ab7cf38",
+  "prompts": {},
+  "sessions": {
+    "s_965ae04812f20b": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261103_191802_f5511f",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
