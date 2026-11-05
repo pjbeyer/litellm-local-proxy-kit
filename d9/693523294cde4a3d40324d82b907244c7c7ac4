@@ -1,0 +1,26 @@
+core/run-proxy-wrapper.sh
+  s_f9b0b7f253c323::t_e664f1c25a7a67 29-31
+  s_f9b0b7f253c323::t_795d6138ffd682 262-268
+tests/test_core.py
+  s_f9b0b7f253c323::t_e1d0657c719f86 9
+  s_f9b0b7f253c323::t_05760196e6bff8 201-202,204-211,216
+  s_f9b0b7f253c323::t_c085af0ece26ec 195-200,203,212-215,217-239
+  s_f9b0b7f253c323::t_84cee27faf4eeb 187-192
+  s_f9b0b7f253c323::t_d45c6754f26267 193-194
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "d9693523294cde4a3d40324d82b907244c7c7ac4",
+  "prompts": {},
+  "sessions": {
+    "s_f9b0b7f253c323": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261104_171823_16c4ca9f",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
