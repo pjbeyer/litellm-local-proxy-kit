@@ -63,12 +63,14 @@ if ! env -u PYTHONPATH -u PYTHONHOME "$PROXY_PYTHON" "$CORE_DIR/check_patch_sent
 fi
 log "pinned build patch assertion OK ($SENTINEL)"
 
-# ---- Gate 2a: dist-info version + worktree HEAD match pin.lock (FR-006) ------
+# ---- Gate 2a: shared pre-import runtime proof (FR-006, lpkit-5o4) -----------
+# Explicit --repository: this runs from the kit checkout (nested layout);
+# installed wrappers run the same proof in flat layout without the flag.
 if ! env -u PYTHONPATH -u PYTHONHOME "$PROXY_PYTHON" "$CORE_DIR/check_pin.py" \
-      "$PIN_LOCK" >/dev/null 2>&1; then
+      --repository "$PIN_LOCK" >/dev/null 2>&1; then
   die "pinned build fails the pin-provenance check — refusing to install around it"
 fi
-log "pinned build provenance OK (dist-info + HEAD match pin.lock)"
+log "pinned build provenance OK (shared runtime content proof)"
 
 # ---- Render config + plists into a staging dir ------------------------------
 STAGE="$(mktemp -d "${TMPDIR:-/tmp}/litellm-install.XXXXXX")"
@@ -92,14 +94,14 @@ TEMPLATE="$CORE_DIR/config.template.header.txt"
 cp "$CORE_DIR/run-proxy-wrapper.sh" "$CORE_DIR/check_patch_sentinel.py" "$CORE_DIR/check_pin.py" \
    "$CORE_DIR/parse_credentials.py" "$CORE_DIR/rotate-logs.sh" "$CORE_DIR/aws-sso-cred-shim.sh" \
    "$CORE_DIR/harvest-filter-metrics.sh" "$CORE_DIR/check_credential_coverage.py" \
-   "$STAGE/"
+   "$CORE_DIR/restart_control/runtime_identity.py" "$STAGE/"
 # The plist points at this deployed manifest; shipping only the parser leaves
 # every installed wrapper failing closed before credential resolution.
 cp "$MANIFEST" "$STAGE/credentials.toml"
 cp "$PIN_LOCK" "$STAGE/pin.lock"
 
 # Managed file set: everything the installer owns at the apply target.
-MANAGED=(config.rendered.yaml "$LABEL.plist" "$LABEL.rotate.plist" run-proxy-wrapper.sh check_patch_sentinel.py check_pin.py parse_credentials.py rotate-logs.sh aws-sso-cred-shim.sh harvest-filter-metrics.sh credentials.toml pin.lock check_credential_coverage.py)
+MANAGED=(config.rendered.yaml "$LABEL.plist" "$LABEL.rotate.plist" run-proxy-wrapper.sh check_patch_sentinel.py check_pin.py runtime_identity.py parse_credentials.py rotate-logs.sh aws-sso-cred-shim.sh harvest-filter-metrics.sh credentials.toml pin.lock check_credential_coverage.py)
 # Stale entry points the installer owns and must remove/rename (FR-001/F-CI-4).
 STALE=(run-local-proxy.sh launchd-wrapper.sh)
 
