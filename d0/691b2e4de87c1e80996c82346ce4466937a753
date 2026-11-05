@@ -1,0 +1,114 @@
+tests/test_restart_lifecycle_fixtures.py
+  s_d5d21be3f09d9a::t_f8197e463da057 386
+  s_df4edfa558d215::t_711a38c6981af3 396
+  s_52aec20dbafb00::t_c79035fdcbfdcd 362
+  s_df4edfa558d215::t_cd69d103b8c9b7 335-361,363-371
+  s_8dc204c22fddba::t_c98fb8a2067c5f 39,385,864
+tests/test_restart_fixture_readiness.py
+  s_df4edfa558d215::t_9c997e6d61d853 173-174
+  s_df4edfa558d215::t_f9a3b3ecf44d8c 24,27,29,31,55,70-71,74-75,80-83,85,87,90-91,99,110,118,122,156,163,168-170,172,180
+  s_df4edfa558d215::t_ed88d69cbbaa64 1-9,15-23,25,28,30,32-49,54,56-69,72-73,76-79,84,86,88-89,92-98,100-103,105,109,111-112,114,116-117,119-121,123-130,145,147,150-155,157,159-162,164-167,171,175,177-179,181-186,262-265
+  s_52aec20dbafb00::t_a862698cf9cc75 10-14,26,50-53,104,106-108,113,115,131-144,146,148-149,158,176,187-261
+core/restart_control/engine.py
+  s_406f696561f41a::t_a7429358522277 213-221,230-236
+  s_8dc204c22fddba::t_fdda390447f456 302-305
+  s_8f038b4338e0d7::t_ab1a8ee44a802a 511,514
+  s_8dc204c22fddba::t_bc7c3d77accc78 17,164-177,179-191,193-195,206-212,223-229,237-243,300-301,508-509,512-513,515-519
+tests/test_restart_runtime.py
+  s_8dc204c22fddba::t_c98fb8a2067c5f 27
+  s_d5d21be3f09d9a::t_45aac091fb22aa 185
+core/restart_controller.py
+  s_406f696561f41a::t_a85a33f3372643 55
+  s_8dc204c22fddba::t_c800452dac1b0b 13,22-31,44-49,53,56-59,70-71
+  s_8dc204c22fddba::t_8ef69cd200ae47 72
+tests/test_controller_attachment.py
+  s_8dc204c22fddba::t_2aa50cb14c9189 310,322
+  s_406f696561f41a::t_9f6ca19477c0e1 400
+  s_8dc204c22fddba::t_16ce70124c672e 320,323-324,326-330,336,339
+  s_8f038b4338e0d7::t_462e4169871c8c 155-168,287-304
+  s_8dc204c22fddba::t_4086795f68b9e5 1-2,4-11,13-67,104-111,134-154,169-173,180-195,197-203,205-209
+  s_8dc204c22fddba::t_0caa7a17014f4d 354-368,370-378,384
+  s_8dc204c22fddba::t_6620ae5b53a5da 179
+  s_406f696561f41a::t_cd0117ef969a67 385-399
+  s_406f696561f41a::t_06beeb995f9774 369,380-383
+  s_406f696561f41a::t_621e708182afe7 117,119,131
+  s_406f696561f41a::t_3ba8c175fc68ec 3,68-103,115-116,118,120-130,132-133,196,204,210-227,234,236,238,240-245,247-257,259-260,274,319,321,325,351,379
+  s_406f696561f41a::t_bb00ccfe4dee01 12,112-114,246,258
+  s_8dc204c22fddba::t_1749c31a572e52 261-273,275-286,305-309,311-318,331-335,337-338,340-350,352-353
+  s_8dc204c22fddba::t_571f66e1d34baf 175-178
+  s_8dc204c22fddba::t_9a5e2ed98a7241 174
+  s_406f696561f41a::t_36d4ae7becb8e2 228-233,235,237,239
+core/restart_control/runtime.py
+  s_8dc204c22fddba::t_44ff685c76d20d 215,222-223,229,235-236
+  s_406f696561f41a::t_852f6c2cf6ef1d 88-89,94-101,105,178,183-184,206
+  s_8dc204c22fddba::t_b6f1f2167deb1c 90-93,179-182
+  s_8f038b4338e0d7::t_ab1a8ee44a802a 216-217
+  s_8dc204c22fddba::t_dd49f8a89f3ebc 193-205,207-214,218-221,224-228,230-234,237-238,272,581
+tests/test_restart_controller.py
+  s_d5d21be3f09d9a::t_ec0d213d14a68c 89
+  s_8dc204c22fddba::t_c98fb8a2067c5f 126
+  s_d5d21be3f09d9a::t_7449194b70470b 127
+  s_8dc204c22fddba::t_050e181a432e85 16,88
+tests/restart_lifecycle_adapter.py
+  s_8dc204c22fddba::t_ad63bdc6938fd8 2-3,5-6,8,11-12
+  s_406f696561f41a::t_2c0069784486a7 7,9,13-17
+  s_8dc204c22fddba::t_521af262547cc6 1,4,10,18-19,21-24
+  s_8dc204c22fddba::t_483cd3ffa8b15b 25-27
+  s_8dc204c22fddba::t_44ff685c76d20d 20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "d0691b2e4de87c1e80996c82346ce4466937a753",
+  "prompts": {},
+  "sessions": {
+    "s_406f696561f41a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a82d-e52f-7262-a059-e1f084baeb93",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_52aec20dbafb00": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261104_203322_4f784d",
+        "model": "glm-5.3"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_8dc204c22fddba": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a64a-cf2a-7041-bce8-db790ee5a682",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_8f038b4338e0d7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a867-3941-7142-ace5-13ff2e5599de",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_d5d21be3f09d9a": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261104_165530_9c9d87",
+        "model": "glm-5.3"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_df4edfa558d215": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261104_170432_8a31d0",
+        "model": "glm-5.3"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
