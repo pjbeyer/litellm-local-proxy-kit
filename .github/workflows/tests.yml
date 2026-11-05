@@ -1,0 +1,46 @@
+# Offline test gate for litellm-local-proxy-kit.
+# Runs the complete offline suite (per README: pytest, NOT unittest discover)
+# on stock macOS and Linux. No provider credentials, no network, no quota.
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Create isolated test venv
+        run: |
+          uv venv .venv-tests
+          uv pip install --python .venv-tests/bin/python pytest pyyaml
+      - name: Offline test suite
+        run: .venv-tests/bin/python -m pytest -q tests
+
+  hygiene-scan:
+    # Publication hygiene: no secrets, private paths, or merge markers.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Secret-shaped values
+        run: |
+          ! grep -rInE 'sk-[A-Za-z0-9]{20}|AKIA[0-9A-Z]{16}|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----' \
+            --exclude-dir=.git --exclude-dir=.venv-tests .
+      - name: Absolute workstation paths
+        run: |
+          ! grep -rIln '/Users/[a-z]' --exclude-dir=.git --exclude-dir=.venv-tests .
+      - name: Merge markers
+        run: |
+          ! grep -rInE '^(<<<<<<<|=======$|>>>>>>>)' --exclude-dir=.git --exclude-dir=.venv-tests .
