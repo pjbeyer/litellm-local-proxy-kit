@@ -1,6 +1,12 @@
 # Stable isolated-validation candidate; not a production lockfile or migration command.
-# Validated with the 37 offline tests, localhost Router lifecycle, and synthetic tool transport.
-litellm[proxy]==1.101.0
+# Pinned to 1.108.0 (latest stable at validation time, owner decision 2026-11-04).
+# Validated against 1.108.0 on 2026-11-04: pip check clean; complete offline
+# suite (204 tests) green; preflight.py --router-test PASS (ordered failover,
+# 429+fallback, deployment failure-hook event, wire output cap). The synthetic
+# two-phase tool-transport probe has NOT yet been re-run against 1.108.0 —
+# see docs/stable-candidate-validation.md for the 1.101.0 record; the local
+# function-tool guard remains required.
+litellm[proxy]==1.108.0
 # Required by the tested proxy authentication error path.
 prisma==0.15.0
 PyYAML>=6

@@ -13,8 +13,8 @@ This repository is an import-stage local project, not yet a public release.
 
 ## Required before a public remote or release
 
-- [ ] Select and record an OSS license.
-- [x] Identify and isolated-validate a stable LiteLLM candidate: `1.101.0` passed the imported callback/router matrix; see `docs/stable-candidate-validation.md`.
+- [x] Select and record an OSS license: MIT (LICENSE).
+- [x] Identify and isolated-validate a stable LiteLLM candidate: `1.101.0` passed the imported callback/router matrix; see `docs/stable-candidate-validation.md`. Superseded 2026-11-04: `1.108.0` passed pip check, the complete offline suite, and `--router-test`; two-phase tool transport pending.
 - [ ] Re-run `preflight.py --router-test` with the exact declared release environment whenever the candidate dependency set changes.
 - [ ] Verify each provider/model name, quota policy, and data-handling term at release time; do not rely on source-experiment observations.
 - [ ] Add a portable macOS service guide only after separate specification and review. Do not publish a workstation plist or script.
