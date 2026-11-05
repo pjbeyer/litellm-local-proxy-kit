@@ -77,9 +77,13 @@ class FixtureBackend:
 
 class ControllerTest(unittest.TestCase):
     def setUp(self):
+        # Resolve: macOS stock TMPDIR is /var/folders/... where /var is a
+        # symlink to /private/var; the engine's _private_path guard correctly
+        # rejects symlinked state paths, so tests must hand it real paths
+        # (same pattern as test_restart_lifecycle_fixtures._fixture_base).
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.root = Path(self.tmp.name)
+        self.root = Path(self.tmp.name).resolve()
         self.backend = FixtureBackend()
         self.now = 1000.0
         self.mono = 500.0
@@ -301,6 +305,16 @@ class ControllerTest(unittest.TestCase):
         link.symlink_to(self.root / "state")
         with self.assertRaises(Fault):
             private_dir(link)
+        # Regression (lpkit-gns): state paths under the STOCK macOS TMPDIR
+        # (/var/folders/... where /var -> /private/var) must work when the
+        # caller hands the engine a resolved (real) path; the guard must
+        # still reject the unresolved symlinked path itself.
+        raw = Path(os.environ.get("TMPDIR") or tempfile.gettempdir())
+        real = raw.resolve()
+        if raw != real:
+            with self.assertRaises(Fault):
+                private_dir(raw / "rc-guard-probe")
+        self.assertIsNotNone(private_dir(real / "rc-guard-probe"))
         target = self.root / "state" / "requests" / "sync.json"
         with mock.patch("core.restart_control.engine._sync_fd", side_effect=OSError("fixture sync failure")):
             with self.assertRaises(Fault) as caught:
@@ -311,7 +325,8 @@ class ControllerTest(unittest.TestCase):
     def test_socket_dispatch_and_bad_json(self):
         short = tempfile.TemporaryDirectory(prefix='rc-', dir=os.environ['TMPDIR'])
         self.addCleanup(short.cleanup)
-        path = Path(short.name) / "controller.sock"
+        # Resolve (see setUp): hand the engine real paths, not symlinked TMPDIR.
+        path = Path(short.name).resolve() / "controller.sock"
         try:
             with socket.socket(socket.AF_UNIX) as probe:
                 probe.bind(str(path))

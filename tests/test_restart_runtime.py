@@ -28,8 +28,12 @@ from restart_control.runtime_identity import KIT_INPUTS, PROXY_INPUTS, file_fact
 
 @pytest.fixture
 def private_root():
+    # Resolve: macOS stock TMPDIR is /var/folders/... where /var is a symlink
+    # to /private/var; the engine's _private_path guard correctly rejects
+    # symlinked state paths, so fixtures must hand it real paths (same
+    # pattern as test_restart_lifecycle_fixtures._fixture_base).
     with tempfile.TemporaryDirectory(prefix='rt-', dir=os.environ['TMPDIR']) as name:
-        yield Path(name)
+        yield Path(name).resolve()
 
 
 @pytest.fixture
