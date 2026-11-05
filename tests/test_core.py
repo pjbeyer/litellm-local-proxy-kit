@@ -6,6 +6,7 @@ actually start a server (covered by live stage runs, recorded in evidence/).
 """
 from __future__ import annotations
 
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -183,7 +184,59 @@ def test_wrapper_sentinel_negative_on_python_without_litellm(tmp_path):
         tmp_path,
     )
     assert r.returncode == 78
-    assert "patch assertion FAILED" in r.stdout + r.stderr, "stock build must be refused (F-CI-2)"
+    # Since lpkit-5o4 the pin-provenance gate runs BEFORE the import-based
+    # sentinel, so a stock interpreter is refused even earlier: exit 78 at
+    # the pin gate (no pin.lock beside the wrapper) instead of the sentinel.
+    # Either gate failing closed satisfies F-CI-2 (stock build never serves).
+    assert ("startup requires the installed pin.lock" in r.stdout + r.stderr
+            or "patch assertion FAILED" in r.stdout + r.stderr), "stock build must be refused (F-CI-2)"
+
+
+# ---------- live-hardening ports (lpkit-5o4) ----------
+
+def test_wrapper_runs_pin_provenance_on_every_startup(tmp_path):
+    """Pin provenance is required for EVERY startup, not only --preflight.
+
+    Live-only hardening (lpkit-5o4): an unverified import must never serve.
+    Sentinel check passes via an interpreter shim; the startup path must
+    then refuse with 78 because no pin.lock exists next to the wrapper.
+    """
+    shim_dir = tmp_path / "pyshim"
+    shim_dir.mkdir()
+    py = shim_dir / "python"
+    py.write_text(
+        '#!/bin/bash\ncase "$1" in */check_patch_sentinel.py) exit 0;; esac\n'
+        f"exec {shlex.quote(sys.executable)} \"$@\"\n"
+    )
+    py.chmod(0o755)
+    creds = _write_creds(tmp_path)
+    config = _write_config(tmp_path, "LITELLM_API_KEY")
+    r = _run_wrapper(
+        {"LITELLM_PROXY_CONFIG": str(config), "CREDENTIALS_MANIFEST": str(creds),
+         "LITELLM_PROXY_PYTHON": str(py)},
+        tmp_path,
+    )
+    assert r.returncode == 78, f"expected 78, got {r.returncode}: {r.stderr}"
+    assert "startup requires the installed pin.lock" in r.stdout + r.stderr, \
+        "every startup must prove provenance before any import serves (lpkit-5o4)"
+
+
+def test_wrapper_exports_python_dontwritebytecode(tmp_path):
+    """PYTHONDONTWRITEBYTECODE=1 is exported for helpers and proxy execution.
+
+    Live-only hardening (lpkit-5o4): preserves frozen-runtime cache evidence.
+    """
+    creds = _write_creds(tmp_path)
+    config = _write_config(tmp_path, "LITELLM_API_KEY")
+    r = _run_wrapper(
+        {"LITELLM_PROXY_CONFIG": str(config), "CREDENTIALS_MANIFEST": str(creds),
+         "LITELLM_PROXY_PYTHON": "/usr/bin/python3"},
+        tmp_path,
+    )
+    # The wrapper refuses later (missing pin.lock); the export must happen before.
+    assert r.returncode == 78
+    assert "PYTHONDONTWRITEBYTECODE" in Path(WRAPPER).read_text(), \
+        "wrapper must export PYTHONDONTWRITEBYTECODE=1 (lpkit-5o4)"
 
 
 # ---------- coverage gate: config references vs manifest rows (FR-005) ----------
