@@ -1,0 +1,21 @@
+core/check_pin.py
+  s_f9b0b7f253c323::t_b75754654e5c2a 2,4-5,9-11,15-37,40-41,44-45,47-62,64,68-69
+core/restart_control/runtime_identity.py
+  s_f9b0b7f253c323::t_bc3bcb075a50fe 13-20,47,49,62-65,70,97-348,352,363,412-413,427-432,486,492-498
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "0590779ea7b47b77a1b1ce6e12d5dd1d4d7f68a9",
+  "prompts": {},
+  "sessions": {
+    "s_f9b0b7f253c323": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261104_171823_16c4ca9f",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
