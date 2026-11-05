@@ -13,6 +13,7 @@ from unittest import mock
 
 from core.restart_control.engine import Controller, Fault, approval_binding, atomic_json, private_dir
 from core.restart_control.wire import _serve_one, client, serve
+from restart_lifecycle_adapter import FixtureLifecycleAdapter
 
 
 D = "a" * 64
@@ -84,7 +85,8 @@ class ControllerTest(unittest.TestCase):
         self.now = 1000.0
         self.mono = 500.0
         self.controller = Controller(self.root / "state", self.backend,
-                                     clock=lambda: self.now, monotonic=lambda: self.mono)
+                                     clock=lambda: self.now, monotonic=lambda: self.mono,
+                                     test_lifecycle=FixtureLifecycleAdapter(namespace='core'))
 
     def prepare(self):
         result = self.controller.handle({"op": "prepare"})
@@ -121,7 +123,8 @@ class ControllerTest(unittest.TestCase):
         plan = self.prepare()
         self.approve(plan)
         other = Controller(self.root / "state", self.backend, clock=lambda: self.now,
-                           monotonic=lambda: self.mono)
+                           monotonic=lambda: self.mono,
+                           test_lifecycle=FixtureLifecycleAdapter(namespace='core'))
         self.assertEqual(other.handle({"op": "restart", "request_id": plan["request_id"],
                                        "asset_digest": D})["code"], "plan_stale")
         self.mono += 301

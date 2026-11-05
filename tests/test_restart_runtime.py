@@ -24,6 +24,7 @@ sys.path.insert(0, str(ROOT/'core'))
 from restart_control.engine import Fault, atomic_json
 from restart_control.runtime import Runtime
 from restart_control.runtime_identity import KIT_INPUTS, PROXY_INPUTS, file_fact, source_facts
+from restart_lifecycle_adapter import FixtureLifecycleAdapter
 
 
 @pytest.fixture
@@ -181,7 +182,7 @@ def runtime(private_root):
     atomic_json(policy_path, policy)
     with mock.patch.dict(os.environ, {'OP_SERVICE_ACCOUNT_TOKEN': 'fixture-only',
                                      'PYTHONPATH': 'fixture-only', 'PYTHONHOME': 'fixture-only'}):
-        obj = Runtime(policy_path)
+        obj = Runtime(policy_path, test_lifecycle=FixtureLifecycleAdapter(namespace='restart_control'))
     obj._capture = mock.Mock(return_value=json.dumps({'runtime_digest': 'a'*64}).encode())
     return obj
 

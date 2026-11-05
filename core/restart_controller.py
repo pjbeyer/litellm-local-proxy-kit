@@ -9,14 +9,24 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import argparse
 import json
 import signal
-import threading
 from restart_control.engine import Controller, Fault, _read_json
+from restart_control.shutdown import Shutdown, ShutdownRequested
 from restart_control.wire import client, serve
 
 
 class Parser(argparse.ArgumentParser):
     def error(self, message):
         raise Fault('invalid_request')
+
+
+class ShutdownView:
+    """Read-only Event shape for the wire server's existing drain loop."""
+
+    def __init__(self, shutdown):
+        self.shutdown = shutdown
+
+    def is_set(self):
+        return self.shutdown.requested
 
 
 def main(argv=None):
@@ -31,16 +41,22 @@ def main(argv=None):
         restart.add_argument('request_id')
         restart.add_argument('asset_digest')
         args = parser.parse_args(argv)
+        shutdown = None
+        if args.command == 'serve':
+            shutdown = Shutdown()
+            signal.signal(signal.SIGTERM, lambda *_: shutdown.request())
+            signal.signal(signal.SIGINT, lambda *_: shutdown.request())
+            shutdown.checkpoint()
         policy = _read_json(Path(args.policy))
         endpoint = Path(policy['state_dir'])/'controller.sock'
         if args.command == 'serve':
+            shutdown.checkpoint()
             from restart_control.runtime import Runtime
-            runtime = Runtime(args.policy)
-            controller = Controller(runtime.state, runtime)
-            stop = threading.Event()
-            signal.signal(signal.SIGTERM, lambda *_: stop.set())
-            signal.signal(signal.SIGINT, lambda *_: stop.set())
-            serve(endpoint, controller, stop)
+            runtime = Runtime(args.policy, shutdown=shutdown)
+            shutdown.checkpoint()
+            controller = Controller(runtime.state, runtime, shutdown=shutdown)
+            shutdown.checkpoint()
+            serve(endpoint, controller, ShutdownView(shutdown))
             return 0
         request = {'op': args.command}
         if args.command == 'restart':
@@ -50,6 +66,9 @@ def main(argv=None):
         return 0 if response.get('status') in ('ok', 'prepared', 'restarted', 'rolled_back') else 78
     except Fault as error:
         print(json.dumps({'status': 'blocked', 'code': error.code}))
+        return 78
+    except ShutdownRequested:
+        print('{"status":"blocked","code":"controller_stopping"}')
         return 78
     except (Exception, KeyboardInterrupt):
         print('{"status":"blocked","code":"controller_unavailable"}')

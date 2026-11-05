@@ -14,7 +14,7 @@ import uuid
 from pathlib import Path
 
 
-CODES = frozenset("invalid_request busy state_io approval_missing approval_invalid approval_stale plan_stale unknown_request replayed interrupted clock_invalid unmanaged_listener primary_changed gate_failed candidate_failed candidate_cleanup_failed lkg_invalid runtime_invalid qualification_missing qualification_invalid service_control_denied service_control_timeout postcheck_failed rollback_failed internal_error controller_unavailable foreign_peer socket_exists".split())
+CODES = frozenset("invalid_request busy state_io approval_missing approval_invalid approval_stale plan_stale unknown_request replayed interrupted clock_invalid unmanaged_listener primary_changed gate_failed candidate_failed candidate_cleanup_failed lkg_invalid runtime_invalid qualification_missing qualification_invalid service_control_denied service_control_timeout postcheck_failed rollback_failed internal_error controller_unavailable foreign_peer socket_exists controller_stopping recovery_invalid".split())
 _ID = re.compile(r"[0-9a-f]{32}\Z")
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _APPROVAL_TIME = {"issued_at", "expires_at", "issued_monotonic", "expires_monotonic"}
@@ -161,12 +161,38 @@ def _result(status, code=None, **fields):
     return value
 
 
+class FixtureLifecyclePort:
+    """Explicit test-only admission port; concrete adapter lives with fixtures."""
+
+    def __init__(self):
+        from .shutdown import Shutdown
+        self.shutdown = Shutdown()
+
+    def require_clear(self):
+        raise NotImplementedError
+
+    def bind_backend(self, backend):
+        raise NotImplementedError
+
+
 class Controller:
-    def __init__(self, state_dir, backend, uid=None, clock=time.time, monotonic=time.monotonic):
+    def __init__(self, state_dir, backend, uid=None, clock=time.time, monotonic=time.monotonic,
+                 *, shutdown=None, test_lifecycle=None):
+        from .recovery import RecoveryError, RecoveryStore
+        from .shutdown import Shutdown
+
+        if test_lifecycle is not None:
+            if (not isinstance(test_lifecycle, FixtureLifecyclePort)
+                    or getattr(backend, "fixture", False) is not True or shutdown is not None):
+                raise Fault("invalid_request")
+            shutdown = test_lifecycle.shutdown
+        if type(shutdown) is not Shutdown:
+            raise Fault("invalid_request")
+        self.shutdown = shutdown
         self.state_dir = private_dir(state_dir)
-        self.requests = private_dir(self.state_dir / "requests")
-        self.approvals = private_dir(self.state_dir / "approvals")
-        self.snapshots = private_dir(self.state_dir / "snapshots")
+        self.requests = self.state_dir / "requests"
+        self.approvals = self.state_dir / "approvals"
+        self.snapshots = self.state_dir / "snapshots"
         self.backend = backend
         self.uid = os.getuid() if uid is None else uid
         if type(self.uid) is not int or self.uid < 0 or not isinstance(backend.label, str):
@@ -177,15 +203,44 @@ class Controller:
         self._last_wall = None
         self._last_mono = None
         self._lock_path = self.state_dir / "controller.lock"
-        try:
-            fd = os.open(self._lock_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
-        except FileExistsError:
-            pass
-        except OSError:
-            raise Fault("state_io") from None
+        self._recovery_invalid = False
+        if test_lifecycle is not None:
+            self.recovery = test_lifecycle
+            self.requests = private_dir(self.requests)
+            self.approvals = private_dir(self.approvals)
+            self.snapshots = private_dir(self.snapshots)
+            test_lifecycle.bind_backend(backend)
+            try:
+                fd = os.open(self._lock_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+            except FileExistsError:
+                pass
+            except OSError:
+                raise Fault("state_io") from None
+            else:
+                os.close(fd)
+            _private_path(self._lock_path, False)
         else:
-            os.close(fd)
-        _private_path(self._lock_path, False)
+            try:
+                with os.scandir(self.state_dir) as scan:
+                    initialize = next(scan, None) is None
+                self.recovery = RecoveryStore(
+                    self.state_dir, read_json=_read_json, atomic_json=atomic_json,
+                    private_path=_private_path, private_dir=private_dir,
+                    sync_fd=_sync_fd, initialize=initialize)
+                if initialize:
+                    self.snapshots = private_dir(self.snapshots)
+                    fd = os.open(self._lock_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+                    os.close(fd)
+                if not _private_path(self.snapshots, True) or not _private_path(self._lock_path, False):
+                    raise RecoveryError()
+            except (OSError, RecoveryError, Fault):
+                self.recovery = None
+                self._recovery_invalid = True
+                return
+            try:
+                backend.bind_lifecycle(shutdown, self.recovery)
+            except Exception:
+                raise Fault("runtime_invalid") from None
 
     def _time(self):
         wall, mono = self.clock(), self.monotonic()
@@ -242,6 +297,12 @@ class Controller:
         atomic_json(self.requests / (plan["request_id"] + ".json"), plan)
 
     def _status(self):
+        if self._recovery_invalid:
+            return _result("blocked", "recovery_invalid")
+        try:
+            self.recovery.require_clear()
+        except Exception:
+            return _result("blocked", "recovery_invalid")
         recent = []
         try:
             paths = sorted(self.requests.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)[:10]
@@ -444,7 +505,18 @@ class Controller:
         try:
             if op == "status":
                 return self._status()
+            if self._recovery_invalid:
+                raise Fault("recovery_invalid")
             with self._locked():
+                from .shutdown import ShutdownRequested
+                try:
+                    self.shutdown.checkpoint()
+                except ShutdownRequested:
+                    raise Fault("controller_stopping") from None
+                try:
+                    self.recovery.require_clear()
+                except Exception:
+                    raise Fault("recovery_invalid") from None
                 try:
                     return self._prepare() if op == "prepare" else self._restart(request)
                 finally:

@@ -85,10 +85,24 @@ def _native_receipt(pin_path, name):
 class Runtime:
     fixture = False
 
-    def __init__(self, policy_path):
+    def __init__(self, policy_path, *, shutdown=None, test_lifecycle=None):
+        from .shutdown import Shutdown, ShutdownRequested
+        if test_lifecycle is not None:
+            from .engine import FixtureLifecyclePort
+            if not isinstance(test_lifecycle, FixtureLifecyclePort):
+                raise Fault('invalid_request')
+            if shutdown is not None and shutdown is not test_lifecycle.shutdown:
+                raise Fault('invalid_request')
+            shutdown = test_lifecycle.shutdown
+        elif type(shutdown) is not Shutdown:
+            raise Fault('invalid_request')
+        self._expected_shutdown = shutdown
+        self.shutdown = shutdown
+        shutdown.checkpoint()
         self.policy_path = Path(policy_path).absolute()
         try:
             policy = _read_json(self.policy_path)
+            shutdown.checkpoint()
             if (not isinstance(policy, dict) or set(policy) != POLICY_FIELDS or
                     type(policy['version']) is not int or policy['version'] != 1):
                 raise ValueError('policy_invalid')
@@ -161,6 +175,13 @@ class Runtime:
             self._manifest_blob = (self.config/'credentials.toml').read_bytes()
             self._loaded_sources = source_facts(self.kit)
             self._last_proxy = None
+            shutdown.checkpoint()
+            if test_lifecycle is not None:
+                self.recovery = test_lifecycle
+                self._active_operation = object()
+                self._lifecycle_bound = True
+        except ShutdownRequested:
+            raise
         except Fault:
             raise
         except Exception:
@@ -169,6 +190,52 @@ class Runtime:
     def release_credentials(self):
         self._key = None
         self._operation_started = None
+        active = getattr(self, '_active_operation', None)
+        self._active_operation = None
+        if active is not None:
+            try:
+                self.recovery.end_operation(active)
+            except Exception:
+                raise Fault('recovery_invalid') from None
+
+    def bind_lifecycle(self, shutdown, recovery):
+        from .recovery import RecoveryStore
+        from .shutdown import Shutdown
+        if (getattr(self, '_lifecycle_bound', False)
+                or type(shutdown) is not Shutdown or type(recovery) is not RecoveryStore
+                or shutdown is not self._expected_shutdown
+                or recovery.state_dir.resolve() != self.state.resolve()):
+            raise Fault('recovery_invalid')
+        self.shutdown = shutdown
+        self.recovery = recovery
+        self._active_operation = None
+        self._lifecycle_bound = True
+
+    def begin_operation(self, handle):
+        from .shutdown import ShutdownRequested
+        if (handle is None or not getattr(self, '_lifecycle_bound', False)
+                or self._active_operation is not None):
+            raise Fault('recovery_invalid')
+        try:
+            self.shutdown.checkpoint()
+            self.recovery.require_clear(handle)
+        except ShutdownRequested:
+            raise Fault('controller_stopping') from None
+        except Exception:
+            raise Fault('recovery_invalid') from None
+        self._active_operation = handle
+
+    def _admit_helper(self):
+        from .shutdown import ShutdownRequested
+        if not getattr(self, '_lifecycle_bound', False) or self._active_operation is None:
+            raise Fault('recovery_invalid')
+        try:
+            self.shutdown.checkpoint()
+            self.recovery.require_clear(self._active_operation)
+        except ShutdownRequested:
+            raise Fault('controller_stopping') from None
+        except Exception:
+            raise Fault('recovery_invalid') from None
 
     def _group_exists(self, pgid):
         result = subprocess.run(['/bin/ps', '-axo', 'pgid='], env=self.env,
@@ -202,6 +269,7 @@ class Runtime:
             raise Fault('candidate_cleanup_failed') from None
 
     def _capture(self, argv, timeout=90, env=None, control=False):
+        self._admit_helper()
         if self._candidate is not None or self._cleanup_blocked:
             raise Fault('candidate_cleanup_failed')
         if self._operation_started is None:
@@ -510,6 +578,7 @@ class Runtime:
         return self._accept(self.port, guard, time.monotonic(), startup=False)
 
     def rehearse(self):
+        self._admit_helper()
         port = self.policy['candidate_port']
         if self._candidate is not None or self._listener(port) is not None:
             raise Fault('candidate_failed')
