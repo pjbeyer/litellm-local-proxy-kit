@@ -29,7 +29,9 @@ def validate():
     for name in ("async_pre_call_deployment_hook", "async_post_call_failure_deployment_hook"):
         if not hasattr(CustomLogger, name):
             raise RuntimeError("Installed LiteLLM lacks " + name + "; update in your existing venv, then retest")
-    config = yaml.safe_load((ROOT / "proxy_config.yaml").read_text())
+    # Shared-core layout: the personal deployment config lives under
+    # deployments/personal/; the root-level file moved there in 8981a77.
+    config = yaml.safe_load((ROOT / "deployments/personal/proxy_config.yaml").read_text())
     auto = next(x for x in config["model_list"] if x["model_name"] == "auto-free")
     cfg = auto["litellm_params"]["complexity_router_config"]
     unknown = set(cfg) - set(ComplexityRouterConfig.model_fields)
