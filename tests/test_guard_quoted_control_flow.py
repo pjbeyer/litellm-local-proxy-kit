@@ -56,10 +56,9 @@ def scope(tmp_path, monkeypatch):
             discovered.append(port)
             return snapshot
 
-        if hasattr(fresh_guard, "sink_start"):
-            assert fresh_guard.sink_start()
-            captured_worker = fresh_guard._sink_worker
-            assert captured_worker is not None
+        assert fresh_guard.sink_start()
+        captured_worker = fresh_guard._sink_worker
+        assert captured_worker is not None
 
         def evaluate(command):
             return fresh_guard.evaluate('terminal', {'command': command},

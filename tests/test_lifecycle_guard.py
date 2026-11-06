@@ -19,6 +19,7 @@ import logging
 import os
 import shutil
 import socket
+import stat
 import subprocess
 import sys
 import tempfile
@@ -117,13 +118,31 @@ class GuardHarness(unittest.TestCase):
     """evaluate() with an injected fake discovery (fixture PIDs only)."""
 
     def setUp(self):
+        from types import SimpleNamespace
+
         self.fake_snapshot = guard.Snapshot(
             pids=frozenset({FIXTURE_PID}), pgids=frozenset({FIXTURE_PID}),
-            comms=frozenset({"litellm"}), args=("litellm --port 4000",))
+            comms=frozenset({'litellm'}), args=('litellm --port 4000',))
         self.discovery_calls = []
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
+        self._retain_sink_fixtures = False
+
+        self.tmp = SimpleNamespace(name=tempfile.mkdtemp())
+        self.addCleanup(self._cleanup_fixture_directory, self.tmp.name)
         self.policy = write_policy(self.tmp.name)
+
+        self._sink_state = SimpleNamespace(
+            name=tempfile.mkdtemp(prefix='lg_sink_iso_'))
+        self.addCleanup(self._cleanup_fixture_directory, self._sink_state.name)
+        self._old_state_home = os.environ.get('XDG_STATE_HOME')
+        os.environ['XDG_STATE_HOME'] = self._sink_state.name
+        if self._old_state_home is None:
+            self.addCleanup(os.environ.pop, 'XDG_STATE_HOME', None)
+        else:
+            self.addCleanup(os.environ.__setitem__, 'XDG_STATE_HOME', self._old_state_home)
+
+    def _cleanup_fixture_directory(self, path):
+        if not self._retain_sink_fixtures:
+            shutil.rmtree(path, ignore_errors=True)
 
     def discover_fake(self, port):
         self.discovery_calls.append(port)
@@ -627,6 +646,19 @@ LISTENER_CODE = textwrap.dedent("""
 """)
 
 
+
+
+def _isolate_state_home(case):
+    """guard-hardening: point XDG_STATE_HOME at a temp dir for one test case."""
+    iso = tempfile.TemporaryDirectory(prefix="lg_sink_iso_")
+    case.addCleanup(iso.cleanup)
+    old = os.environ.get("XDG_STATE_HOME")
+    os.environ["XDG_STATE_HOME"] = iso.name
+    if old is None:
+        case.addCleanup(os.environ.pop, "XDG_STATE_HOME", None)
+    else:
+        case.addCleanup(os.environ.__setitem__, "XDG_STATE_HOME", old)
+
 class TestLoopbackListenerPreservationFixture(unittest.TestCase):
     """REAL read-only discovery against a REAL loopback listener.
 
@@ -644,6 +676,7 @@ class TestLoopbackListenerPreservationFixture(unittest.TestCase):
     """
 
     def setUp(self):
+        _isolate_state_home(self)
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.script = Path(self.tmp.name) / "listener.py"
@@ -722,6 +755,9 @@ class TestLoopbackListenerPreservationFixture(unittest.TestCase):
 
 
 class TestBounds(unittest.TestCase):
+    def setUp(self):
+        _isolate_state_home(self)
+
     """Matcher stays fast and bounded under adversarial input."""
 
     def _policy(self):
@@ -898,8 +934,9 @@ class TestParentRegressionGaps(GuardHarness):
         sys.modules[name] = module
         try:
             spec.loader.exec_module(module)
-            ctx = Mock()
+            ctx = _RecordingContext(self)
             module.register(ctx)
+            ctx.capture_guard(sys.modules[module.__name__ + ".guard"])
             ctx.register_hook.assert_called_once()
             event, callback = ctx.register_hook.call_args.args
             self.assertEqual(event, 'pre_tool_call')
@@ -1686,7 +1723,7 @@ class TestMutationChecksBattery(GuardHarness):
         deployed bytes are never modified.
         """
         plugin_dir = Path(tempfile.mkdtemp(prefix=f"guard-mut-{tag}-"))
-        self.addCleanup(shutil.rmtree, plugin_dir, ignore_errors=True)
+        self.addCleanup(self._cleanup_fixture_directory, plugin_dir)
         (plugin_dir / "guard.py").write_text(
             guard_text if guard_text is not None
             else MODULE_PATH.read_text(encoding="utf-8"))
@@ -1725,6 +1762,54 @@ class TestMutationChecksBattery(GuardHarness):
             pids=frozenset({FIXTURE_PID}), pgids=frozenset({FIXTURE_PID}),
             comms=frozenset({"litellm"}), args=("litellm --port 4000",))
         return lambda port: snap
+
+    def test_quoted_payload_regression_is_caught_in_isolated_copy(self):
+        # Restore the old blanket substitution only in an isolated plugin.
+        # Both outright refusal and silent analysis-byte corruption must fail
+        # the same preservation invariant as the quotation regression tests.
+        original = MODULE_PATH.read_text(encoding="utf-8")
+        mutated = self._apply_mutations(original, (
+            ('    chunk = _normalize_control_flow(chunk)',
+             '    chunk = _CF_SUB_RE.sub(";", chunk)'),
+        ))
+        pristine_dir = self._stage_isolated("quote-pristine")
+        mutant_dir = self._stage_isolated("quote-regressed", guard_text=mutated)
+        pristine = self._load_module(pristine_dir / "guard.py", "quote_pristine")
+        mutant = self._load_module(mutant_dir / "guard.py", "quote_regressed")
+
+        def assert_preserved(mod, directory, program):
+            import shlex
+            seen = []
+            analyze = mod._analyze_code_text
+
+            def observe(code, policy, snapshot):
+                seen.append(code)
+                return analyze(code, policy, snapshot)
+
+            mod._analyze_code_text = observe
+            try:
+                decision = mod.evaluate(
+                    "terminal", {"command": "python3 -c " + shlex.quote(program)},
+                    directory / "config.json", discover=self._fake_discover(mod))
+                self.assertIsNone(decision)
+                self.assertEqual(seen, [program])
+            finally:
+                mod._analyze_code_text = analyze
+
+        for program in ("print(1 if True else 0)", "print('else')"):
+            assert_preserved(pristine, pristine_dir, program)
+            with self.assertRaises(AssertionError):
+                assert_preserved(mutant, mutant_dir, program)
+        word_regressed = self._apply_mutations(original, (
+            ('normalize = (not in_word', 'normalize = (True'),
+        ))
+        word_dir = self._stage_isolated("word-regressed", guard_text=word_regressed)
+        word_mutant = self._load_module(word_dir / "guard.py", "word_regressed")
+        data = "echo ''else"
+        self.assertEqual(pristine._normalize_control_flow(data), data)
+        with self.assertRaises(AssertionError):
+            self.assertEqual(word_mutant._normalize_control_flow(data), data)
+        self.assertEqual(MODULE_PATH.read_text(encoding="utf-8"), original)
 
     def test_cf_branch_disabled_flips_wrapped_vetoes_to_allow(self):
         # T013/FR-013/SC-006: with the control-flow branch disabled in an
@@ -1800,8 +1885,9 @@ class TestMutationChecksBattery(GuardHarness):
             mod = importlib.util.module_from_spec(spec)
             sys.modules[name] = mod
             spec.loader.exec_module(mod)
-            ctx = Mock()
+            ctx = _RecordingContext(self)
             mod.register(ctx)
+            ctx.capture_guard(sys.modules[mod.__name__ + ".guard"])
             # identity-match probe: vetoes without live discovery; the
             # "false &&" branch keeps it non-destructive if the hook is
             # missing (SC-005 probe discipline)
@@ -1842,14 +1928,14 @@ class TestMutationChecksBattery(GuardHarness):
 
 
 class TestShapeEnvelopeBattery(GuardHarness):
-    """Red-first battery for lpkit-6u6 (amendment 3a) + lpkit-1cz.
+    """Red-first battery for guard-hardening (amendment 3a) + guard-hardening.
 
     Pins the spec contract, never the implementation:
     - Amendment 3a (spec.md Clarification 2026-11-04): an inner deferred
       call lacking the canonical name/arguments key pair is UNPROVABLE —
       refused SHAPE_ENVELOPE (LGV-020) when it carries executable-looking
       content; never eligible for FR-007 row (a) benign-tail analysis.
-    - lpkit-1cz: a calls/arguments STRING that fails json.loads is an
+    - guard-hardening: a calls/arguments STRING that fails json.loads is an
       unprovable envelope shape — refused SHAPE_ENVELOPE (LGV-020) with
       corrective guidance, NOT VETO/LGV-001's kill-workflow message.
     Allow-controls pin the canonical shapes that must keep passing.
@@ -1858,7 +1944,7 @@ class TestShapeEnvelopeBattery(GuardHarness):
     # ---- amendment 3a: non-canonical inner-call key shapes ---------------
 
     def test_noncanonical_tool_args_keys_executable_refused(self):
-        # the lpkit-6u6 finding: 'tool'/'args' keys carrying a port-kill
+        # the guard-hardening finding: 'tool'/'args' keys carrying a port-kill
         # pipeline were silently skipped. Must be SHAPE_ENVELOPE, never
         # a skip and never LGV-001.
         self.assert_refuse(
@@ -1892,7 +1978,7 @@ class TestShapeEnvelopeBattery(GuardHarness):
             {"calls": [{"calls": [{"name": "terminal",
                                    "arguments": {"command": "pkill -f litellm"}}]}]})
 
-    # ---- lpkit-6u6 second exposure: benign-tail hole ----------------------
+    # ---- guard-hardening second exposure: benign-tail hole ----------------------
 
     def test_noncanonical_call_not_benign_in_oversized_batch(self):
         # FR-007 row (c): a non-canonical shape in the uninspectable tail
@@ -1934,7 +2020,7 @@ class TestShapeEnvelopeBattery(GuardHarness):
         self.assert_allowed("tool_call", {"calls": calls},
                             bounds={"max_chunks": 8})
 
-    # ---- lpkit-1cz: non-decodable JSON strings ----------------------------
+    # ---- guard-hardening: non-decodable JSON strings ----------------------------
 
     def test_calls_string_decode_failure_is_shape_refusal(self):
         # hand-typed single-quoted JSON: json.loads fails. Must surface as
@@ -1981,7 +2067,7 @@ class TestShapeEnvelopeBattery(GuardHarness):
                                                       "title": "Standup"
                                                   }}}]}}}}]})
 
-    # ---- lpkit-vf0: inert plain lists under unknown keys ----------------
+    # ---- guard-hardening: inert plain lists under unknown keys ----------------
 
     def test_inert_plain_list_under_unknown_key_passes(self):
         # amended Edge Case: a list whose every element is plain
@@ -2066,7 +2152,7 @@ class TestOwnerVerificationFlowBattery(GuardHarness):
         and integrity reference, and set owner-only permissions
         throughout."""
         deployed = Path(tempfile.mkdtemp(prefix=f"guard-install-{tag}-"))
-        self.addCleanup(shutil.rmtree, deployed, ignore_errors=True)
+        self.addCleanup(self._cleanup_fixture_directory, deployed)
         for name in self.DEPLOYED_FILES:
             shutil.copyfile(MODULE_PATH.parent / name, deployed / name)
         policy = write_policy(deployed, policy_name="config.json")
@@ -2128,8 +2214,9 @@ class TestOwnerVerificationFlowBattery(GuardHarness):
             (MODULE_PATH.parent / "guard.py").read_bytes() + b"\n# diverged\n")
         (deployed / "guard.py").chmod(0o600)
         mod = self._load_adapter(deployed, "guard_install_divergent")
-        ctx = _RecordingContext()
+        ctx = _RecordingContext(self)
         mod.register(ctx)
+        ctx.capture_guard(sys.modules[mod.__name__ + ".guard"])
         cb = ctx.hooks["pre_tool_call"]
         result = cb(tool_name="terminal", args={"command": "echo hi"})
         self.assertIsNotNone(result)
@@ -2146,8 +2233,9 @@ class TestOwnerVerificationFlowBattery(GuardHarness):
         # discovery needed, no real PID touched).
         deployed = self._stage_install("probe")
         mod = self._load_adapter(deployed, "guard_install_probe")
-        ctx = _RecordingContext()
+        ctx = _RecordingContext(self)
         mod.register(ctx)
+        ctx.capture_guard(sys.modules[mod.__name__ + ".guard"])
         self.assertEqual(list(ctx.hooks), ["pre_tool_call"],
                          "adapter registers exactly the pre_tool_call hook")
         cb = ctx.hooks["pre_tool_call"]
@@ -2168,8 +2256,9 @@ class TestOwnerVerificationFlowBattery(GuardHarness):
         # this is what makes the probe non-destructive by construction
         deployed = self._stage_install("probe-marker")
         mod = self._load_adapter(deployed, "guard_install_marker")
-        ctx = _RecordingContext()
+        ctx = _RecordingContext(self)
         mod.register(ctx)
+        ctx.capture_guard(sys.modules[mod.__name__ + ".guard"])
         cb = ctx.hooks["pre_tool_call"]
         # a marker whose execution would be observable: the call is
         # blocked, so the marker never runs (nothing to observe — the
@@ -2201,8 +2290,9 @@ class TestOwnerVerificationFlowBattery(GuardHarness):
         # process, or service tools of any kind; the only function it
         # DEFINES is register() (imported helpers don't count)
         mod = self._load_adapter(deployed, "guard_install_negative")
-        ctx = _RecordingContext()
+        ctx = _RecordingContext(self)
         mod.register(ctx)
+        ctx.capture_guard(sys.modules[mod.__name__ + ".guard"])
         self.assertEqual(list(ctx.hooks), ["pre_tool_call"])
         defined = {n for n, v in vars(mod).items()
                    if callable(v) and not n.startswith("_")
@@ -2218,8 +2308,9 @@ class TestOwnerVerificationFlowBattery(GuardHarness):
         # pass. The disable path itself must not stop the proxy.
         deployed = self._stage_install("disable")
         mod = self._load_adapter(deployed, "guard_install_disable")
-        ctx = _RecordingContext()
+        ctx = _RecordingContext(self)
         mod.register(ctx)
+        ctx.capture_guard(sys.modules[mod.__name__ + ".guard"])
         self.assertIn("pre_tool_call", ctx.hooks)
         # owner disables: the hook is withdrawn (simulated unload —
         # the runtime equivalent of `hermes plugins disable`)
@@ -2245,14 +2336,439 @@ class TestOwnerVerificationFlowBattery(GuardHarness):
         self.assertEqual(declared, ["pre_tool_call"])
 
 
-class _RecordingContext:
-    """Minimal hook-context double: records registered hooks."""
+# ---------------------------------------------------------------------------
+# guard-hardening: decision sink battery (append-only JSONL state sink).
+# ---------------------------------------------------------------------------
+
+
+
+def _sink_dir(base):
+    return Path(base) / "hermes" / "lifecycle-guard"
+
+
+def _sink_file(base):
+    return _sink_dir(base) / "decisions.jsonl"
+
+
+class _SinkEnv:
+    '''Point XDG_STATE_HOME at a temp dir for the duration of a test.'''
 
     def __init__(self):
-        self.hooks = {}
+        self.tmp = tempfile.mkdtemp(prefix='lg_sink_')
+        self._old = os.environ.get('XDG_STATE_HOME')
+        self._retain = False
 
-    def register_hook(self, event, callback):
+    def __enter__(self):
+        os.environ['XDG_STATE_HOME'] = self.tmp
+        return self.tmp
+
+    def __exit__(self, *exc):
+        if self._old is None:
+            os.environ.pop('XDG_STATE_HOME', None)
+        else:
+            os.environ['XDG_STATE_HOME'] = self._old
+        if not self._retain:
+            shutil.rmtree(self.tmp, ignore_errors=True)
+
+
+class TestDecisionSink(unittest.TestCase):
+    def setUp(self):
+        from typing import Any, cast
+
+        self._env = _SinkEnv()
+        self.base = self._env.__enter__()
+        self._sink_guard = None
+        self._sink_worker = None
+        self._sink_started = False
+        self._sink_start_attempted = False
+        self._sink_old_max = None
+        self._sink_module_key = ('_decision_sink_' +
+                                 self.id().replace('.', '_') + '_' +
+                                 str(id(self)))
+        self.addCleanup(self._cleanup_sink)
+
+        spec = importlib.util.spec_from_file_location(
+            self._sink_module_key, MODULE_PATH)
+        if spec is None or spec.loader is None:
+            self.fail('sink guard spec or loader unavailable')
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[self._sink_module_key] = module
+        self._sink_guard = cast(Any, module)
+        spec.loader.exec_module(module)
+        self._sink_start_attempted = True
+        try:
+            started = self._sink_guard.sink_start()
+        finally:
+            self._sink_worker = getattr(self._sink_guard, '_sink_worker', None)
+        self._sink_started = bool(started)
+        self.assertTrue(started, 'sink startup failed')
+        self.assertIsNotNone(self._sink_worker, 'sink worker unavailable')
+
+    def _current_sink_workers(self):
+        workers = []
+        if self._sink_worker is not None:
+            workers.append(self._sink_worker)
+        if self._sink_guard is not None:
+            current = getattr(self._sink_guard, '_sink_worker', None)
+            if current is not None and all(current is not worker for worker in workers):
+                workers.append(current)
+        return workers
+
+    def _flush_sink(self):
+        self.assertTrue(self._sink_guard.sink_flush(timeout_s=5),
+                        'sink flush timed out')
+
+    def _cleanup_sink(self):
+        self._env._retain = True
+        module = self._sink_guard
+        flush_error = None
+        stop_error = None
+        terminated = False
+        try:
+            try:
+                if self._sink_started:
+                    flush = getattr(module, 'sink_flush', None)
+                    if not callable(flush) or not flush(timeout_s=5):
+                        flush_error = AssertionError('sink cleanup flush timed out')
+            except Exception as exc:
+                flush_error = exc
+            finally:
+                try:
+                    if self._sink_start_attempted:
+                        stop = getattr(module, 'sink_shutdown', None)
+                        if not callable(stop) or stop(timeout_s=5) is not True:
+                            stop_error = AssertionError('sink shutdown failed')
+                except Exception as exc:
+                    stop_error = exc
+
+            try:
+                workers = self._current_sink_workers()
+                terminated = bool(workers) or (module is None and
+                                               not self._sink_start_attempted)
+                for worker in workers:
+                    try:
+                        if worker.is_alive() is not False:
+                            terminated = False
+                    except Exception:
+                        terminated = False
+            except Exception:
+                terminated = False
+
+            if terminated:
+                self._env._retain = False
+                try:
+                    if self._sink_old_max is not None and flush_error is None:
+                        module.SINK_MAX_BYTES = self._sink_old_max
+                finally:
+                    sys.modules.pop(self._sink_module_key, None)
+        finally:
+            self._env.__exit__(None, None, None)
+
+        if not terminated:
+            self.fail('sink worker remained alive or unverified')
+        if flush_error is not None:
+            raise flush_error
+        if stop_error is not None:
+            raise stop_error
+
+    # -- helpers -------------------------------------------------------
+    def _block_once(self, category='VETO'):
+        '''Run one evaluation that must end in category; return decision.'''
+        with tempfile.TemporaryDirectory() as d:
+            policy = {
+                'schema_version': 1,
+                'protected_port': 4000,
+                'protected_labels': ['ai.litellm.fixture-proxy'],
+                'protected_session_handles': [],
+                'bounds': {
+                    'input_text_bytes': 262144,
+                    'max_chunks': 512,
+                    'max_depth': 8,
+                    'discovery_timeout_ms': 2000,
+                    'max_snapshot_pids': 256,
+                },
+                'refusal_vocabulary_version': 1,
+            }
+            pp = Path(d) / 'policy.json'
+            pp.write_text(json.dumps(policy))
+            write_integrity_ref(d)
+            for fn in ('policy.json', 'integrity.sha256',
+                       'guard.py', '__init__.py'):
+                os.chmod(Path(d) / fn, 0o600)
+            completed_ports = []
+            sink_guard = self._sink_guard
+            assert sink_guard is not None
+
+            def discover(port):
+                snapshot = sink_guard.Snapshot(
+                    pids=frozenset({4711}), pgids=frozenset({4711}),
+                    comms=frozenset({'litellm'}),
+                    args=('litellm --port 4000',))
+                self.assertIn(4711, snapshot.pids)
+                completed_ports.append(port)
+                return snapshot
+
+            decision = self._sink_guard.evaluate(
+                'terminal',
+                {'command': 'pkill -f litellm'},
+                pp,
+                discover=discover)
+            self.assertEqual(completed_ports, [4000])
+            self._flush_sink()
+        self.assertIsNotNone(decision, 'expected a block decision')
+        self.assertEqual(decision['category'], category)
+        return decision
+
+    def _read_lines(self):
+        self._flush_sink()
+        f = _sink_file(self.base)
+        if not f.exists():
+            return []
+        return [json.loads(l) for l in f.read_text().splitlines() if l.strip()]
+
+    # -- tests ---------------------------------------------------------
+    def test_block_decision_appends_sanitized_record(self):
+        decision = self._block_once()
+        lines = self._read_lines()
+        self.assertEqual(len(lines), 1, 'exactly one sink line per block')
+        rec = lines[0]
+        self.assertEqual(rec['category'], 'VETO')
+        self.assertEqual(rec['code'], 'LGV-001')
+        self.assertEqual(rec['tool'], 'terminal')
+        self.assertIn('ts', rec)
+        # sanitized sink: no command material, no decision message body
+        self.assertNotIn('pkill', json.dumps(rec))
+        self.assertNotIn('command', rec)
+
+    def test_allow_decision_not_recorded(self):
+        with tempfile.TemporaryDirectory() as d:
+            policy = {'protected_port': 4000, 'target_tokens': ['litellm'],
+                      'protected_cmdline': ['litellm']}
+            pp = Path(d) / 'policy.json'
+            pp.write_text(json.dumps(policy))
+            write_integrity_ref(d)
+            decision = self._sink_guard.evaluate(
+                'search_files', {'pattern': 'litellm'}, pp)
+            self._flush_sink()
+        self.assertIsNone(decision)
+        self.assertEqual(self._read_lines(), [],
+                         'allow decisions must not hit the sink')
+
+    def test_sink_owner_only_permissions(self):
+        self._block_once()
+        d = _sink_dir(self.base)
+        f = _sink_file(self.base)
+        self.assertTrue(d.is_dir())
+        self.assertTrue(f.is_file())
+        dmode = stat.S_IMODE(d.stat().st_mode)
+        fmode = stat.S_IMODE(f.stat().st_mode)
+        self.assertEqual(dmode, 0o700, 'sink dir must be owner-only')
+        self.assertEqual(fmode, 0o600, 'sink file must be owner-only')
+
+    def test_sink_rotation_bound(self):
+        old = getattr(self._sink_guard, 'SINK_MAX_BYTES', None)
+        self.assertIsNotNone(old, 'guard must define SINK_MAX_BYTES')
+        self._sink_old_max = old
+        self._sink_guard.SINK_MAX_BYTES = 400  # tiny bound for the test
+        for _ in range(6):
+            self._block_once()
+        main = _sink_file(self.base)
+        rotated = Path(str(main) + '.1')
+        self.assertTrue(rotated.exists(), 'bound exceeded -> rotation')
+        self.assertLess(main.stat().st_size, 400 + 200,
+                        'post-rotation file must be under the bound')
+        self.assertLessEqual(main.stat().st_size, 400)
+        self.assertLessEqual(rotated.stat().st_size, 400)
+        # every line (both generations) is still valid JSON
+        for gen in (main, rotated):
+            for line in gen.read_text().splitlines():
+                if line.strip():
+                    json.loads(line)
+
+    def test_sink_unwritable_fail_open(self):
+        # occupy the sink path with an unwritable DIRECTORY: append must fail
+        os.makedirs(_sink_file(self.base), exist_ok=True)
+        os.chmod(_sink_dir(self.base), 0o500)
+        try:
+            decision = self._block_once()
+            self.assertEqual(decision['action'], 'block',
+                             'unwritable sink must never weaken enforcement')
+        finally:
+            os.chmod(_sink_dir(self.base), 0o700)
+
+    def test_sink_record_has_stable_schema(self):
+        self._block_once()
+        rec = self._read_lines()[0]
+        self.assertEqual(set(rec), {'ts', 'category', 'code', 'tool'},
+                         'sink schema must stay exactly ts/category/code/tool')
+
+
+
+
+# ---------------------------------------------------------------------------
+# guard-hardening: test-isolation + pre-existing-mode hardening battery.
+# ---------------------------------------------------------------------------
+
+
+# Captured at import time: the owner's REAL state home, immune to the
+# per-test XDG_STATE_HOME redirection GuardHarness.setUp performs.
+_REAL_STATE_HOME = os.environ.get("XDG_STATE_HOME") or os.path.expanduser(
+    "~/.local/state")
+
+
+class TestSinkIsolationFromPlainTests(GuardHarness):
+    """guard-hardening defect 1: plain guard tests must never touch the live sink.
+
+    GuardHarness.setUp is now responsible for state-home isolation —
+    a veto from ANY GuardHarness test (not just TestDecisionSink) must
+    write nothing to the real state home.
+    """
+
+    def test_plain_veto_writes_nothing_to_real_state_home(self):
+        before = self._snapshot_real_sink()
+        self.assert_blocked("terminal", {"command": "kill -9 4711"})
+        after = self._snapshot_real_sink()
+        self.assertEqual(before, after,
+                         "plain GuardHarness veto leaked to the real sink")
+
+    def _snapshot_real_sink(self):
+        """Read-only signature of the real sink (count + mtime + mode)."""
+        path = Path(_REAL_STATE_HOME) / "hermes" / "lifecycle-guard" / "decisions.jsonl"
+        try:
+            st = path.stat()
+            return (st.st_mtime_ns, st.st_size, st.st_mode)
+        except OSError:
+            return None
+
+
+class TestSinkPreExistingFileMode(unittest.TestCase):
+    """guard-hardening defect 2: a pre-existing 0644 sink must be tightened to 0600.
+
+    Root cause: _tighten_owner_only only acts when mode & 0o022 (write
+    bits) is set, so a 0644 file (group/other READ) is never corrected,
+    and the O_EXCL create branch never runs for an existing file.
+    """
+
+    def setUp(self):
+        self._old = os.environ.get("XDG_STATE_HOME")
+        self.tmp = tempfile.mkdtemp(prefix="lg_mode_")
+        os.environ["XDG_STATE_HOME"] = self.tmp
+        self.addCleanup(self._restore)
+
+    def _restore(self):
+        import shutil
+        if self._old is None:
+            os.environ.pop("XDG_STATE_HOME", None)
+        else:
+            os.environ["XDG_STATE_HOME"] = self._old
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_preexisting_0644_sink_tightened_to_0600(self):
+        import stat as stat_mod
+        d = Path(self.tmp) / "hermes" / "lifecycle-guard"
+        d.mkdir(parents=True)
+        f = d / "decisions.jsonl"
+        f.write_text("")  # pre-existing, like the live file at birth
+        os.chmod(f, 0o644)
+        guard.sink_write("VETO", "LGV-001", "terminal")
+        mode = stat_mod.S_IMODE(f.stat().st_mode)
+        self.assertEqual(mode, 0o600,
+                         "pre-existing 0644 sink must tighten to owner-only")
+
+
+class _RecordingContext:
+    def __init__(self, owner):
+        from unittest.mock import Mock
+
+        self.owner = owner
+        self.hooks = {}
+        self._unload_callbacks = []
+        self._guard = None
+        self._guard_name = None
+        self._captured_worker = None
+        self._captured = False
+        self._closed = False
+        self.register_hook = Mock(side_effect=self._record_hook)
+        owner.addCleanup(self.close)
+
+    def _record_hook(self, event, callback):
         self.hooks[event] = callback
+
+    def on_unload(self, callback):
+        self._unload_callbacks.append(callback)
+
+    def capture_guard(self, guard_module):
+        self._guard = guard_module
+        self._guard_name = guard_module.__name__
+        self._captured_worker = guard_module._sink_worker
+        self._captured = True
+
+    def close(self):
+        if self._closed:
+            return
+
+        failed = False
+        verified = self._captured and self._guard is not None
+        workers = []
+
+        def remember(worker):
+            if worker is not None and all(worker is not item for item in workers):
+                workers.append(worker)
+
+        remember(self._captured_worker)
+        if self._guard is not None:
+            try:
+                remember(self._guard._sink_worker)
+            except BaseException:
+                failed = True
+                verified = False
+
+        if self._guard is not None:
+            try:
+                if self._guard.sink_flush(timeout_s=5.0) is not True:
+                    failed = True
+            except BaseException:
+                failed = True
+
+        callbacks = self._unload_callbacks
+        self._unload_callbacks = []
+        for callback in reversed(callbacks):
+            try:
+                callback()
+            except BaseException:
+                failed = True
+
+        if self._guard is not None:
+            try:
+                remember(self._guard._sink_worker)
+            except BaseException:
+                failed = True
+                verified = False
+
+        verified = verified and bool(workers)
+        for worker in workers:
+            try:
+                if worker.is_alive():
+                    worker.join(timeout=0.5)
+                if worker.is_alive():
+                    verified = False
+            except BaseException:
+                failed = True
+                verified = False
+
+        if verified:
+            try:
+                if (isinstance(self._guard_name, str)
+                        and sys.modules.get(self._guard_name) is self._guard):
+                    sys.modules.pop(self._guard_name, None)
+            except BaseException:
+                failed = True
+            self._closed = True
+        else:
+            self.owner._retain_sink_fixtures = True
+
+        if failed or not verified:
+            self.owner.fail('sink worker cleanup failed or shutdown could not be verified')
 
 
 if __name__ == "__main__":

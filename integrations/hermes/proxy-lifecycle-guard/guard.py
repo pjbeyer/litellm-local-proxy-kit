@@ -53,19 +53,626 @@ import json
 import ast
 import hashlib
 import os
+import threading
 import re
 import subprocess
 import shlex
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 
 __all__ = ["evaluate", "load_policy", "discover_snapshot", "Policy",
            "Snapshot", "BLOCK_MESSAGE", "CATEGORIES", "DECISION_MESSAGES",
-           "LOG_CODES", "log_decision"]
+           "LOG_CODES", "log_decision", "sink_start", "sink_flush",
+           "sink_shutdown", "sink_status"]
 
 import logging
+import stat
+import time
 
-logger = logging.getLogger("proxy_lifecycle_guard")
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
+
+logger = logging.getLogger('proxy_lifecycle_guard')
+
+SINK_MAX_BYTES = 256 * 1024
+SINK_DIR_MODE = 0o700
+SINK_FILE_MODE = 0o600
+_SINK_RECORD_MAX = 512
+_SINK_TOOLS = frozenset({
+    'terminal', 'execute_code', 'browser_exec', 'tool_call',
+    'process_manage', 'other',
+})
+_SINK_KEYS = frozenset({'ts', 'category', 'code', 'tool'})
+_SINK_TS_RE = re.compile(
+    r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:'
+    r'[0-9]{2}:[0-9]{2}[+-][0-9]{4}'
+)
+_SINK_LF = bytes((10,))
+
+
+def _sink_tool(tool):
+    if type(tool) is not str or len(tool) > 128:
+        return 'other'
+    terminal = tool.rsplit('.', 1)[-1].lower()
+    return terminal if terminal in _SINK_TOOLS else 'other'
+
+
+def _sink_pair(category, code):
+    return (type(category) is str and type(code) is str
+            and len(category) <= 128 and len(code) <= 128
+            and CATEGORIES.get(category) == code)
+
+
+def _sink_record(category, code, tool):
+    if not _sink_pair(category, code):
+        return None
+    try:
+        ts = time.strftime('%Y-%m-%dT%H:%M:%S+0000', time.gmtime())
+        record = json.dumps({
+            'ts': ts, 'category': category, 'code': code,
+            'tool': _sink_tool(tool),
+        }, separators=(',', ':'), ensure_ascii=True).encode('ascii') + _SINK_LF
+        return record if len(record) <= _SINK_RECORD_MAX else None
+    except Exception:
+        return None
+
+
+def _sink_home():
+    try:
+        base = os.environ.get('XDG_STATE_HOME')
+        if base is not None and type(base) is not str:
+            return None
+        if not base:
+            home = os.environ.get('HOME')
+            if type(home) is not str or not home or len(home) > 4096:
+                return None
+            base = home.rstrip('/') + '/.local/state'
+        if len(base) > 4096 or len(base.encode('utf-8')) > 4096:
+            return None
+        return base
+    except (UnicodeError, ValueError):
+        return None
+
+
+def _sink_pairs(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError('duplicate key')
+        result[key] = value
+    return result
+
+
+def _sink_valid_line(line):
+    if type(line) is not bytes or not line or len(line) + 1 > _SINK_RECORD_MAX:
+        return False
+    try:
+        decoded = line.decode('utf-8')
+        if decoded.startswith('\ufeff'):
+            return False
+        item = json.loads(decoded, object_pairs_hook=_sink_pairs)
+        if type(item) is not dict or set(item) != _SINK_KEYS:
+            return False
+        if any(type(item[key]) is not str for key in _SINK_KEYS):
+            return False
+        if not _sink_pair(item['category'], item['code']):
+            return False
+        if item['tool'] not in _SINK_TOOLS:
+            return False
+        ts = item['ts']
+        if len(ts) > 32 or _SINK_TS_RE.fullmatch(ts) is None:
+            return False
+        time.strptime(ts[:19], '%Y-%m-%dT%H:%M:%S')
+        return int(ts[20:22]) <= 23 and int(ts[22:24]) <= 59
+    except Exception:
+        return False
+
+
+def _sink_valid_content(fd, max_bytes):
+    size = os.fstat(fd).st_size
+    if size < 0 or size > max_bytes:
+        return None
+    os.lseek(fd, 0, os.SEEK_SET)
+    remaining = size
+    chunks = []
+    while remaining:
+        chunk = os.read(fd, min(remaining, 65536))
+        if not chunk or len(chunk) > remaining:
+            return None
+        chunks.append(chunk)
+        remaining -= len(chunk)
+    if os.fstat(fd).st_size != size:
+        return None
+    data = b''.join(chunks)
+    if data:
+        if not data.endswith(_SINK_LF):
+            return None
+        if any(not _sink_valid_line(line)
+               for line in data[:-1].split(_SINK_LF)):
+            return None
+    return size
+
+
+def _sink_open_dir(parent_fd, name, managed, flags):
+    try:
+        fd = os.open(name, flags, dir_fd=parent_fd)
+    except FileNotFoundError:
+        try:
+            os.mkdir(name, SINK_DIR_MODE, dir_fd=parent_fd)
+        except FileExistsError:
+            pass
+        fd = os.open(name, flags, dir_fd=parent_fd)
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISDIR(info.st_mode):
+            raise ValueError('unsafe directory')
+        if managed:
+            if info.st_uid != os.getuid():
+                raise ValueError('unowned directory')
+            if stat.S_IMODE(info.st_mode) != SINK_DIR_MODE:
+                os.fchmod(fd, SINK_DIR_MODE)
+            info = os.fstat(fd)
+            if (not stat.S_ISDIR(info.st_mode)
+                    or info.st_uid != os.getuid()
+                    or stat.S_IMODE(info.st_mode) != SINK_DIR_MODE):
+                raise ValueError('unsafe directory')
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def _sink_file_info(fd):
+    info = os.fstat(fd)
+    if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+            or info.st_nlink != 1):
+        raise ValueError('unsafe file')
+    return info
+
+
+def _sink_harden_file(fd):
+    info = _sink_file_info(fd)
+    if stat.S_IMODE(info.st_mode) != SINK_FILE_MODE:
+        os.fchmod(fd, SINK_FILE_MODE)
+    info = _sink_file_info(fd)
+    if stat.S_IMODE(info.st_mode) != SINK_FILE_MODE:
+        raise ValueError('unsafe file mode')
+
+
+def _sink_open_file(dir_fd, name, create, flags, exclusive=False):
+    if exclusive and not create:
+        raise ValueError('exclusive open requires creation')
+    created = False
+    if exclusive:
+        fd = os.open(name, flags | os.O_CREAT | os.O_EXCL,
+                     SINK_FILE_MODE, dir_fd=dir_fd)
+        created = True
+    else:
+        try:
+            fd = os.open(name, flags, dir_fd=dir_fd)
+        except FileNotFoundError:
+            if not create:
+                return None
+            fd = os.open(name, flags | os.O_CREAT | os.O_EXCL,
+                         SINK_FILE_MODE, dir_fd=dir_fd)
+            created = True
+    try:
+        _sink_file_info(fd)
+        if created:
+            _sink_harden_file(fd)
+        return fd
+    except BaseException:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        raise
+
+
+def _sink_persist(state_home, record, max_bytes):
+    if (type(max_bytes) is not int or not 0 < max_bytes <= SINK_MAX_BYTES
+            or type(record) is not bytes or not record
+            or len(record) > min(max_bytes, _SINK_RECORD_MAX)
+            or not record.endswith(_SINK_LF)
+            or not _sink_valid_line(record[:-1])
+            or type(state_home) is not str or len(state_home) > 4096):
+        return False
+    try:
+        if (fcntl is None or not all(hasattr(os, name) for name in (
+                'O_DIRECTORY', 'O_NOFOLLOW', 'O_NONBLOCK',
+                'O_APPEND', 'O_CREAT', 'O_EXCL', 'getuid',
+                'fchmod', 'ftruncate'))):
+            return False
+        if (not state_home.startswith('/') or chr(0) in state_home
+                or state_home.startswith('//')):
+            return False
+        if len(state_home.encode('utf-8')) > 4096:
+            return False
+        full_path = state_home.rstrip('/') + '/hermes/lifecycle-guard'
+        if len(full_path.encode('utf-8')) > 4096:
+            return False
+        parts = [part for part in state_home.split('/') if part]
+        if len(parts) + 2 > 64 or any(part in ('.', '..') for part in parts):
+            return False
+    except (UnicodeError, ValueError):
+        return False
+
+    dir_fd = lock_fd = active_fd = rotated_fd = None
+    try:
+        directory_flags = (os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+                           | os.O_NONBLOCK)
+        file_flags = os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK
+        append_flags = file_flags | os.O_APPEND
+        dir_fd = os.open('/', directory_flags)
+        for part in parts:
+            next_fd = _sink_open_dir(dir_fd, part, False, directory_flags)
+            old_fd = dir_fd
+            dir_fd = next_fd
+            os.close(old_fd)
+        for part in ('hermes', 'lifecycle-guard'):
+            next_fd = _sink_open_dir(dir_fd, part, True, directory_flags)
+            old_fd = dir_fd
+            dir_fd = next_fd
+            os.close(old_fd)
+
+        lock_fd = _sink_open_file(dir_fd, 'decisions.jsonl.lock',
+                                  True, file_flags)
+        if lock_fd is None:
+            return False
+        _sink_harden_file(lock_fd)
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+        rotated_fd = _sink_open_file(dir_fd, 'decisions.jsonl.1',
+                                     False, file_flags)
+        if (rotated_fd is not None
+                and _sink_valid_content(rotated_fd, max_bytes) is None):
+            return False
+        active_fd = _sink_open_file(dir_fd, 'decisions.jsonl',
+                                    False, append_flags)
+        if active_fd is None:
+            active_fd = _sink_open_file(dir_fd, 'decisions.jsonl',
+                                        True, append_flags, exclusive=True)
+        if active_fd is None:
+            return False
+        prior_size = _sink_valid_content(active_fd, max_bytes)
+        if prior_size is None:
+            return False
+
+        if rotated_fd is not None:
+            _sink_harden_file(rotated_fd)
+        _sink_harden_file(active_fd)
+
+        if prior_size + len(record) > max_bytes:
+            if prior_size == 0:
+                return False
+            old_fd = active_fd
+            active_fd = None
+            os.close(old_fd)
+            if rotated_fd is not None:
+                old_fd = rotated_fd
+                rotated_fd = None
+                os.close(old_fd)
+            os.replace('decisions.jsonl', 'decisions.jsonl.1',
+                       src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
+            active_fd = _sink_open_file(dir_fd, 'decisions.jsonl',
+                                        True, append_flags, exclusive=True)
+            if active_fd is None:
+                return False
+            prior_size = _sink_valid_content(active_fd, max_bytes)
+            if prior_size != 0:
+                return False
+            _sink_harden_file(active_fd)
+
+        if os.fstat(active_fd).st_size != prior_size:
+            return False
+        try:
+            written = os.write(active_fd, record)
+        except Exception:
+            try:
+                os.ftruncate(active_fd, prior_size)
+            except Exception:
+                pass
+            return False
+        if written != len(record):
+            try:
+                os.ftruncate(active_fd, prior_size)
+            except Exception:
+                pass
+            return False
+        return True
+    except Exception:
+        return False
+    finally:
+        for fd in (active_fd, rotated_fd, lock_fd, dir_fd):
+            if fd is not None:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+
+
+def sink_write(category, code, tool_name):
+    record = _sink_record(category, code, tool_name)
+    if record is None:
+        return False
+    state_home = _sink_home()
+    if state_home is None:
+        return False
+    return _sink_persist(state_home, record, SINK_MAX_BYTES)
+
+# ---------------------------------------------------------------------------
+# Bounded asynchronous sink worker (decision-sink contract D4/D5/D6/D12).
+#
+# Importing this module starts nothing and touches no filesystem: all state
+# is inert per-module globals. log_decision admits capped immutable jobs
+# (state home, encoded record, byte cap all captured at submission) with a
+# nonblocking try-lock; busy/full/offline/wedged/startup-failure drops
+# telemetry without touching the enforcement decision. Only sink_start,
+# called by the adapter outside any callback, creates the single daemon
+# worker; no callback ever starts, restarts, or replaces it, exactly one
+# attempt per generation is latched (a failure is never retried or
+# replaced), and publication plus start are serialized under the state
+# lock so shutdown can never join an unstarted thread. Storage I/O
+# happens only in the worker via the unchanged _sink_persist, always
+# outside the state lock. The worker waits while registered (no
+# idle-exit race) and exits only on a shutdown request, draining its
+# queue first. flush/shutdown deadlines cover lock acquisition, waits,
+# joins, and any reacquisition, and shutdown publishes its stopping
+# flag before touching the lock. Diagnostics are fixed non-secret
+# counters saturated at _SINK_COUNTER_MAX plus fixed flags: no record,
+# path, or environment material.
+# ---------------------------------------------------------------------------
+
+_SINK_QUEUE_MAX = 64
+_SINK_TIMEOUT_MAX_S = 60.0
+_SINK_COUNTER_MAX = (1 << 63) - 1  # event-counter saturation bound
+
+_sink_lock = threading.Lock()
+_sink_cond = threading.Condition(_sink_lock)
+_sink_queue = deque()  # immutable (home, record, cap) tuples, bounded
+_sink_worker = None
+_sink_started = False
+_sink_stopping = False
+_sink_start_attempted = False  # one start attempt per generation (D5)
+_sink_start_failed = False  # latched: never retried or replaced
+_sink_busy_drop = False  # busy-lock drop seen (flag, not exact count)
+_sink_pre_drop = False  # pre-admission drop seen (record/home/exception)
+_sink_in_flight = 0
+_sink_admitted = 0
+_sink_written = 0
+_sink_failed = 0
+_sink_dropped = 0
+_sink_discarded = 0
+
+
+def _sink_timeout_ok(timeout_s):
+    return (type(timeout_s) in (int, float)
+            and 0 <= timeout_s <= _SINK_TIMEOUT_MAX_S)
+
+
+def _sink_admit(category, code, tool):
+    """Nonblocking bounded admission for block-decision telemetry.
+
+    Captures the capped record, effective state home, and byte cap via
+    the existing helpers BEFORE enqueue. Never waits (try-lock only),
+    never starts or touches a worker, performs no filesystem I/O, and
+    never raises into the enforcement path.
+    Drops when the worker is offline, stopping, or dead. The busy-lock
+    path sets a fixed flag (an unlocked exact increment is not safe);
+    serialized counters saturate at _SINK_COUNTER_MAX. Early
+    record/home failures and admission exceptions set a fixed sticky
+    pre-admission drop flag so that degradation stays observable
+    (D12) without any unlocked counter.
+    """
+    global _sink_admitted, _sink_dropped, _sink_busy_drop
+    global _sink_pre_drop
+    try:
+        record = _sink_record(category, code, tool)
+        if record is None:
+            _sink_pre_drop = True
+            return False
+        state_home = _sink_home()
+        if state_home is None:
+            _sink_pre_drop = True
+            return False
+        cap = SINK_MAX_BYTES
+        if not _sink_lock.acquire(False):
+            _sink_busy_drop = True  # flag only: no unlocked exact count
+            return False
+        try:
+            if (not _sink_started or _sink_stopping
+                    or _sink_worker is None or not _sink_worker.is_alive()):
+                _sink_dropped = min(_sink_dropped + 1, _SINK_COUNTER_MAX)
+                return False
+            if len(_sink_queue) >= _SINK_QUEUE_MAX:
+                _sink_dropped = min(_sink_dropped + 1, _SINK_COUNTER_MAX)
+                return False
+            _sink_queue.append((state_home, record, cap))
+            _sink_admitted = min(_sink_admitted + 1, _SINK_COUNTER_MAX)
+            _sink_cond.notify()
+            return True
+        finally:
+            _sink_lock.release()
+    except Exception:
+        _sink_pre_drop = True  # sticky flag: silent admission failure
+        return False
+
+
+def _sink_worker_loop():
+    """Single daemon worker: pop under lock, persist outside lock."""
+    global _sink_in_flight, _sink_written, _sink_failed
+    while True:
+        with _sink_cond:
+            while not _sink_queue and not _sink_stopping:
+                # Bounded idle wait: a shutdown whose lock acquisition
+                # (or notify) was missed still takes effect here within
+                # the check interval, without any idle-exit while the
+                # sink is not stopping.
+                _sink_cond.wait(0.1)
+            if not _sink_queue:
+                return  # exit requested and queue drained
+            job = _sink_queue.popleft()
+            _sink_in_flight += 1
+            _sink_cond.notify_all()
+        home, record, cap = job
+        try:
+            ok = _sink_persist(home, record, cap)
+        except Exception:
+            ok = False
+        with _sink_cond:
+            _sink_in_flight -= 1
+            if ok:
+                _sink_written = min(_sink_written + 1, _SINK_COUNTER_MAX)
+            else:
+                _sink_failed = min(_sink_failed + 1, _SINK_COUNTER_MAX)
+            _sink_cond.notify_all()
+
+
+def sink_start():
+    """Start the single daemon sink worker; call outside any callback.
+
+    Exactly one attempt per module generation: construction and start
+    are both contained, a failure is latched (never retried or
+    replaced), and publication plus start are serialized under the
+    state lock — Thread.start only waits for bootstrap, which does not
+    take the lock — so shutdown can never join an unstarted thread.
+    Returns True only when a started worker is alive.
+    """
+    global _sink_started, _sink_worker, _sink_start_attempted
+    global _sink_start_failed
+    with _sink_lock:
+        if _sink_stopping:
+            return False
+        if _sink_start_attempted:
+            return (not _sink_start_failed and _sink_worker is not None
+                    and _sink_worker.is_alive())
+        _sink_start_attempted = True
+        try:
+            worker = threading.Thread(
+                target=_sink_worker_loop,
+                name="proxy-lifecycle-guard-sink",
+                daemon=True,
+            )
+            _sink_worker = worker
+            worker.start()
+        except Exception:
+            _sink_worker = None
+            _sink_start_failed = True
+            return False
+        _sink_started = True
+    return True
+
+
+def sink_flush(timeout_s=10.0):
+    """Bounded drain: wait for queued AND in-flight jobs to complete.
+
+    Completion of processing, not storage durability. The deadline
+    covers lock acquisition and every poll interval, so the call
+    cannot block behind a contended state lock past the caller's
+    budget; the drain polls under short bounded lock holds instead of
+    a condition wait whose reacquisition has no deadline. Returns
+    False on invalid input or deadline expiry. Never called by
+    evaluate or the plugin callback.
+    """
+    if not _sink_timeout_ok(timeout_s):
+        return False
+    deadline = time.monotonic() + timeout_s
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0 or not _sink_lock.acquire(timeout=remaining):
+            return False
+        try:
+            if not _sink_queue and not _sink_in_flight:
+                return True
+        finally:
+            _sink_lock.release()
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(0.005, remaining))
+
+
+def sink_shutdown(timeout_s=5.0):
+    """Bounded stop: halt admission, request exit, join for <= timeout_s.
+
+    The stopping flag is published BEFORE any lock acquisition so
+    admission halts even while the state lock is contended. The
+    deadline covers lock acquisition, the timed join, and any
+    reacquisition; expiry returns False truthfully. Returns True only
+    when the worker is no longer alive. A stuck
+    worker is never signaled or replaced: it remains as one daemon in
+    this module generation and cannot block interpreter exit; queued
+    jobs are discarded with truthful counters when the deadline
+    allows, and a wedged generation may retain its bounded queue
+    after deadline expiry (bounded retention is contract-allowed).
+    """
+    global _sink_stopping, _sink_discarded
+    if not _sink_timeout_ok(timeout_s):
+        return False
+    _sink_stopping = True  # admission drops before the lock is contended
+    deadline = time.monotonic() + timeout_s
+    remaining = deadline - time.monotonic()
+    if remaining <= 0 or not _sink_lock.acquire(timeout=remaining):
+        return False
+    try:
+        worker = _sink_worker
+        _sink_cond.notify_all()
+    finally:
+        _sink_lock.release()
+    if worker is not None:
+        remaining = deadline - time.monotonic()
+        if remaining > 0:
+            try:
+                worker.join(remaining)
+            except Exception:
+                pass
+        if worker.is_alive():
+            remaining = deadline - time.monotonic()
+            if remaining > 0 and _sink_lock.acquire(timeout=remaining):
+                try:
+                    _sink_discarded = min(
+                        _sink_discarded + len(_sink_queue),
+                        _SINK_COUNTER_MAX)
+                    _sink_queue.clear()
+                finally:
+                    _sink_lock.release()
+            return False
+    return True
+
+
+def sink_status():
+    """Fixed non-secret lifecycle counters; performs no I/O; never waits.
+
+    Nonblocking: when the state lock is contended the same fixed shape
+    is returned with busy=True, reading current globals without
+    blocking (momentarily stale values are acceptable for this
+    diagnostic). busy_dropped distinguishes the fixed busy-lock flag
+    from the serialized exact dropped counter.
+    """
+    busy = not _sink_lock.acquire(False)
+    if not busy:
+        _sink_lock.release()
+    return {
+        "started": _sink_started,
+        "stopping": _sink_stopping,
+        "worker_alive": (_sink_worker is not None
+                         and _sink_worker.is_alive()),
+        "busy": busy,
+        "queued": len(_sink_queue),
+        "in_flight": _sink_in_flight,
+        "queue_max": _SINK_QUEUE_MAX,
+        "admitted": _sink_admitted,
+        "written": _sink_written,
+        "failed": _sink_failed,
+        "dropped": _sink_dropped,
+        "discarded": _sink_discarded,
+        "busy_dropped": _sink_busy_drop,
+        "pre_drop": _sink_pre_drop,
+        "start_failed": _sink_start_failed,
+    }
 
 # ---------------------------------------------------------------------------
 # T004: refusal-category vocabulary (spec rev 3, research D2, FR-002/SC-008).
@@ -124,12 +731,22 @@ DECISION_MESSAGES = {
 LOG_CODES = dict(CATEGORIES)
 
 
-def log_decision(category, tool_name=""):
-    """Hook-contract rule 6: emit our own log line per veto/refuse."""
-    code = CATEGORIES.get(category, "LGV-000")
-    logger.info("lifecycle-guard decision: category=%s code=%s tool=%s",
-                category, code, tool_name or "<unknown>")
-
+def log_decision(category, tool_name=''):
+    valid = (type(category) is str and len(category) <= 128
+             and category in CATEGORIES)
+    safe_category = category if valid else 'UNKNOWN'
+    code = CATEGORIES[category] if valid else 'LGV-000'
+    safe_tool = _sink_tool(tool_name)
+    try:
+        logger.info('lifecycle-guard decision: category=%s code=%s tool=%s',
+                    safe_category, code, safe_tool)
+    except Exception:
+        pass
+    if valid:
+        try:
+            _sink_admit(category, code, safe_tool)
+        except Exception:
+            pass
 
 # Fixed, sanitized block message. Deliberately identical for every block
 # reason: no arguments, paths, PIDs, or exception details ever leak.
@@ -784,6 +1401,8 @@ def _analyze_brew(tokens, policy):
 # are analyzed (F-001/F-006). Quote-aware splitting downstream keeps
 # quoted text safe from false segmentation.
 _CF_SUB_RE = re.compile(r"\b(?:then|do|else|done|fi|esac)\b|;;")
+
+
 def _normalize_control_flow(text):
     """Replace shell control words, preserving quoted/escaped data verbatim.
 
@@ -875,6 +1494,7 @@ def _normalize_control_flow(text):
         parts.append(char)
         i += 1
     return "".join(parts)
+
 
 _CASE_WORD_RE = re.compile(r"\w+\)")
 
@@ -1285,7 +1905,7 @@ def _analyze_tool_call(arguments, policy, get_snapshot, depth=0):
     if calls is None and str(arguments.get('name') or '').strip():
         calls = [{'name': arguments['name'], 'arguments': arguments.get('arguments')}]
     # F-009/US1-S7: JSON-string-encoded call lists unwrap iteratively
-    # (bounded); a non-decoding string is an unprovable shape (lpkit-1cz:
+    # (bounded); a non-decoding string is an unprovable shape (guard-hardening:
     # SHAPE_ENVELOPE, never a VETO — a hand-typed envelope that fails
     # json.loads is a shape defect with corrective guidance, not a
     # lifecycle threat)
@@ -1326,7 +1946,7 @@ def _analyze_tool_call(arguments, policy, get_snapshot, depth=0):
 def _call_is_benign_shape(call):
     """A provably intent-free call for FR-007 row (a) tail analysis.
 
-    Amendment 3a (lpkit-6u6): only the CANONICAL name/arguments key
+    Amendment 3a: only the CANONICAL name/arguments key
     shape is eligible for benign-tail analysis. A non-canonical shape
     (alternate keys such as tool/args) is UNPROVABLE — absence of
     recognized keys is never evidence of absence of executable content —
@@ -1351,7 +1971,7 @@ def _call_is_benign_shape(call):
 
 
 def _inert_plain(value):
-    """A plain (non-executable-looking) scalar/structure (lpkit-vf0).
+    """A plain (non-executable-looking) scalar/structure.
 
     Inert: None, bool, int, float, plain strings, and containers (dict/
     list/tuple) whose EVERY element is inert — arbitrary nesting. The
@@ -1377,14 +1997,14 @@ def _inert_plain(value):
 
 
 def _call_has_executable_content(call):
-    """Amendment 3a (lpkit-6u6): executable-looking content in ANY key
+    """Amendment 3a: executable-looking content in ANY key
     beyond the canonical name/arguments/calls trio.
 
     An unrecognized key carrying executable-looking content makes the
     whole call unprovable — absence of recognized keys is never evidence
     of absence of executable content.
 
-    lpkit-vf0 (amended Edge Case): a list/tuple under an unknown key is
+    guard-hardening (amended Edge Case): a list/tuple under an unknown key is
     inert when EVERY element is plain (string/number/inert dict,
     arbitrarily nested); only lists containing executable-looking
     content refuse. Previously any non-empty list refused — over-strict
@@ -1398,7 +2018,7 @@ def _call_has_executable_content(call):
         if isinstance(val, str) and val.strip() and key in ("command", "code"):
             return True
         if isinstance(val, (list, tuple)) and val:
-            # lpkit-vf0: inspect the elements — inert plain lists pass
+            # guard-hardening: inspect the elements — inert plain lists pass
             # (tags, ids, matrices); executable-looking content refuses.
             if not _inert_plain(val):
                 return True
@@ -1422,13 +2042,13 @@ def _analyze_calls_list(calls, policy, get_snapshot, depth):
             try:
                 call_args = json.loads(call_args)
             except Exception:
-                # lpkit-1cz: a non-decoding arguments string is an
+                # guard-hardening: a non-decoding arguments string is an
                 # unprovable shape, not a lifecycle threat — corrective
                 # SHAPE_ENVELOPE guidance, never the VETO message.
                 raise _BoundRefuse("SHAPE_ENVELOPE")
         if not isinstance(call_args, dict):
             raise _Block()
-        # Amendment 3a (lpkit-6u6): keys beyond the canonical pair are
+        # Amendment 3a: keys beyond the canonical pair are
         # unprovable — an unrecognized key (tool/args, extra, ...) carrying
         # executable-looking content is a SHAPE_ENVELOPE refusal, never a
         # silent skip of argument inspection.
