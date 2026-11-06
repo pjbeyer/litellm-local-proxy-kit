@@ -1641,7 +1641,7 @@ class TestMutationChecksBattery(GuardHarness):
     # the two halves of the control-flow branch (F-001/F-006), as
     # unique single-occurrence anchors in guard.py
     CF_MUTATIONS = (
-        ('    chunk = _CF_SUB_RE.sub(";", chunk)',
+        ('    chunk = _normalize_control_flow(chunk)',
          '    chunk = chunk  # MUTATION: cf segmentation disabled'),
         ("def _strip_control_flow(tokens):",
          "def _strip_control_flow(tokens):\n    return tokens  # MUTATION: cf strip disabled"),

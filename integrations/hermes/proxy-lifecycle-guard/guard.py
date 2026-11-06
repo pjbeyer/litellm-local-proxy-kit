@@ -784,6 +784,98 @@ def _analyze_brew(tokens, policy):
 # are analyzed (F-001/F-006). Quote-aware splitting downstream keeps
 # quoted text safe from false segmentation.
 _CF_SUB_RE = re.compile(r"\b(?:then|do|else|done|fi|esac)\b|;;")
+def _normalize_control_flow(text):
+    """Replace shell control words, preserving quoted/escaped data verbatim.
+
+    Quoted shell/Python payloads are inspected recursively after tokenization;
+    changing their bytes here corrupts both benign code and threat analysis.
+    A keyword is normalized only as a whole unquoted word at a real shell
+    word boundary: quotes, escapes (incl. escaped whitespace), and command
+    substitutions extend the current word, so ``print\\(\\"else\\"\\)`` or
+    ``then\\ x`` stay byte-identical while real ``if/then``, ``while/do``,
+    ``case/esac`` bodies still split. ``;;`` is a case separator, not a
+    word, so it stays normalized even when adjacent to a word.
+    """
+    parts = []
+    quote = None
+    in_word = False
+    i = 0
+    substitutions = iter(_command_substitutions(text, with_spans=True))
+    substitution = next(substitutions, None)
+    while i < len(text):
+        if substitution is not None and i == substitution[0]:
+            # The existing substitution scanner gives nested shell programs
+            # their own quote context. Their bodies are inspected recursively
+            # before normalization, not rewritten as outer-shell data. The
+            # span joins the current word rather than starting a new token.
+            end = substitution[1]
+            parts.append(text[i:end])
+            i = end
+            in_word = True
+            substitution = next(substitutions, None)
+            continue
+        char = text[i]
+        if quote is not None:
+            if char == "\\" and quote == '"' and i + 1 < len(text):
+                parts.append(text[i:i + 2])
+                i += 2
+                continue
+            parts.append(char)
+            if char == quote:
+                quote = None
+            i += 1
+            continue
+        if char == "\\" and i + 1 < len(text) and text[i + 1] == "\n":
+            # Backslash-newline is elided by the shell: it neither starts
+            # nor ends a word, so the current word state carries over.
+            parts.append(text[i:i + 2])
+            i += 2
+            continue
+        if char == "\\":
+            # An escaped character (incl. escaped whitespace) joins the
+            # current word, so a keyword adjacent to it is inert data.
+            in_word = True
+            parts.append(text[i:i + 2])
+            i += 2
+            continue
+        if char in ("'", '"'):
+            quote = char
+            in_word = True  # a quoted segment belongs to the current word
+            parts.append(char)
+            i += 1
+            continue
+        match = _CF_SUB_RE.match(text, i)
+        normalize = False
+        if match is not None:
+            if match.group() == ";;":
+                normalize = True  # case separator, valid adjacent to a word
+            else:
+                # Whole-word check: skip backslash-newline continuations
+                # (the shell elides them, so ``then\\<newline>;`` still
+                # ends the keyword), then require whitespace, an operator,
+                # or end-of-text so ``then;`` normalizes while ``then\\ x``,
+                # ``then$(x)``, and ``then"x"`` stay verbatim (each is one
+                # shell word).
+                j = match.end()
+                while (j + 1 < len(text) and text[j] == "\\"
+                        and text[j + 1] == "\n"):
+                    j += 2
+                normalize = (not in_word
+                             and (j >= len(text)
+                                  or text[j] in " \t\r\n;|&()<>"))
+            if normalize:
+                parts.append(";")
+                i = match.end()
+                in_word = False
+                continue
+        if char in " \t\r\n;|&()<>":
+            in_word = False  # whitespace/operators end the current word
+        elif not in_word:
+            in_word = True
+        parts.append(char)
+        i += 1
+    return "".join(parts)
+
 _CASE_WORD_RE = re.compile(r"\w+\)")
 
 
@@ -834,7 +926,7 @@ def _analyze_chunk(chunk, policy, get_snapshot, depth=0):
                 or any("plugin" in w for w in words[:1])):
             raise _Block()
     # control-flow bodies: turn keyword boundaries into chunk separators
-    chunk = _CF_SUB_RE.sub(";", chunk)
+    chunk = _normalize_control_flow(chunk)
     stages = [s for s in _split_segments(chunk, ("|",), limit=MAX_STAGES) if s.strip()]
     if len(stages) >= MAX_STAGES:
         raise _Block()
@@ -927,8 +1019,8 @@ def _analyze_chunk(chunk, policy, get_snapshot, depth=0):
             raise _Block()
 
 
-def _command_substitutions(text):
-    """Yield executable substitutions, excluding escaped/single-quoted text."""
+def _command_substitutions(text, *, with_spans=False):
+    """Yield executable bodies (or positional spans), excluding inert text."""
     quote = None
     i = count = 0
     while i < len(text):
@@ -978,7 +1070,7 @@ def _command_substitutions(text):
             count += 1
             if count > MAX_CHUNKS:
                 raise _Block()
-            yield text[start:j]
+            yield (i, j + 1, text[start:j]) if with_spans else text[start:j]
             i = j + 1
             continue
         i += 1
