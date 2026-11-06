@@ -1,0 +1,240 @@
+tests/test_lifecycle_guard.py
+  s_276c65fe588b69::t_cb09076c5683d8 2748
+  s_276c65fe588b69::t_ef8edb15fb50b3 2761-2762
+  s_276c65fe588b69::t_129e032c916e6e 2498-2513,2515-2516
+  s_276c65fe588b69::t_11b902fbc91dee 2517-2519
+  s_276c65fe588b69::t_5d89fc47361f0e 2745-2747
+  s_276c65fe588b69::t_f7541d27b87dce 2749-2751,2758-2760
+  s_276c65fe588b69::t_89f0ac5196a7aa 2763-2765
+tests/test_guard_quoted_control_flow.py
+  s_276c65fe588b69::t_4d5233d9e19bfc 77
+  s_276c65fe588b69::t_0dd208cfead329 74-76
+  s_276c65fe588b69::t_48a0ad85ad13e5 78-80
+docs/contracts/decision-sink.md
+  s_acba62b4124acd::t_c661cf5cc75f35 1-2,5-16,23-24,31-33,40-43,50-52,55-58,63-65,72-79,88-93,95-98,103,108-110,116,119-156
+  s_acba62b4124acd::t_4b44df123428be 30
+  s_acba62b4124acd::t_4d919771e0ac11 44-45,49
+  s_276c65fe588b69::t_4d3a3363ca0475 82-83
+  s_276c65fe588b69::t_98f7be4264d647 3-4
+  s_acba62b4124acd::t_4b1d409253c3ef 17-18,20-22,34-39,46-48,53-54,59-62,66-71,80-81,94,99-102,104-107,111-115,117-118
+  s_acba62b4124acd::t_4ba5753686f115 19
+  s_acba62b4124acd::t_9737ce96ebb859 25-29
+tests/test_sink_watchdog.py
+  s_276c65fe588b69::t_1c84c92f8275f5 23
+  s_276c65fe588b69::t_5cc811d0785c6b 25
+  s_276c65fe588b69::t_f07d8e442811b3 20-22
+  s_276c65fe588b69::t_5abce33a250ab3 24
+  s_276c65fe588b69::t_f565db1280abd8 26-28
+  s_276c65fe588b69::t_86acbcecc09562 1-19,29-191
+integrations/hermes/proxy-lifecycle-guard/guard_probe_watchdog.py
+  s_8b6c9f442449db::t_85abea84c8fb32 339-340
+  s_8b6c9f442449db::t_14b3072259d3e4 242-244,248,250-254
+  s_8b6c9f442449db::t_015c2012407000 21-32
+  s_8b6c9f442449db::t_453fe64f3d82ec 239-241
+  s_8b6c9f442449db::t_5960fe73a6d673 245-247
+  s_8b6c9f442449db::t_4c7f67f3706683 255-257
+tests/test_sink_worker_cleanup.py
+  s_276c65fe588b69::t_ddebc8884fcb94 44
+  s_276c65fe588b69::t_16e0448d2d607f 41-43
+  s_276c65fe588b69::t_dd37135ffa5a18 45-47
+  s_276c65fe588b69::t_5861504ff35282 1-40,48-114
+tests/sink_worker_evaluate_probe.py
+  s_276c65fe588b69::t_765d04369427d5 1-21,24-32,34-65,68-89,91-101,103-118,129-133,137-142,144-153,155-156,158-160,162-164,167,170-182
+  s_276c65fe588b69::t_38c10e2cabd1bf 90
+  s_276c65fe588b69::t_a7427022b106c9 102
+  s_276c65fe588b69::t_216ffb5d4d1c8f 119-128,134-136,143,154
+  s_276c65fe588b69::t_bd3f91830926bb 22-23
+  s_276c65fe588b69::t_e5e72454e4885d 33
+  s_276c65fe588b69::t_9d72ed4f654596 66-67
+  s_276c65fe588b69::t_fd7d8f1523089c 157
+  s_276c65fe588b69::t_8bc6fa67ce9f4d 161
+  s_276c65fe588b69::t_6c88d4846dce7c 165-166
+  s_276c65fe588b69::t_932c94866c46d1 168-169
+integrations/hermes/proxy-lifecycle-guard/guard.py
+  s_1dc57e36103f4c::t_e5ce0039e53c23 624-627
+  s_1dc57e36103f4c::t_14dbc37f39a192 172,175,177,179,181,184,220,271,285,305,308,310,313,316,341,349,356,359,387-388,395,401,497,501,514-515,524,538,565,570,581,590-612,643,659,763
+  s_b1a18a0bb18a46::t_6d970badf9da76 124-131,134-153,201,209,212
+  s_1dc57e36103f4c::t_0589a26fe6b667 517
+  s_1dc57e36103f4c::t_1b7e49e513e1e3 459
+  s_ffde6b67466c73::t_8b006f0e800d29 622
+  s_1dc57e36103f4c::t_cacd525e6b0d24 690
+  s_1dc57e36103f4c::t_2b39b980525cd7 527-531
+  s_1dc57e36103f4c::t_ecef2fe9e27d8a 482-488,490-496
+  s_b1a18a0bb18a46::t_c6f0d5d838d4ff 121-123
+  s_1dc57e36103f4c::t_695bcdb23a7c5e 173-174
+  s_1dc57e36103f4c::t_d4e9b3f3668b58 176
+  s_1dc57e36103f4c::t_babdf444161829 178
+  s_1dc57e36103f4c::t_2e3967907eb311 180
+  s_1dc57e36103f4c::t_dcaeaa1874c125 182-183
+  s_b1a18a0bb18a46::t_29916fdb233cc4 202-204,206-208
+  s_b1a18a0bb18a46::t_0f4bfc62a1da27 210-211
+  s_1dc57e36103f4c::t_34610d7bb34c54 221-223,268-270
+  s_1dc57e36103f4c::t_ae4ed47e19aec0 272-274,282-284
+  s_1dc57e36103f4c::t_890ed66ff7eb1e 286-288,302-304
+  s_1dc57e36103f4c::t_bde300d579e921 306-307
+  s_1dc57e36103f4c::t_fc453ab766e30c 309
+  s_1dc57e36103f4c::t_f848f12be6a2b8 311-312
+  s_1dc57e36103f4c::t_37f14689ff839e 314-315
+  s_1dc57e36103f4c::t_ee51190f7d01d5 317-319,338-340
+  s_1dc57e36103f4c::t_467d32f6bfd205 342-344,346-348
+  s_1dc57e36103f4c::t_ab97cdcdc1fb1c 350-355
+  s_1dc57e36103f4c::t_9cea3db57aeb9b 357-358
+  s_1dc57e36103f4c::t_1525d24225bf88 360-362,384-386
+  s_1dc57e36103f4c::t_5b6bde2f8ef9b7 389-394
+  s_1dc57e36103f4c::t_bce6fb15f86333 396-400
+  s_1dc57e36103f4c::t_b9cd612da11b1a 402-404
+  s_1dc57e36103f4c::t_ae0dcacdfb11c5 456-458
+  s_1dc57e36103f4c::t_b9dd885f1a46fc 460-462,479-481
+  s_1dc57e36103f4c::t_33fe213d06623f 498-500
+  s_1dc57e36103f4c::t_b4f653f43fed45 511-513
+  s_1dc57e36103f4c::t_eca6c395223d03 516
+  s_1dc57e36103f4c::t_8031debded013f 518-523
+  s_1dc57e36103f4c::t_955c467ea0092d 525-526
+  s_1dc57e36103f4c::t_b589cecd4b21bd 532-537
+  s_1dc57e36103f4c::t_86193e09b3dd2f 539-541,562-564
+  s_1dc57e36103f4c::t_5ed364ffe8c620 566-569
+  s_1dc57e36103f4c::t_23ab58bf90570e 571-573,578-580
+  s_1dc57e36103f4c::t_b05b2348da9dc1 582-584,587-589
+  s_1dc57e36103f4c::t_d427c4812f6cdd 628-630,640-642
+  s_1dc57e36103f4c::t_3bceaf158cbe27 644-646,656-658
+  s_1dc57e36103f4c::t_2832b37e38a0e3 660-662,687-689
+  s_1dc57e36103f4c::t_4ac262342a3454 691-692
+  s_1dc57e36103f4c::t_21d1c3e7478e68 760-762
+  s_1dc57e36103f4c::t_e6d00f9b94212b 764-766
+tests/test_sink_hardening_fs.py
+  s_072b6bd8d0defd::t_9e8a0428560424 1-2,4-53,56-58,61-66,68,70-71,74-76,79-82,86-88,91-93,95-102,104-105,109-118,121-124,126-129,131-161,163-175,179,181-190,192,197-201,206-224,227-231
+  s_072b6bd8d0defd::t_a1a46269f8690d 225-226
+  s_276c65fe588b69::t_c94a3f42f02a01 69,85
+  s_acba62b4124acd::t_141ae911e10915 83-84
+  s_acba62b4124acd::t_99946eaafb7511 59,77
+  s_acba62b4124acd::t_84ea89052e2767 67,107-108,178,193-194,196,202-204
+  s_276c65fe588b69::t_6f2fc97aee43e7 3
+  s_276c65fe588b69::t_0665e2fca49c68 60,78
+  s_072b6bd8d0defd::t_816c876b80ae2f 54-55
+  s_072b6bd8d0defd::t_642a77fbcf0018 72-73
+  s_072b6bd8d0defd::t_857fbdd5199a77 89-90
+  s_072b6bd8d0defd::t_0624d55eaae2db 94
+  s_072b6bd8d0defd::t_cdca2613f5bfc1 103
+  s_072b6bd8d0defd::t_9573096927213b 119-120
+  s_072b6bd8d0defd::t_1c80c9b756ffe5 125
+  s_072b6bd8d0defd::t_46c73045e40760 130
+  s_072b6bd8d0defd::t_bf76a53b7c96c9 162
+  s_072b6bd8d0defd::t_074c37a007a6fc 180
+  s_072b6bd8d0defd::t_dce22bd7b43b73 191
+  s_acba62b4124acd::t_05774fd558bde3 195
+  s_276c65fe588b69::t_a50fd8bc4d47f9 106,176-177,205
+docs/evidence/sink-hardening-progress.md
+  s_276c65fe588b69::t_43437fe24789dc 74
+  s_acba62b4124acd::t_1a9a8a8dcdbbb6 1-42,198-315,318-325
+  s_acba62b4124acd::t_2960c051daeaf9 316-317
+  s_276c65fe588b69::t_1c89214dd05538 43-73,75-197
+integrations/hermes/proxy-lifecycle-guard/__init__.py
+  s_ffde6b67466c73::t_201acebd10ead3 4-12,26-34,39-54
+  s_3ec27f0cd2f1be::t_9fd8e7edc3ffa5 17-18,35-38
+  s_ffde6b67466c73::t_3cda8844b077c4 13
+tests/test_sink_worker.py
+  s_6603524b4c9a30::t_e9d2e3cd9af08f 1-3,8-19,34-41,43-46,48-50,52-61,64-66,73-76,81-87,94-102,116-124,140,143,166-175,178-179,220-223,246,252-255,262-267,269-270,283,287,290,332,355-359,361-393,395-403,405-424,426-436,438-457,462-468,473-475,477-478,480-487,489-494,496-506,510-520,533-537,539-540,542,544-546,549-555,557,571-575,579,584,593-597,604-616,618-619,623,625-640,642-643,645-647,649-654,657,665-666,668-670,678-684,687-688,692-695,697-698,700-702,704,737,743-744,746-752,755,759-760,762-763,766,777-783,785-787,798,801,805,807-815,819-824,842-844
+  s_b1a18a0bb18a46::t_ff2939fbc52665 568-569
+  s_b1a18a0bb18a46::t_20df5cd0464dc4 577-578,580
+  s_b1a18a0bb18a46::t_44f9f09bec7f8c 560-564
+  s_7d1eebea52911a::t_b75fd398175267 585-589
+  s_7d1eebea52911a::t_05d295d0829658 4-7,20-33,42,47,62-63,67-72,77-80,88,103-106,108-115,125,131,141-142,144-161,164-165,177,180-181,211-217,224-245,247-251,256-261,268,271-282,284-286,288-289,291-331,333-354,360,394,404,425,437,458-461,469-472,476,479,488,495,507-509,521-532,538,541,543,547-548,556,558-559,565-567,570,576,581-583,590-592,598-603,617,620-622,624,641,644,648,655-656,658-664,667,686,696,699,703,705-736,738-742,745,753-754,756-758,761,764-765,767-776,784,788-797,799-800,802-804,806,816-818,825-841,845
+  s_6603524b4c9a30::t_5c1d13d69de8e1 51
+  s_6603524b4c9a30::t_6097559ae3cdfe 89-93
+  s_7d1eebea52911a::t_4564e239005f21 107
+  s_7d1eebea52911a::t_09077e9b45867d 126-130
+  s_7d1eebea52911a::t_4dbcaeecbd7748 162-163
+  s_7d1eebea52911a::t_f8343759fb280b 182-184,208-210
+  s_6603524b4c9a30::t_6cd5454da89d25 671-673,675-677
+  s_6603524b4c9a30::t_af29092f2e52df 689-691
+tests/sink_path_qualification_probe.py
+  s_276c65fe588b69::t_6d58c3afd5d092 1-221
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "c0827f66cd432cb683fc013fc0fbc3df06ddf39e",
+  "prompts": {},
+  "sessions": {
+    "s_072b6bd8d0defd": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261105_213901_8c20bc",
+        "model": "glm-5.3"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_1dc57e36103f4c": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261105_225930_d88f23",
+        "model": "glm-5.3"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_276c65fe588b69": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261105_220814_9e2e33",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_3ec27f0cd2f1be": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261105_215253_da3a1c",
+        "model": "glm-5.3"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_6603524b4c9a30": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261105_221930_4f164f",
+        "model": "glm-5.3"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_7d1eebea52911a": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261105_223830_99f894",
+        "model": "glm-5.3"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_8b6c9f442449db": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261105_222630_62c93b",
+        "model": "glm-5.3"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_acba62b4124acd": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261105_100654_57df06",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_b1a18a0bb18a46": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261103_122930_556d2b",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_ffde6b67466c73": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261105_222500_2aeb9b",
+        "model": "glm-5.3"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
