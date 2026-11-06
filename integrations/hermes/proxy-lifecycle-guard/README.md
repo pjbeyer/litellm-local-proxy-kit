@@ -21,6 +21,15 @@ Unresolved kill substitutions, xargs kill pipelines, and regex process
 selectors are deliberately refused rather than assuming that a different port
 or an opaque stdin producer proves unrelated ownership.
 
+## Quoted program inspection
+
+Shell control-flow words are normalized only outside quoted or escaped text.
+Quoted inline shell/Python programs are inspected recursively without changing
+payload bytes; a Python conditional or a string containing `else` must not
+become different code during analysis. This does not grant an exception for
+signal intent, opaque targets, or source text carried as data. Source-only
+regression results do not authorize retrying a refused live invocation.
+
 ## Refusal reference (rev-3 vocabulary)
 
 Every block is one decision with a category and a stable log code. The plugin
@@ -195,6 +204,24 @@ categories + integrity/perms verdicts). Run the self-test with
 no guard import, no state writes). Mirroring rule: change the repo copy
 and the `~/.hermes/scripts/` copy in the same change — byte parity is
 the deployment contract.
+
+### Decision sink (lpkit-ool)
+
+Every block decision the guard makes is also appended — sanitized — to
+an append-only JSONL sink at
+`$XDG_STATE_HOME/hermes/lifecycle-guard/decisions.jsonl`, one line per
+decision with the fixed schema `{ts, category, code, tool}`. The
+sanitization discipline matches `BLOCK_MESSAGE`: no arguments, paths,
+or PIDs are ever recorded, and allow decisions are not recorded at all.
+The file is created owner-only (0600 in a 0700 dir) and rotates to
+`decisions.jsonl.1` at 256 KiB (single generation, bounded disk).
+**Fail-open by contract**: a sink write failure is log-only and never
+weakens enforcement — the block decision is still returned.
+
+The watchdog consumes this sink (read-only) as its `sink` probe: after
+its veto probe fires, it verifies a matching sanitized record landed,
+giving the cron monitor queryable per-category decision history without
+grepping `agent.log`.
 
 ## Operating, disabling, rollback
 

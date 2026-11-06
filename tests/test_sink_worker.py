@@ -557,7 +557,11 @@ class SinkWorkerTest(unittest.TestCase):
         m = self.mod
         m.SINK_MAX_BYTES = 512  # literal test cap for the first job
         calls = self.start_and_stall_in_flight()
-        home_a = self.state.name
+        # _sink_home() resolves the environment prefix via realpath at
+        # capture (prefix symlinks like macOS /var -> /private/var must
+        # not defeat persistence), so the captured home is the RESOLVED
+        # literal, not the raw env string.
+        home_a = os.path.realpath(self.state.name)
         other = types.SimpleNamespace(name=self._new_dir("sink_state_alt_"))
         # Redirect the environment AND the cap AFTER the first job was
         # admitted: neither may redirect the already-queued job.
@@ -572,7 +576,7 @@ class SinkWorkerTest(unittest.TestCase):
         # The old job kept its captured home and cap; only the new job
         # moved. Literal pins: both were frozen at submit time.
         self.assertEqual(home1, home_a)
-        self.assertEqual(home2, other.name)
+        self.assertEqual(home2, os.path.realpath(other.name))
         self.assertEqual(cap1, 512)
         self.assertEqual(cap2, 1024)
         for record, tool in ((rec1, "terminal"), (rec2, "execute_code")):

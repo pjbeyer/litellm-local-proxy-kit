@@ -121,6 +121,15 @@ def _sink_record(category, code, tool):
 
 
 def _sink_home():
+    """Resolve the state home ONCE at capture, following environment symlinks.
+
+    The environment-provided PREFIX (e.g. TMPDIR on macOS, where /var is a
+    symlink to /private/var) is trusted infrastructure, not attacker
+    material; the hardened no-follow walk protects the MANAGED tail
+    (hermes/lifecycle-guard and the sink files) only. Normalizing the
+    prefix here keeps prefix symlinks from defeating every persist, while
+    the walk still refuses symlinks inside the managed hierarchy.
+    """
     try:
         base = os.environ.get('XDG_STATE_HOME')
         if base is not None and type(base) is not str:
@@ -132,8 +141,16 @@ def _sink_home():
             base = home.rstrip('/') + '/.local/state'
         if len(base) > 4096 or len(base.encode('utf-8')) > 4096:
             return None
-        return base
-    except (UnicodeError, ValueError):
+        resolved = os.path.realpath(base)
+        if (type(resolved) is not str or not resolved
+                or not resolved.startswith('/')
+                or resolved.startswith('//')
+                or len(resolved) > 4096
+                or len(resolved.encode('utf-8')) > 4096
+                or chr(0) in resolved):
+            return None
+        return resolved
+    except (UnicodeError, ValueError, OSError):
         return None
 
 
