@@ -1,0 +1,19 @@
+tests/test_lifecycle_guard.py
+  s_276c65fe588b69::t_790bb6f175c336 1644
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "a2774b917ec6c7daa468eaae41c1e0f7fb4e97b4",
+  "prompts": {},
+  "sessions": {
+    "s_276c65fe588b69": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261105_220814_9e2e33",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
