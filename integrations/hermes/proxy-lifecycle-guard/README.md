@@ -152,7 +152,7 @@ reloaded — the correct order is:
    disable/uninstall of a live guard from inside the gateway (that is
    accident/persuasion protection working as specified) — an agent
    session that attempts step 1 will be refused and must not treat the
-   refusal as a defect (see lpkit-vfz).
+   refusal as a defect (documented agent-path behavior).
 2. Copy the new source files and author the new `config.json` +
    `integrity.sha256` (owner actions) while the guard is unloaded. If the
    file swap is performed while the old module is still live (e.g. from an
@@ -175,13 +175,21 @@ bytes + re-materialize `integrity.sha256` to match so the on-disk state
 is consistent (avoiding the POLICY_INVALID window in step 2), then ask
 the owner to restart.
 
+Note on the decision-sink worker: the async worker is per module
+generation — it starts at plugin registration and is retired with its
+module. An upgrade that swaps bytes before the reload leaves the OLD
+generation's worker running (it drains and exits at shutdown of that
+generation); only the gateway restart that loads the new module also
+starts the new generation's worker. Verify with a live hook decision
+reaching the sink after the restart, not merely with on-disk parity.
+
 ## Probe watchdog (deployment monitor)
 
 The kit ships `guard_probe_watchdog.py` in this directory. The runtime
 copy lives at `~/.hermes/scripts/guard_probe_watchdog.py` (mirrored
 byte-for-byte; parity is the evidence the reviewed repo copy matches
-what the cron job executes) and is run by Hermes cron job
-`8928a8340f33` every 4h as a no-agent script job.
+what the cron job executes) and is run by the configured recurring
+watchdog cron job every 4h as a no-agent script job.
 
 It verifies the deployed installation read-only on every run:
 
@@ -190,10 +198,15 @@ It verifies the deployed installation read-only on every run:
 - live VETO of a non-executing lifecycle probe command (dead-branch
   construction, FR-010),
 - allow of a read-only diagnostic (false-positive tripwire),
-- shape-class routing (lpkit-9df): decode-fail envelopes
-  → SHAPE_ENVELOPE/LGV-020 (lpkit-1cz class), non-canonical `tool`/
-  `args` key shapes → SHAPE_ENVELOPE (amendment 3a, lpkit-6u6 class),
-  and a canonical relay envelope → ALLOW (over-blocking tripwire).
+- shape-class routing: decode-fail envelopes → SHAPE_ENVELOPE/LGV-020,
+  non-canonical `tool`/`args` key shapes → SHAPE_ENVELOPE, and a
+  canonical relay envelope → ALLOW (over-blocking tripwire),
+- decision-sink lifecycle: the probe subprocess drives
+  `sink_start()` → veto → bounded `sink_flush()`/`sink_shutdown()`,
+  and a sink record observed by the probe evidences flushed offline
+  source-path delivery **in the probe subprocess only** — it is NOT a
+  claim of storage durability and does NOT prove the live gateway
+  activated the sink.
 
 Silent on health (exit 0); any probe that cannot be proven healthy is
 an alert (exit 1) with the failing classes named. Per-run decisions are
@@ -205,7 +218,7 @@ no guard import, no state writes). Mirroring rule: change the repo copy
 and the `~/.hermes/scripts/` copy in the same change — byte parity is
 the deployment contract.
 
-### Decision sink (lpkit-ool)
+### Decision sink (async, fail-open telemetry)
 
 Every block decision the guard makes is also appended — sanitized — to
 an append-only JSONL sink at
@@ -215,8 +228,31 @@ sanitization discipline matches `BLOCK_MESSAGE`: no arguments, paths,
 or PIDs are ever recorded, and allow decisions are not recorded at all.
 The file is created owner-only (0600 in a 0700 dir) and rotates to
 `decisions.jsonl.1` at 256 KiB (single generation, bounded disk).
-**Fail-open by contract**: a sink write failure is log-only and never
-weakens enforcement — the block decision is still returned.
+
+Delivery is asynchronous and strictly bounded so telemetry can never
+affect enforcement:
+
+- The enforcement callback only admits a record — capture is
+  nonblocking (try-lock), performs no filesystem I/O, and never waits.
+  Records dropped when the queue is full (64 pending + 1 in flight)
+  are counted, not retried.
+- Exactly one worker thread per module generation is started by the
+  adapter at registration (outside any callback). It is never started,
+  restarted, or replaced from a callback; a failed start is latched and
+  never retried.
+- All filesystem work happens in the worker, off the enforcement path.
+  Flush completion is not fsync durability.
+- **Fail-open by contract**: a sink write failure is log-only and never
+  weakens enforcement — the block decision is still returned.
+  Degradation is observable without leaking anything: `sink_status()`
+  returns fixed non-secret counters (admitted/written/failed/dropped,
+  saturating) and sticky flags (busy-lock drop, pre-admission drop) —
+  no record content, path, or environment material.
+
+The state-home prefix is resolved via realpath once at capture (trusted
+environment prefix; e.g. macOS `/var` → `/private/var`), while the
+hardened no-follow descriptor walk continues to protect the managed
+directory tail and the sink files themselves.
 
 The watchdog consumes this sink (read-only) as its `sink` probe: after
 its veto probe fires, it verifies a matching sanitized record landed,
