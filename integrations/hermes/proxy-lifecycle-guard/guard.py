@@ -1545,6 +1545,109 @@ def _strip_control_flow(tokens):
     return tokens
 
 
+def _applescript_dss_payloads(text):
+    """Extract `do shell script` operands (AppleScript quote dialect).
+
+    Returns (payloads, unextractable). AppleScript string literals are
+    double-quoted with backslash escapes; nested shell quotes inside the
+    literal are preserved verbatim for the shell analyzer. An occurrence
+    whose operand is not a plain literal (variable, concatenation, or a
+    non-``with`` trailing clause) is unprovable — unextractable is set
+    and the caller refuses (FR-006: unresolved operands are never
+    guessed at).
+    """
+    lowered = text.lower()
+    payloads = []
+    unextractable = False
+    count = 0
+    for m in re.finditer(r"do\s+shell\s+script", lowered):
+        i = m.end()
+        while i < len(text) and text[i] in " \t\r\n":
+            i += 1
+        if i >= len(text) or text[i] != '"':
+            unextractable = True
+            continue
+        i += 1
+        parts = []
+        while i < len(text):
+            ch = text[i]
+            if ch == "\\" and i + 1 < len(text):
+                parts.append(text[i + 1])
+                i += 2
+                continue
+            if ch == '"':
+                break
+            parts.append(ch)
+            i += 1
+        if i >= len(text):
+            unextractable = True
+            continue
+        i += 1  # closing quote
+        # trailing clause: blank or a `with ...` clause is inert; any
+        # other trailing text (concatenation, semicolons) is unprovable
+        nxt = lowered.find("do shell script", i)
+        stop = nxt if nxt != -1 else len(text)
+        trailer = text[i:stop].strip()
+        if trailer and not trailer.startswith("with "):
+            unextractable = True
+            continue
+        count += 1
+        if count > 16:
+            raise _Block()
+        payloads.append("".join(parts))
+    return payloads, unextractable
+
+
+_JXA_SHELL_RE = re.compile(
+    r"\$\.\s*(?:system|shell)\s*\(|do\s*shell\s*script\s*\(", re.I)
+
+
+def _jxa_shell_payloads(text):
+    """Extract JXA shell-execution arguments ($.system/.shell/doShellScript).
+
+    Returns (payloads, unextractable). JS string arguments may be single-
+    or double-quoted with backslash escapes; non-literal arguments
+    (variables, template literals, concatenations) are unprovable.
+    """
+    payloads = []
+    unextractable = False
+    count = 0
+    for m in _JXA_SHELL_RE.finditer(text):
+        i = m.end()
+        while i < len(text) and text[i] in " \t\r\n":
+            i += 1
+        if i >= len(text) or text[i] not in "\"'":
+            unextractable = True
+            continue
+        quote = text[i]
+        i += 1
+        parts = []
+        while i < len(text):
+            ch = text[i]
+            if ch == "\\" and i + 1 < len(text):
+                parts.append(text[i + 1])
+                i += 2
+                continue
+            if ch == quote:
+                break
+            parts.append(ch)
+            i += 1
+        if i >= len(text):
+            unextractable = True
+            continue
+        i += 1
+        while i < len(text) and text[i] in " \t\r\n":
+            i += 1
+        if i < len(text) and text[i] not in ");,&":
+            unextractable = True
+            continue
+        count += 1
+        if count > 16:
+            raise _Block()
+        payloads.append("".join(parts))
+    return payloads, unextractable
+
+
 def _analyze_chunk(chunk, policy, get_snapshot, depth=0):
     """Analyze one command chunk (may be a pipeline). Hazard anywhere blocks."""
     if depth > MAX_TOOL_CALL_DEPTH:
@@ -1636,6 +1739,43 @@ def _analyze_chunk(chunk, policy, get_snapshot, depth=0):
                 if any(re.fullmatch(r"python[23]?", t.rsplit('/', 1)[-1].lower())
                        for t in rest):
                     raise _Block()
+            elif verb == "osascript":
+                # AppleScript/JXA is a first-class macOS execution surface.
+                # `do shell script` / JXA system()-class calls execute shell
+                # text through osascript's own interpreter. Extract the
+                # operand and analyze it as shell on its own terms so the
+                # NORMAL target-aware decision applies (unrelated `pkill
+                # nginx` through osascript stays allowed, exactly as it is
+                # on the direct surface). A shell-execution form whose
+                # operand cannot be extracted (variable, concatenation,
+                # template) is unprovable (FR-006) and vetoes; kill-family
+                # vocabulary in an unextractable operand reaches the veto
+                # via that rule, not via a blanket keyword match. Benign
+                # AppleScripts (display dialog, tell app...) contain no
+                # shell-execution form and pass untouched.
+                joined = " ".join(rest)
+                low_j = joined.lower()
+                shell_forms = ("do shell script" in low_j
+                               or "$.system(" in low_j
+                               or "$.shell(" in low_j
+                               or "doshellscript(" in low_j.replace(" ", "")
+                               or _full_text_kill_intent(joined, policy))
+                if shell_forms:
+                    dss, dss_unx = _applescript_dss_payloads(joined)
+                    jxa, jxa_unx = _jxa_shell_payloads(joined)
+                    if (dss_unx or jxa_unx):
+                        raise _Block()  # FR-006: unextractable operand
+                    if dss or jxa:
+                        for payload in dss + jxa:
+                            _analyze_shell_text(payload, policy,
+                                                get_snapshot, depth + 1)
+                    else:
+                        # shell_forms triggered by kill-family vocabulary,
+                        # but no shell-execution form was extractable. The
+                        # operand could be any osascript language/dialect —
+                        # carrying signal intent it cannot be proven safe
+                        # (FR-006), same rule as unresolved substitutions.
+                        raise _Block()
             elif verb == "fuser":
                 if any(t == "-k" or t.startswith("-k") for t in rest):
                     for tok in rest:
@@ -1818,7 +1958,7 @@ def _iter_string_literals(text, limit=80):
                 executable = first.value.rsplit('/', 1)[-1]
                 if executable in WRAPPER_VERBS or executable in (
                         'sh', 'bash', 'zsh', 'kill', 'pkill', 'killall',
-                        'fuser', 'launchctl', 'brew'):
+                        'fuser', 'launchctl', 'brew', 'osascript'):
                     values = [str(part.value) if isinstance(part, ast.Constant)
                               and isinstance(part.value, (str, int)) else '$UNRESOLVED'
                               for part in node.elts]
