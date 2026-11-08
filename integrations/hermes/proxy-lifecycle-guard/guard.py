@@ -2012,6 +2012,18 @@ def _analyze_code_text(text, policy, get_snapshot):
         raise _Block()
     if len(text) > MAX_TEXT_CHARS:
         raise _Block()
+    # Syntactic validity gate: code that does not parse as Python cannot
+    # be statically proven safe. A real newline inside a single-quoted
+    # string (the git multi-paragraph -m convention pasted into code, as
+    # in the byte-exact refusal fixture) is a SyntaxError, not a
+    # lifecycle threat: refuse with the bound's corrective category
+    # (BOUND_SIZE/LGV-010 — reduce/restructure and resubmit), never a
+    # lifecycle VETO. Malformed input stays REFUSED (fail-closed); only
+    # the category is corrected.
+    try:
+        ast.parse(text)
+    except SyntaxError:
+        raise _BoundRefuse("BOUND_SIZE") from None
     if _OS_KILL_RE.search(text):  # os.kill( / os.killpg(
         # F-014 carve-out: signal-0 liveness probes pass; any real
         # signal — or an unprovable call shape — vetoes
@@ -2019,14 +2031,93 @@ def _analyze_code_text(text, policy, get_snapshot):
             raise _Block()
     if "psutil" in text and _PSUTIL_KILL_RE.search(text):
         raise _Block()
-    # F-017: writing to the guard's own deployed files via Python veto
+    # F-017: writing to the guard's own deployed files via Python veto.
+    # READS pass: open() is not a write primitive. A mode operand that
+    # can write ('w', 'a', '+', 'x' — including nested/qualified modes
+    # and mode= keyword), or an explicit .write( call on the marker
+    # path, is required to veto. Byte-level scan (bounded, no regex
+    # burn): every 'open(' occurrence whose mode argument contains a
+    # writing character vetoes when the marker is present anywhere in
+    # the text (the parse gate above bounds the shape).
     low = text.lower()
-    if PLUGIN_DIR_MARKER in low and ("write" in low or "open(" in low):
+    if PLUGIN_DIR_MARKER in low and _python_write_intent(text, low):
         raise _Block()
     for literal in _iter_string_literals(text):
         low = literal.lower()
         if any(keyword in low for keyword in _SHELL_KEYWORDS):
             _analyze_shell_text(literal, policy, get_snapshot)
+
+
+def _python_write_intent(text, low):
+    """True when text opens (or writes) the guarded directory with a
+    writing-capable primitive.
+
+    Write primitives: open() with a mode containing w/a/x/+; the
+    pathlib write family (write_text/write_bytes) invoked on the
+    marker path; explicit .write( on a handle alongside the marker.
+    open() with a read mode (or the default 'r') is a READ and passes.
+    """
+    for m in re.finditer(r"\bopen\s*\(", text):
+        start = m.end()
+        depth = 1
+        j = start
+        while j < len(text) and depth:
+            ch = text[j]
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+            j += 1
+        if depth:
+            continue
+        inner = text[start:j - 1]
+        parts, buf, d = [], [], 0
+        quote = None
+        for ch in inner:
+            if quote:
+                buf.append(ch)
+                if ch == quote:
+                    quote = None
+                continue
+            if ch in "'\"":
+                quote = ch
+                buf.append(ch)
+                continue
+            if ch in "([":
+                d += 1
+            elif ch in ")]":
+                d -= 1
+            if ch == "," and d == 0:
+                parts.append("".join(buf))
+                buf = []
+            else:
+                buf.append(ch)
+        parts.append("".join(buf))
+        mode = None
+        for part in parts[1:]:
+            p = part.strip()
+            if p.startswith("mode"):
+                p = p.split("=", 1)[-1].strip()
+            if len(p) >= 2 and p[0] in "'\"" and p[-1] == p[0]:
+                mode = p[1:-1]
+                break
+        if mode and any(c in mode for c in "wax+"):
+            return True
+        if mode is None and (len(parts) < 2 or "mode" not in inner):
+            # default mode 'r' — a read
+            continue
+        if "write" in low and ".write(" in text:
+            # explicit write call present alongside open() with the
+            # marker: conservative veto (write-on-opened-handle intent)
+            return True
+    if ".write_text(" in low or ".write_bytes(" in low:
+        # pathlib write family invoked with the marker present
+        return True
+    if ".write(" in text and "open(" not in text:
+        # write onto an already-open handle (e.g. Path.open_text chains)
+        # with the marker present — still write intent
+        return True
+    return False
 
 
 # ---------------------------------------------------------------------------
