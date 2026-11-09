@@ -1707,6 +1707,81 @@ def _pipe_payload_literals(stage_text):
     return out
 
 
+def _strip_shell_comments(text):
+    """Remove shell comments (prose) before tokenization (lpkit-knp).
+
+    '#' starts a comment only at a real word boundary (start of text,
+    after whitespace, or after a separator). '#' inside quotes and
+    mid-word forms (${'s}) are literal. Apostrophes in comments were
+    previously read as opening quotes, leaving the chunk unparseable
+    and failing closed — stripping comments fixes the class without
+    loosening refusal for genuinely unparseable commands.
+    """
+    out = []
+    i, n = 0, len(text)
+    quote = None
+    while i < n:
+        ch = text[i]
+        if quote:
+            out.append(ch)
+            if ch == "\\" and quote == '"' and i + 1 < n:
+                out.append(text[i + 1])
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+            i += 1
+            continue
+        if ch in ('"', "'"):
+            quote = ch
+            out.append(ch)
+            i += 1
+            continue
+        if ch == "\\" and i + 1 < n:
+            out.append(text[i:i + 2])
+            i += 2
+            continue
+        if ch == "#" and (i == 0 or text[i - 1] in " \t\n\r;|&("):
+            # comment: drop to end of line
+            j = text.find("\n", i)
+            if j == -1:
+                break
+            out.append("\n")
+            i = j + 1
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def _collect_literal_vars(text):
+    """Map NAME -> simple literal value for visible assignments.
+
+    Only simple single/double-quoted or bare-word literal values are
+    collected (NAME="literal", NAME='literal', NAME=word). Any
+    substitution, concatenation, or interpolation in the value makes
+    the variable UNRESOLVED (excluded) — resolution must be analysis,
+    not a hole (lpkit-5ix). Bounded to 32 entries.
+    """
+    env = {}
+    for m in re.finditer(
+            r"(?:^|[\n;|&])([A-Za-z_]\w*)=(\"[^\"]*\"|'[^']*'"
+            r"|[A-Za-z0-9_./@-]+)", text):
+        if len(env) >= 32:
+            break
+        name, raw = m.group(1), m.group(2)
+        if raw[:1] in ('"', "'"):
+            value = raw[1:-1]
+            if "$" in value or "`" in value or "\\" in value:
+                continue  # interpolation: unresolvable
+        else:
+            if not re.fullmatch(r"[A-Za-z0-9_./@-]+", raw):
+                continue
+            value = raw
+        env[name] = value
+    return env
+
+
 def _redirect_writes_plugin_dir(chunk):
     """True when any redirection in chunk targets the plugin directory.
 
@@ -1786,7 +1861,7 @@ def _redirect_writes_plugin_dir(chunk):
     return False
 
 
-def _analyze_chunk(chunk, policy, get_snapshot, depth=0):
+def _analyze_chunk(chunk, policy, get_snapshot, depth=0, env=None):
     """Analyze one command chunk (may be a pipeline). Hazard anywhere blocks."""
     if depth > MAX_TOOL_CALL_DEPTH:
         raise _Block()
@@ -1794,6 +1869,40 @@ def _analyze_chunk(chunk, policy, get_snapshot, depth=0):
     if chunk.startswith("(") and chunk.endswith(")"):
         _analyze_shell_text(chunk[1:-1], policy, get_snapshot, depth + 1)
         return
+    # lpkit-5ix: command-position variable indirection resolves
+    # against simple literal assignments visible in the same payload
+    # (the adapter pattern). Resolution is ANALYSIS, not a hole: the
+    # substituted text is re-analyzed with the full pipeline, so a
+    # resolved kill command still vetoes. Unresolvable indirection
+    # stays refused (FR-006).
+    if env:
+        stage_list = _split_segments(chunk, ("|",), limit=MAX_STAGES)
+        if stage_list:
+            head_words = stage_list[0].strip().split()
+            if head_words:
+                raw = head_words[0]
+                # bare and quoted forms: $X, "$X", '${X}'
+                if raw.startswith('"') and raw.endswith('"'):
+                    var = raw[1:-1]
+                elif raw.startswith("'") and raw.endswith("'"):
+                    var = raw[1:-1]
+                elif raw.startswith("$") and len(raw) > 1:
+                    var = raw
+                else:
+                    var = None
+                if var:
+                    var = var.lstrip("$").lstrip("{").rstrip("}")
+                    if var in env:
+                        resolved = " ".join(
+                            [env[var]] + head_words[1:])
+                        _analyze_shell_text(
+                            resolved, policy, get_snapshot, depth + 1)
+                        for stage in stage_list[1:]:
+                            if stage.strip():
+                                _analyze_chunk(
+                                    stage.strip(), policy, get_snapshot,
+                                    depth + 1, env)
+                        return
     # F-017: mutation of the guard's own deployed plugin directory (or
     # self-disable/uninstall through the runtime CLI) vetoes
     low_chunk = chunk.lower()
@@ -2161,12 +2270,13 @@ def _analyze_shell_text(text, policy, get_snapshot, depth=0):
         return
     if len(text) > MAX_TEXT_CHARS:
         raise _Block()
-    # lpkit-z4b B: heredoc bodies fed to interpreters execute as
-    # programs. Route the body to the matching analyzer when the
-    # heredoc head names a first-class interpreter; kill-family text
-    # in the body then reaches the SAME target-aware analysis as an
-    # argv -c payload. Un-quoted delimiters still allow expansion,
-    # but the static text is analyzable; <<'EOF' is byte-faithful.
+    # lpkit-z4b B + lpkit-knp: heredoc bodies. Interpreter-headed
+    # heredocs (sh/bash/zsh/python before <<DELIM) route their bodies
+    # to the matching analyzer; ALL heredoc bodies are then excised
+    # from the text before further analysis. A non-interpreter head
+    # (cat >> file) makes the body pure DATA — it never executes, and
+    # prose apostrophes in data must not make the command unparseable.
+    heredoc_cuts = []
     for m in re.finditer(r"<<-?\s*['\"]?([A-Za-z_]\w*)['\"]?", text):
         delim = m.group(1)
         head = text[:m.start()].strip()
@@ -2184,6 +2294,25 @@ def _analyze_shell_text(text, policy, get_snapshot, depth=0):
             _analyze_shell_text(body, policy, get_snapshot, depth + 1)
         elif re.fullmatch(r"python[23]?(?:\.\d+)?", hverb):
             _analyze_code_text(body, policy, get_snapshot)
+        heredoc_cuts.append((m.start(), m.end() + body_m.end()))
+    if heredoc_cuts:
+        buf = []
+        last = 0
+        for s, e in heredoc_cuts:
+            buf.append(text[last:s])
+            last = e
+        buf.append(text[last:])
+        text = "".join(buf)
+    # lpkit-knp: shell comments are prose — an apostrophe in a
+    # comment must not read as an opening quote (which would leave
+    # the chunk unparseable and fail closed). Strip comments before
+    # tokenization; # inside quotes is literal; mid-word # (${#var})
+    # is not a comment start.
+    text = _strip_shell_comments(text)
+    # lpkit-5ix: simple literal assignments visible in this payload
+    # back command-position variable resolution; anything else stays
+    # unresolvable (FR-006).
+    env = _collect_literal_vars(text)
     for substitution in _command_substitutions(text):
         _analyze_shell_text(substitution, policy, get_snapshot, depth + 1)
     chunks = _split_segments(text, _CHUNK_SEPS)
@@ -2191,7 +2320,7 @@ def _analyze_shell_text(text, policy, get_snapshot, depth=0):
         raise _Block()
     for chunk in chunks:
         if chunk.strip():
-            _analyze_chunk(chunk, policy, get_snapshot, depth)
+            _analyze_chunk(chunk, policy, get_snapshot, depth, env)
 
 
 # ---------------------------------------------------------------------------
