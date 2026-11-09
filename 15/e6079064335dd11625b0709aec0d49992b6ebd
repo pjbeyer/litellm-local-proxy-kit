@@ -1,0 +1,34 @@
+tests/test_guard_redirect_stdin.py
+  s_b1a18a0bb18a46::t_fbdcf20d1907b8 1-167
+integrations/hermes/proxy-lifecycle-guard/guard.py
+  s_b1a18a0bb18a46::t_c67c8399e749b4 1872-1873,1876-1877,1879-1885
+  s_b1a18a0bb18a46::t_40065eb3897b41 1710-1733,1737-1773,1775-1781,1783,1786-1788
+  s_b1a18a0bb18a46::t_274724513131ea 1847-1871
+  s_b1a18a0bb18a46::t_633b3b7473836a 1734-1736,1774,1782
+  s_b1a18a0bb18a46::t_a7c09cbc8b4fd7 1965-1981
+  s_b1a18a0bb18a46::t_23ffec5e847a8e 1651-1709
+  s_b1a18a0bb18a46::t_ed1237c7e2cab2 2313-2329
+  s_b1a18a0bb18a46::t_a5a37e7a5ad699 1784-1785
+  s_b1a18a0bb18a46::t_f9c3e6d64d88e6 1803,1806-1809
+  s_b1a18a0bb18a46::t_253e7761f54eaf 1929-1964
+  s_b1a18a0bb18a46::t_298460ed5fc8b5 2164-2186
+  s_b1a18a0bb18a46::t_15f13af5604aae 1983
+  s_b1a18a0bb18a46::t_1dd6c0a5e896f2 1874-1875,1878,1886-1890
+  s_b1a18a0bb18a46::t_e4396e7a5816a1 1810
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "15e6079064335dd11625b0709aec0d49992b6ebd",
+  "prompts": {},
+  "sessions": {
+    "s_b1a18a0bb18a46": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261103_122930_556d2b",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
