@@ -1648,6 +1648,144 @@ def _jxa_shell_payloads(text):
     return payloads, unextractable
 
 
+_STDIN_CONSUMER_VERBS = frozenset(
+    {"sh", "bash", "zsh", "python", "python2", "python3"})
+
+
+def _stdin_consumer(stage, verb, stages):
+    """True when this stage consumes a producer's data as programs.
+
+    Only for a NON-first pipeline stage whose argv carries no -c/-e
+    script operand (then it is argv-driven, analyzed elsewhere): the
+    interpreter reads stdin from the upstream stage.
+    """
+    if len(stages) < 2:
+        return False
+    if stage != stages[-1] and stage not in stages[:-1]:
+        return False
+    try:
+        if stage.split()[0].rstrip("0123456789.") not in (
+                "sh", "bash", "zsh", "python", "python2", "python3"):
+            return False
+    except IndexError:
+        return False
+    tokens = stage.split()
+    for tok in tokens[1:]:
+        if tok in ("-c", "-e") or tok.startswith(("--command=",
+                                                  "--eval=")):
+            return False
+    return True
+
+
+def _pipe_payload_literals(stage_text):
+    """Bounded extraction of quoted data payloads in a pipeline stage.
+
+    Yields the quoted segments (with quotes intact) whose CONTENT
+    starts with a common data-producer shape. Bounded: single pass,
+    small-capped segments, no regex burn.
+    """
+    out = []
+    i, n = 0, len(stage_text)
+    while i < n and len(out) < 8:
+        if stage_text[i] not in ("'", '"'):
+            i += 1
+            continue
+        quote = stage_text[i]
+        j = i + 1
+        while j < n and stage_text[j] != quote:
+            j += 1
+        if j > n:
+            break
+        segment = stage_text[i + 1:j]
+        if 0 < len(segment) <= 512:
+            low = segment.lower()
+            if low.startswith(("kill", "pkill", "killall", "shutdown",
+                               "reboot", "launchctl", "brew services",
+                               "os.kill", "fuser -k")) or "kill" in low:
+                out.append(quote + segment)
+        i = j + 1
+    return out
+
+
+def _redirect_writes_plugin_dir(chunk):
+    """True when any redirection in chunk targets the plugin directory.
+
+    Quote-aware, bounded single pass. A redirect whose destination is
+    the plugin dir (or anything beneath it) is write intent; stderr
+    suppression (2>/dev/null, 2>&1) and redirects to unrelated paths
+    are not.
+    """
+    quote = None
+    i, n = 0, len(chunk)
+    while i < n:
+        ch = chunk[i]
+        if quote:
+            if ch == "\\" and quote == '"' and i + 1 < n:
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+            i += 1
+            continue
+        if ch in ('"', "'"):
+            quote = ch
+            i += 1
+            continue
+        if ch == ">":
+            # classify this redirect; ALWAYS advance past the '>'
+            # operators so the scan cannot stall on one spot
+            j = i
+            fd = ""
+            while j > 0 and chunk[j - 1].isdigit():
+                j -= 1
+                fd = chunk[j] + fd
+            k = i
+            while k < n and chunk[k] == ">":
+                k += 1
+            if k < n and chunk[k] == "&":
+                i = k + 1
+                continue  # >& dup: no file destination
+            while k < n and chunk[k].isspace():
+                k += 1
+            dest = []
+            in_dq = False
+            while k < n:
+                c2 = chunk[k]
+                if in_dq:
+                    if c2 == '"':
+                        in_dq = False
+                    else:
+                        dest.append(c2)
+                    k += 1
+                    continue
+                if c2 == '"':
+                    in_dq = True
+                    k += 1
+                    continue
+                if c2.isspace() or c2 in ";|&<()":
+                    break
+                if c2 == "\\" and k + 1 < n:
+                    dest.append(chunk[k + 1])
+                    k += 2
+                    continue
+                dest.append(c2)
+                k += 1
+            raw_dest = "".join(dest)
+            i = max(k, i + 1)
+            if not raw_dest:
+                continue
+            expanded = raw_dest
+            if expanded.startswith("~"):
+                home = os.environ.get("HOME") or ""
+                if home and len(home) < 4096:
+                    expanded = home + expanded[1:]
+            if "proxy-lifecycle-guard" in expanded.lower():
+                return True
+        else:
+            i += 1
+    return False
+
+
 def _analyze_chunk(chunk, policy, get_snapshot, depth=0):
     """Analyze one command chunk (may be a pipeline). Hazard anywhere blocks."""
     if depth > MAX_TOOL_CALL_DEPTH:
@@ -1662,8 +1800,13 @@ def _analyze_chunk(chunk, policy, get_snapshot, depth=0):
     if PLUGIN_DIR_MARKER in low_chunk:
         words = low_chunk.split()
         first_word = words[0] if words else ""
-        if (first_word in MUTATING_VERBS or ">" in chunk
+        if (first_word in MUTATING_VERBS
                 or any("plugin" in w for w in words[:1])):
+            raise _Block()
+        # A redirect vetoes only when its file destination resolves
+        # inside the plugin dir. Inert noise control on reads
+        # (2>/dev/null, 2>&1) is not a write (lpkit-z4b finding A).
+        if ">" in chunk and _redirect_writes_plugin_dir(chunk):
             raise _Block()
     # control-flow bodies: turn keyword boundaries into chunk separators
     chunk = _normalize_control_flow(chunk)
@@ -1701,6 +1844,50 @@ def _analyze_chunk(chunk, policy, get_snapshot, depth=0):
             rest = tokens[1:]
             if verb == "eval":
                 raise _Block()  # FR-003: eval payloads are never evaluated
+            # lpkit-z4b finding B: stdin-fed interpreter stages inherit
+            # the producer stage's data payload analysis (F-007 xargs
+            # precedent). A pipeline feeding sh/bash/zsh/python whose
+            # producer data carries kill-family intent is a kill
+            # pipeline; benign pipe-to-sh data stays allowed.
+            if verb in ("sh", "bash", "zsh", "python", "python2",
+                        "python3") and _stdin_consumer(
+                    stage, verb, stages):
+                for stage_text in stage_texts:
+                    for lit in _pipe_payload_literals(stage_text):
+                        low_l = lit.lower()
+                        if low_l.startswith(("echo ", "printf ",
+                                             "tee ", "cat ", "yes ",
+                                             "seq ")):
+                            body = lit.split(None, 1)
+                            payload = body[1] if len(body) > 1 else ""
+                            payload = payload.strip("'\"")
+                        else:
+                            payload = lit
+                        if payload and _mentions_target(
+                                payload, policy):
+                            raise _Block()
+                        if payload and _full_text_kill_intent(
+                                payload, policy):
+                            raise _Block()
+                    # unquoted producer argv: echo/printf data fed
+                    # to a stdin consumer carries the same risk
+                    # (compute inside try, RAISE outside: _Block
+                    # subclasses Exception and must not be swallowed)
+                    try:
+                        ptoks = stage_text.split()
+                        pdata = None
+                        if (len(ptoks) > 1
+                                and ptoks[0] in ("echo", "printf",
+                                                 "yes", "tee")):
+                            pdata = " ".join(
+                                t for t in ptoks[1:]
+                                if not t.startswith("-"))
+                    except Exception:
+                        pdata = None
+                    if pdata and (
+                            _mentions_target(pdata, policy)
+                            or _full_text_kill_intent(pdata, policy)):
+                        raise _Block()
             if (verb == "hermes"
                     and any("plugin" in t.lower() for t in rest)):
                 sub_l = [t.lower() for t in rest]
@@ -1739,7 +1926,61 @@ def _analyze_chunk(chunk, policy, get_snapshot, depth=0):
                 if any(re.fullmatch(r"python[23]?", t.rsplit('/', 1)[-1].lower())
                        for t in rest):
                     raise _Block()
+            elif verb == "awk":
+                # lpkit-z4b B: awk's system()/command pipeline builtins
+                # execute text. A kill-family call in the program text
+                # is unprovable (FR-006) and vetoes; benign awk
+                # programs (patterns, print) pass untouched.
+                prog = " ".join(t for t in rest
+                                if not t.startswith("-")
+                                and not t.startswith("$"))
+                if ("system(" in prog or "cmd |" in prog
+                        or "| getline" in prog):
+                    low_prog = prog.lower()
+                    if _full_text_kill_intent(low_prog, policy):
+                        raise _Block()
+            elif verb == "find":
+                # lpkit-z4b B: -exec/-execdir execute their argument
+                # program. Kill-family executors veto; benign
+                # executors (wc, ls, grep...) pass.
+                for idx, t in enumerate(rest):
+                    if t in ("-exec", "-execdir"):
+                        execverb = (rest[idx + 1].rsplit('/', 1)[-1]
+                                    .lower() if idx + 1 < len(rest)
+                                    else "")
+                        if execverb in ("kill", "pkill", "killall",
+                                        "xargs", "sh", "bash", "zsh"):
+                            raise _Block()
+            elif verb == "docker":
+                # lpkit-z4b B: container lifecycle control of
+                # litellm-named containers, per the protected-labels
+                # vocabulary. Read-only docker (ps, logs, inspect)
+                # passes.
+                if rest and rest[0].lower() in ("kill", "stop",
+                                                "rm", "restart",
+                                                "pause"):
+                    names = " ".join(rest[1:]).lower()
+                    if _mentions_target(names, policy):
+                        raise _Block()
+            elif verb in ("node", "ruby", "perl", "php"):
+                # lpkit-z4b B-08/B-09/B-10: inline interpreter
+                # programs (-e / -c) are argv payloads. Kill-family
+                # intent in the program text (process.kill, system
+                # "kill ...", perl kill) blocks; benign inline
+                # programs pass untouched.
+                for idx, t in enumerate(rest):
+                    if t in ("-e", "-c", "--eval") or t.startswith(
+                            ("--eval=", "--execute=")):
+                        operand = (t.split("=", 1)[1]
+                                   if "=" in t and t.startswith("--")
+                                   else (rest[idx + 1]
+                                         if idx + 1 < len(rest)
+                                         else ""))
+                        if operand and _full_text_kill_intent(
+                                operand, policy):
+                            raise _Block()
             elif verb == "osascript":
+                # (unchanged behavior; branch order only)
                 # AppleScript/JXA is a first-class macOS execution surface.
                 # `do shell script` / JXA system()-class calls execute shell
                 # text through osascript's own interpreter. Extract the
@@ -1920,6 +2161,29 @@ def _analyze_shell_text(text, policy, get_snapshot, depth=0):
         return
     if len(text) > MAX_TEXT_CHARS:
         raise _Block()
+    # lpkit-z4b B: heredoc bodies fed to interpreters execute as
+    # programs. Route the body to the matching analyzer when the
+    # heredoc head names a first-class interpreter; kill-family text
+    # in the body then reaches the SAME target-aware analysis as an
+    # argv -c payload. Un-quoted delimiters still allow expansion,
+    # but the static text is analyzable; <<'EOF' is byte-faithful.
+    for m in re.finditer(r"<<-?\s*['\"]?([A-Za-z_]\w*)['\"]?", text):
+        delim = m.group(1)
+        head = text[:m.start()].strip()
+        head_tokens = head.split()
+        if not head_tokens:
+            continue
+        hverb = head_tokens[-1].rsplit("/", 1)[-1].lower()
+        body_m = re.search(
+            r"^[ \t]*" + re.escape(delim) + r"\b.*$",
+            text[m.end():], re.MULTILINE)
+        if body_m is None:
+            raise _Block()  # unterminated heredoc: unprovable
+        body = text[m.end():m.end() + body_m.start()]
+        if re.fullmatch(r"sh|bash|zsh", hverb):
+            _analyze_shell_text(body, policy, get_snapshot, depth + 1)
+        elif re.fullmatch(r"python[23]?(?:\.\d+)?", hverb):
+            _analyze_code_text(body, policy, get_snapshot)
     for substitution in _command_substitutions(text):
         _analyze_shell_text(substitution, policy, get_snapshot, depth + 1)
     chunks = _split_segments(text, _CHUNK_SEPS)
@@ -2046,6 +2310,23 @@ def _analyze_code_text(text, policy, get_snapshot):
         low = literal.lower()
         if any(keyword in low for keyword in _SHELL_KEYWORDS):
             _analyze_shell_text(literal, policy, get_snapshot)
+        # lpkit-z4b B-06: an exec()-built program is a string literal
+        # that parses as Python — route it to the code analyzer so
+        # os.kill/exec/indirect calls inside it get the SAME analysis
+        # as top-level code. Bounded by the literal count cap.
+        if literal.lstrip()[:1] not in ("",) and (
+                "import " in literal or "os.kill" in literal
+                or "getattr(" in literal):
+            try:
+                ast.parse(literal)
+            except SyntaxError:
+                pass
+            else:
+                _analyze_code_text(literal, policy, get_snapshot)
+    # lpkit-z4b B-07: getattr(os, 'kill') is os.kill by indirection —
+    # the literal 'kill' alone is inert, the CALL SHAPE is the signal
+    if re.search(r"\bgetattr\s*\(\s*os\s*,\s*['\"]kill", text, re.I):
+        raise _Block()
 
 
 def _python_write_intent(text, low):
