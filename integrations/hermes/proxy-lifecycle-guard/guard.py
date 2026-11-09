@@ -2270,15 +2270,21 @@ def _analyze_shell_text(text, policy, get_snapshot, depth=0):
         return
     if len(text) > MAX_TEXT_CHARS:
         raise _Block()
-    # lpkit-z4b B + lpkit-knp: heredoc bodies. Interpreter-headed
-    # heredocs (sh/bash/zsh/python before <<DELIM) route their bodies
-    # to the matching analyzer; ALL heredoc bodies are then excised
-    # from the text before further analysis. A non-interpreter head
-    # (cat >> file) makes the body pure DATA — it never executes, and
-    # prose apostrophes in data must not make the command unparseable.
+    # lpkit-z4b B + lpkit-knp + lpkit-5tb (spec amendment 5a): heredoc
+    # bodies. The body's destination is determined by the FULL
+    # composition — the head command, any pipeline consumer, and any
+    # redirection — never the head alone. A body reaching an
+    # interpreter through ANY enumerated composition receives full
+    # signal-intent inspection (route to the matching analyzer); a
+    # body with a grammar-proven NON-executing destination (quoted
+    # delimiter — non-expanding per POSIX — writing to a plain file,
+    # no interpreter consumer anywhere in the composition) is prose
+    # DATA and is excised after inspection of the composition.
+    # Misclassification fails toward inspection, never excision.
     heredoc_cuts = []
-    for m in re.finditer(r"<<-?\s*['\"]?([A-Za-z_]\w*)['\"]?", text):
-        delim = m.group(1)
+    for m in re.finditer(r"<<-?\s*(['\"]?)([A-Za-z_]\w*)\1", text):
+        quote_delim = m.group(1) != ""
+        delim = m.group(2)
         head = text[:m.start()].strip()
         head_tokens = head.split()
         if not head_tokens:
@@ -2290,11 +2296,79 @@ def _analyze_shell_text(text, policy, get_snapshot, depth=0):
         if body_m is None:
             raise _Block()  # unterminated heredoc: unprovable
         body = text[m.end():m.end() + body_m.start()]
+        # The head line may carry a pipeline tail after the heredoc
+        # operator (cat << 'EOF' | sh): the tail is part of the
+        # COMPOSITION, not the body. Slice it out of the body text.
+        first_nl = body.find("\n")
+        if first_nl != -1:
+            body_tail = body[:first_nl]  # e.g. " | python3"
+            if "|" in body_tail or "<" in body_tail:
+                body = body[first_nl + 1:]
+        # --- composition analysis (amendment 5a) ---
+        # The heredoc head may itself be a pipeline stage: everything
+        # after the head line's heredoc operator belongs to the same
+        # command's composition. Consumers/redirections appear in the
+        # text after the heredoc operator or in the head's stage.
+        comp = head + "\n" + text[m.end():]
+        comp_stages = [s.strip() for s in
+                       _split_segments(comp, ("|",), limit=MAX_STAGES)
+                       if s.strip()]
+        # the head stage (up to the heredoc operator)
+        head_stage = head
+        consumers = [s for s in comp_stages
+                     if s != head_stage and s]
+        # interpreter heads route to the matching analyzer directly
         if re.fullmatch(r"sh|bash|zsh", hverb):
             _analyze_shell_text(body, policy, get_snapshot, depth + 1)
         elif re.fullmatch(r"python[23]?(?:\.\d+)?", hverb):
             _analyze_code_text(body, policy, get_snapshot)
-        heredoc_cuts.append((m.start(), m.end() + body_m.end()))
+        elif not quote_delim:
+            # unquoted delimiter: EXPANDING heredoc — $() and ${}
+            # in the body EXECUTE per POSIX regardless of the
+            # destination (FR-013 counter-case iii). The body cannot
+            # be classified prose; it receives shell inspection and
+            # is NOT excised (fail toward inspection).
+            _analyze_shell_text(body, policy, get_snapshot, depth + 1)
+        else:
+            # quoted delimiter: grammar-proven non-expanding body.
+            # Prose only if the composition proves non-executing
+            # destination: no interpreter consumer in any stage, no
+            # redirection into an executing interpreter.
+            interpreter_consumer = False
+            for stage in consumers:
+                stage_words = stage.split()
+                if not stage_words:
+                    continue
+                # strip leading wrapper verbs (env, sudo, nohup...)
+                w = stage_words[0].rstrip("0123456789.")
+                if re.fullmatch(r"sh|bash|zsh", w) or re.fullmatch(
+                        r"python[23]?(?:\.\d+)?", w):
+                    interpreter_consumer = True
+            if interpreter_consumer:
+                # route by consumer type: python consumers receive
+                # code analysis (os.kill is a Python call shape, not a
+                # shell word), sh family shell analysis
+                py_consumer = any(
+                    re.fullmatch(r"python[23]?(?:\.\d+)?",
+                                 s.split()[0].rstrip("0123456789."))
+                    for s in consumers if s.split())
+                if py_consumer:
+                    _analyze_code_text(body, policy, get_snapshot)
+                else:
+                    _analyze_shell_text(body, policy, get_snapshot,
+                                        depth + 1)
+            else:
+                heredoc_cuts.append(
+                    (m.start(), m.end() + body_m.end()))
+        # (bodies of interpreter-routed heredocs are NOT excised here
+        # when the body itself was shell-inspected: the inspection
+        # already ran on the body text; excising it also removes
+        # apostrophe-poisoning from the composition text, so ALL
+        # heredoc spans are excised once their body is inspected or
+        # proven data)
+        if (m.start(), m.end() + body_m.end()) not in heredoc_cuts:
+            heredoc_cuts.append(
+                (m.start(), m.end() + body_m.end()))
     if heredoc_cuts:
         buf = []
         last = 0
@@ -2321,6 +2395,63 @@ def _analyze_shell_text(text, policy, get_snapshot, depth=0):
     for chunk in chunks:
         if chunk.strip():
             _analyze_chunk(chunk, policy, get_snapshot, depth, env)
+    # FR-013 counter-case (iv) / amendment-4 class, AR-011 complement:
+    # a QUOTED operand carrying a whole kill-family COMMAND string,
+    # applied to a non-inert verb, vetoes. The quoted argument's
+    # destination is provable only as an argument to an arbitrary
+    # command; inert verbs (echo/grep/man — the documented inert-text
+    # carve-out) stay allowed.
+    if not _quoted_signal_operand_ok(text, policy):
+        raise _Block()
+
+
+def _quoted_signal_operand_ok(text, policy):
+    """False when a quoted whole-command kill-family operand rides a
+    verb that does NOT otherwise analyze its operands (amendment-4/
+    AR-011 complement, FR-013 iv). Executor verbs whose operands are
+    already routed to full analysis (sh -c, python -c, xargs,
+    osascript, node/ruby/perl -e...) are exempt — the rule targets
+    arbitrary commands whose quoted argument's destination is
+    provable only as an argument."""
+    exempt = BENIGN_VERBS | _QUOTE_OPERAND_ANALYZED_VERBS
+    for m in re.finditer(r"'([^']{2,200})'|\"([^\"]{2,200})\"", text):
+        payload = m.group(1) or m.group(2)
+        first = payload.split()
+        if not first:
+            continue
+        verb = first[0].lower()
+        if verb not in _FULL_TEXT_INTENT_RE_WORDS:
+            continue
+        # find the command this operand belongs to: the nearest
+        # preceding word that is a shell verb — option flags (-rn,
+        # -e...) are not the owning verb
+        before = text[:m.start()].strip()
+        cmd_verb = ""
+        for tok in reversed(before.split()):
+            t = tok.lower()
+            if t.startswith("-"):
+                continue  # option flag, keep walking back
+            cmd_verb = t.rsplit("/", 1)[-1]
+            break
+        if cmd_verb and cmd_verb not in exempt:
+            return False
+    return True
+
+
+# verbs whose quoted operands are already routed to a full analyzer
+# by dedicated branches (exempt from the quoted-operand rule)
+_QUOTE_OPERAND_ANALYZED_VERBS = frozenset({
+    "sh", "bash", "zsh", "python", "python2", "python3", "xargs",
+    "osascript", "node", "ruby", "perl", "php", "man", "env", "sudo",
+    "nohup", "nice", "time", "timeout", "stdbuf", "command", "builtin",
+    "exec", "c", "-c", "-e",
+})
+
+
+_FULL_TEXT_INTENT_RE_WORDS = frozenset(
+    {"pkill", "killall", "kill", "fuser", "launchctl", "eval", "xargs",
+     "os.kill", "process_manage", "brew", "sh", "bash", "zsh",
+     "shutdown", "reboot", "osascript", "docker"})
 
 
 # ---------------------------------------------------------------------------
