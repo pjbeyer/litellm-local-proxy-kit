@@ -1,0 +1,21 @@
+requirements-stable-candidate.txt
+  s_f9b0b7f253c323::t_e51e3353a91996 2-9
+docs/publication-readiness.md
+  s_f9b0b7f253c323::t_af8d5fdd281572 16-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "892ea19f7e0ce88eb3cb97e14bc9c70a20d3c1e2",
+  "prompts": {},
+  "sessions": {
+    "s_f9b0b7f253c323": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261104_171823_16c4ca9f",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
