@@ -1,0 +1,19 @@
+docs/evidence/2026-11-11-yt5.1-refusal-dispositions.md
+  s_2271c4bb02c5db::t_f139843a2e1c2a 1-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "da697bcbf8b01d6bc3714f3c715301d30d0d7b5f",
+  "prompts": {},
+  "sessions": {
+    "s_2271c4bb02c5db": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261111_173753_ff67cd",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
