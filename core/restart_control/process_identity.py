@@ -2,42 +2,25 @@
 
 ABI reference: apple-oss-distributions/xnu, bsd/sys/proc_info.h.
 No ps environment reads, process control or second-resolution birth guesses.
+
+T010: the kernel identity ABI primitive now lives in runtime_identity.py so
+the flat standalone checker owns it without controller-package imports.
+This module re-exports it (with compatibility aliases) and keeps only the
+group-census and peer-identity surfaces; there is no duplicate ABI.
 """
 import ctypes
 import ctypes.util
 import os
-import re
 import socket
 import struct
 import sys
 
+from .runtime_identity import kernel_process_identity, kernel_boot_identity
 
-class _BSDInfo(ctypes.Structure):
-    _fields_ = [(n, ctypes.c_uint32) for n in (
-        'flags', 'status', 'xstatus', 'pid', 'ppid', 'uid', 'gid', 'ruid',
-        'rgid', 'svuid', 'svgid', 'reserved')] + [
-        ('comm', ctypes.c_char * 16), ('name', ctypes.c_char * 32)] + [
-        (n, ctypes.c_uint32) for n in ('nfiles', 'pgid', 'pjobc', 'tdev', 'tpgid')] + [
-        ('nice', ctypes.c_int32), ('start_sec', ctypes.c_uint64),
-        ('start_usec', ctypes.c_uint64)]
-
-
-def process_identity(pid):
-    if sys.platform != 'darwin' or type(pid) is not int or pid <= 0:
-        raise RuntimeError('identity_unavailable')
-    library = ctypes.CDLL(ctypes.util.find_library('proc'), use_errno=True)
-    call = library.proc_pidinfo
-    call.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_uint64,
-                     ctypes.c_void_p, ctypes.c_int]
-    call.restype = ctypes.c_int
-    info = _BSDInfo()
-    size = ctypes.sizeof(info)
-    if call(pid, 3, 0, ctypes.byref(info), size) != size or info.pid != pid:
-        raise RuntimeError('identity_unavailable')
-    if not info.start_sec or info.start_usec >= 1000000:
-        raise RuntimeError('identity_unavailable')
-    return {'pid': int(info.pid), 'uid': int(info.uid), 'ppid': int(info.ppid),
-            'pgid': int(info.pgid), 'birth': [int(info.start_sec), int(info.start_usec)]}
+# Compatibility aliases: the historical names keep working; the single ABI
+# implementation is kernel_process_identity/kernel_boot_identity.
+process_identity = kernel_process_identity
+boot_identity = kernel_boot_identity
 
 
 def _valid_group_identity(value, pid, pgid):
@@ -111,36 +94,6 @@ def process_group_identities(pgid):
         return tuple(after)
     except (OSError, AttributeError, TypeError, ValueError, OverflowError,
             RuntimeError, StopIteration) as error:
-        raise unavailable from error
-
-
-def boot_identity():
-    """Read the fixed NUL-terminated kernel bootsessionuuid (kern_sysctl.c)."""
-    unavailable = RuntimeError('boot_identity_unavailable')
-    if sys.platform != 'darwin':
-        raise unavailable
-    try:
-        call = ctypes.CDLL(None, use_errno=True).sysctlbyname
-        call.argtypes = [ctypes.c_char_p, ctypes.c_void_p,
-                         ctypes.POINTER(ctypes.c_size_t), ctypes.c_void_p,
-                         ctypes.c_size_t]
-        call.restype = ctypes.c_int
-        buffer = ctypes.create_string_buffer(37)
-        size = ctypes.c_size_t(37)
-        ctypes.set_errno(0)
-        result = call(b'kern.bootsessionuuid', buffer, ctypes.byref(size), None, 0)
-        error = ctypes.get_errno()
-        raw = bytes(buffer)
-        if (type(result) is not int or result != 0 or error or size.value != 37 or
-                raw[36] != 0 or b'\0' in raw[:36]):
-            raise unavailable
-        value = raw[:36].decode('ascii')
-        if (not re.fullmatch(r'[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}', value)
-                or int(value.replace('-', ''), 16) == 0):
-            raise unavailable
-        return value
-    except (OSError, AttributeError, TypeError, ValueError, UnicodeError,
-            RuntimeError) as error:
         raise unavailable from error
 
 

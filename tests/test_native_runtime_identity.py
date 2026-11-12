@@ -106,7 +106,8 @@ def native_case(tmp_path, monkeypatch):
         return real_run(argv,**kwargs)
     module.subprocess = SimpleNamespace(run=fixture_run)
     def fixture_observation(argv, **kwargs):
-        result = fixture_run(argv)
+        capture = argv[0] == 'git' or kwargs.get('env') is not None
+        result = fixture_run(argv, capture_output=capture) if capture else fixture_run(argv)
         if result.returncode:
             raise ValueError('native_observation_invalid')
         return result.stdout

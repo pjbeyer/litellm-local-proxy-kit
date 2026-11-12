@@ -8,7 +8,6 @@ from __future__ import annotations
 import sys
 sys.dont_write_bytecode = True  # before importing even the proof helper
 import importlib.util
-import subprocess
 from pathlib import Path
 
 
@@ -47,9 +46,12 @@ def main():
         if args and args[0] == '--python':
             if len(args) not in (3,4):
                 raise ValueError('invalid_input')
-            result = subprocess.run([args[1], '-B', str(Path(__file__).absolute()), *args[2:]],
-                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120)
-            if result.returncode:
+            repository = bool(args[2:3] == ['--repository'])
+            # Same bounded ownership primitive as every observer: single
+            # SIGTERM on timeout, bounded reap, never an implicit kill.
+            if _helper(repository=repository).observer_run(
+                    [args[1], '-B', str(Path(__file__).absolute()), *args[2:]],
+                    timeout=120):
                 raise ValueError('runtime_invalid')
         else:
             repository = bool(args and args[0] == '--repository')

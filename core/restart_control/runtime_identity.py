@@ -4,6 +4,7 @@ The script entrypoint runs under the PINNED interpreter, reports only hashes,
 never imports controller credentials and never changes runtime files/caches.
 """
 from __future__ import annotations
+import contextlib
 import hashlib
 import importlib.metadata
 import importlib.util
@@ -11,19 +12,24 @@ import json
 import marshal
 import os
 import platform
-import struct
+import re
 import selectors
+import signal
+import stat
+import struct
+import subprocess
+import sys
 import time
 try:
     import tomllib
 except ModuleNotFoundError:
     import tomli as tomllib  # provisioned strict parser on Python 3.10
 from pathlib import Path
-import re
-import stat
-import subprocess
-import sys
 from urllib.parse import unquote, urlparse
+
+# Context-local observer routing: the proof worker installs a parent-channel
+# callback here; the standalone checker leaves it unset (local bounded spawn).
+_CHANNEL_STATE = {}
 
 KIT_INPUTS = (
     'core/installer.sh', 'core/drift_check.py', 'core/render_config.py',
@@ -53,6 +59,80 @@ PROXY_OPTIONAL_INPUTS = ('native-build.json',)
 def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':'),
                                      allow_nan=False).encode()).hexdigest()
+
+
+# ---- Kernel identity ABI primitives (self-contained; T010 move) -----------
+# Moved from process_identity.py so the flat standalone checker owns them
+# without controller-package imports; process_identity re-exports both
+# (including compatibility aliases) with no duplicate ABI implementation.
+
+_KERNEL_ABI_VERSION = 1
+
+
+def kernel_process_identity(pid):
+    """Read-only process identity via the Apple public proc_bsdinfo ABI.
+
+    ABI reference: apple-oss-distributions/xnu, bsd/sys/proc_info.h.
+    No ps environment reads, process control or second-resolution guesses.
+    """
+    import ctypes
+    import ctypes.util
+
+    class _BSDInfo(ctypes.Structure):
+        _fields_ = [(n, ctypes.c_uint32) for n in (
+            'flags', 'status', 'xstatus', 'pid', 'ppid', 'uid', 'gid', 'ruid',
+            'rgid', 'svuid', 'svgid', 'reserved')] + [
+            ('comm', ctypes.c_char * 16), ('name', ctypes.c_char * 32)] + [
+            (n, ctypes.c_uint32) for n in ('nfiles', 'pgid', 'pjobc', 'tdev', 'tpgid')] + [
+            ('nice', ctypes.c_int32), ('start_sec', ctypes.c_uint64),
+            ('start_usec', ctypes.c_uint64)]
+
+    if sys.platform != 'darwin' or type(pid) is not int or pid <= 0:
+        raise RuntimeError('identity_unavailable')
+    library = ctypes.CDLL(ctypes.util.find_library('proc'), use_errno=True)
+    call = library.proc_pidinfo
+    call.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_uint64,
+                     ctypes.c_void_p, ctypes.c_int]
+    call.restype = ctypes.c_int
+    info = _BSDInfo()
+    size = ctypes.sizeof(info)
+    if call(pid, 3, 0, ctypes.byref(info), size) != size or info.pid != pid:
+        raise RuntimeError('identity_unavailable')
+    if not info.start_sec or info.start_usec >= 1000000:
+        raise RuntimeError('identity_unavailable')
+    return {'pid': int(info.pid), 'uid': int(info.uid), 'ppid': int(info.ppid),
+            'pgid': int(info.pgid), 'birth': [int(info.start_sec), int(info.start_usec)]}
+
+
+def kernel_boot_identity():
+    """Read the fixed NUL-terminated kernel bootsessionuuid (kern_sysctl.c)."""
+    import ctypes
+    unavailable = RuntimeError('boot_identity_unavailable')
+    if sys.platform != 'darwin':
+        raise unavailable
+    try:
+        call = ctypes.CDLL(None, use_errno=True).sysctlbyname
+        call.argtypes = [ctypes.c_char_p, ctypes.c_void_p,
+                         ctypes.POINTER(ctypes.c_size_t), ctypes.c_void_p,
+                         ctypes.c_size_t]
+        call.restype = ctypes.c_int
+        buffer = ctypes.create_string_buffer(37)
+        size = ctypes.c_size_t(37)
+        ctypes.set_errno(0)
+        result = call(b'kern.bootsessionuuid', buffer, ctypes.byref(size), None, 0)
+        error = ctypes.get_errno()
+        raw = bytes(buffer)
+        if (type(result) is not int or result != 0 or error or size.value != 37 or
+                raw[36] != 0 or b'\0' in raw[:36]):
+            raise unavailable
+        value = raw[:36].decode('ascii')
+        if (not re.fullmatch(r'[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}', value)
+                or int(value.replace('-', ''), 16) == 0):
+            raise unavailable
+        return value
+    except (OSError, AttributeError, TypeError, ValueError, UnicodeError,
+            RuntimeError) as error:
+        raise unavailable from error
 
 
 def file_fact(path):
@@ -87,12 +167,8 @@ def source_facts(root):
 
 
 def _git(root, *args):
-    env = dict(os.environ, GIT_OPTIONAL_LOCKS='0')
-    result = subprocess.run(['git', '-C', str(root), *args], env=env,
-                            capture_output=True, timeout=60)
-    if result.returncode:
-        raise ValueError('runtime_git_unavailable')
-    return result.stdout
+    argv = ['git', '-C', str(root), *args]
+    return _tool_output(argv, timeout=60, env=dict(os.environ, GIT_OPTIONAL_LOCKS='0'))
 
 
 NATIVE_PATH = 'litellm/rust_bridge/_native.abi3.so'
@@ -184,12 +260,36 @@ def native_source_facts(root):
     return result
 
 
-def _tool_output(argv, timeout=30, limit=4*1024*1024):
-    """Bound observation during pipe reads, not after buffering all output."""
-    proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+def _owned_observer_stop(child, grace=10.0):
+    """SIGTERM-only observer cleanup; no killpg escalation, no SIGKILL.
+
+    The child is our own single observer; a single SIGTERM, then a bounded
+    poll-wait reap. Cleanup grace is independent of the observation deadline
+    (an expired observation still gets its bounded cleanup window). An
+    uncertain surviving observer is a failed proof, never successful cleanup.
+    """
+    if child.poll() is None:
+        os.kill(child.pid, signal.SIGTERM)
+    end = time.monotonic() + grace
+    while child.poll() is None and time.monotonic() < end:
+        time.sleep(0.01)
+    if child.poll() is None:
+        raise ValueError('observer_cleanup_failed')
+    child.wait(timeout=1)
+
+
+def _observer_channel():
+    """Context-local tool callback installed by the proof worker, if any."""
+    return _CHANNEL_STATE.get('tool')
+
+
+def _run_observer(argv, timeout, limit=4*1024*1024, env=None):
+    """Bounded local observer spawn; SIGTERM-only cleanup, never SIGKILL."""
+    deadline = time.monotonic()+timeout
+    proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                            env=env)
     assert proc.stdout is not None
     chunks, total = [], 0
-    deadline = time.monotonic()+timeout
     try:
         with selectors.DefaultSelector() as watch:
             watch.register(proc.stdout, selectors.EVENT_READ)
@@ -210,11 +310,45 @@ def _tool_output(argv, timeout=30, limit=4*1024*1024):
         if proc.wait(timeout=max(0.001, deadline-time.monotonic())):
             raise ValueError('native_observation_invalid')
         return b''.join(chunks)
+    except Exception:
+        # Failed observation must never leave a surviving child: single
+        # SIGTERM to the observer only, bounded reap, refuse on uncertainty.
+        with contextlib.suppress(Exception):
+            _owned_observer_stop(proc)
+        raise
     finally:
-        if proc.poll() is None:
-            proc.kill()  # only the retained observer child, never a proxy PID
-        proc.wait(timeout=5)
+        with contextlib.suppress(Exception):
+            if proc.poll() is not None:
+                proc.wait(timeout=1)
         proc.stdout.close()
+
+
+def _tool_output(argv, timeout=30, limit=4*1024*1024, env=None):
+    """Bound observation during pipe reads, not after buffering all output."""
+    channel = _observer_channel()
+    if channel is not None:
+        return channel.observe(argv, timeout, limit)
+    return _run_observer(argv, timeout, limit, env)
+
+
+def observer_run(argv, timeout=120):
+    """Public bounded ownership primitive: run one observer child to completion.
+
+    Returns its exit status. Single SIGTERM on failure, bounded reap, never
+    SIGKILL; an uncertain surviving observer raises rather than succeeding.
+    """
+    proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    deadline = time.monotonic()+timeout
+    while proc.poll() is None and time.monotonic() < deadline:
+        time.sleep(0.01)
+    if proc.poll() is None:
+        with contextlib.suppress(Exception):
+            _owned_observer_stop(proc)
+        if proc.poll() is None:
+            raise ValueError('observer_cleanup_failed')
+        return proc.wait(timeout=1)
+    return proc.wait(timeout=1)
 
 
 def _native_abi(path):
