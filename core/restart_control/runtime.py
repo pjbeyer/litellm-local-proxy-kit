@@ -16,9 +16,10 @@ import stat
 import subprocess
 import time
 import threading
+import uuid
 
 from .engine import Fault, atomic_json, canonical_digest, private_dir, _read_json
-from .process_identity import process_identity
+from .process_identity import process_identity, process_group_identities
 from .runtime_identity import (CONTROLLER_INPUTS, PROXY_INPUTS, file_fact, source_facts)
 
 from .runtime_identity import PROXY_OPTIONAL_INPUTS, native_receipt_fact, read_pin
@@ -57,6 +58,15 @@ def _identity(pid):
         return {k: full[k] for k in ('pid', 'uid', 'birth')}
     except Exception:
         raise Fault('primary_changed') from None
+
+
+def _journal_identity(pid):
+    """Four-key journal identity; never fabricate a missing pgid or birth."""
+    full = process_identity(pid)
+    if full['uid'] != os.getuid():
+        raise ValueError('foreign_process')
+    return {'pid': full['pid'], 'uid': full['uid'],
+            'pgid': full['pgid'], 'birth': full['birth']}
 
 
 def _regular(path):
@@ -238,37 +248,184 @@ class Runtime:
             raise Fault('recovery_invalid') from None
 
     def _group_exists(self, pgid):
-        result = subprocess.run(['/bin/ps', '-axo', 'pgid='], env=self.env,
-                                capture_output=True, text=True, timeout=5)
-        if result.returncode:
-            raise Fault('candidate_cleanup_failed')
-        return str(pgid) in result.stdout.split()
+        return bool(process_group_identities(pgid))
 
     def _owned_stop(self, child, birth, grace=20):
-        try:
-            if child.poll() is not None:
-                if self._group_exists(child.pid):
-                    raise Fault('candidate_cleanup_failed')
-                child.wait()
-                return
-            if birth is None or _identity(child.pid) != birth or os.getpgid(child.pid) != child.pid:
-                raise Fault('candidate_cleanup_failed')
-            # Only a retained owned child/group; NEVER the primary listener.
-            os.killpg(child.pid, signal.SIGTERM)
-            child.wait(timeout=grace)
-            if self._group_exists(child.pid):
-                raise Fault('candidate_cleanup_failed')
-        except Exception:
-            # The child can exit between poll and kernel identity inspection.
-            # Reap that ordinary failure, but never signal an unknown identity.
-            with contextlib.suppress(Exception):
-                if child.poll() is not None and not self._group_exists(child.pid):
-                    child.wait()
-                    return
+        if type(grace) not in (int, float) or grace <= 0:
             self._cleanup_blocked = True
-            raise Fault('candidate_cleanup_failed') from None
+            raise Fault("candidate_cleanup_failed")
+        deadline = time.monotonic() + grace
+        if not deadline < float("inf"):
+            self._cleanup_blocked = True
+            raise Fault("candidate_cleanup_failed")
 
-    def _capture(self, argv, timeout=90, env=None, control=False):
+        def remaining():
+            local = max(0.0, deadline - time.monotonic())
+            value = self.shutdown.remaining(local, cleanup=True)
+            if value <= 0:
+                raise RuntimeError()
+            return value
+
+        try:
+            def valid_birth(value):
+                return (
+                    type(value) is list
+                    and len(value) == 2
+                    and type(value[0]) is int
+                    and value[0] > 0
+                    and type(value[1]) is int
+                    and 0 <= value[1] < 1_000_000
+                )
+
+            def valid_full(identity):
+                return (
+                    type(identity) is dict
+                    and set(identity) == {"pid", "uid", "ppid", "pgid", "birth"}
+                    and type(identity["pid"]) is int
+                    and identity["pid"] > 0
+                    and type(identity["uid"]) is int
+                    and identity["uid"] >= 0
+                    and type(identity["ppid"]) is int
+                    and identity["ppid"] >= 0
+                    and type(identity["pgid"]) is int
+                    and identity["pgid"] > 0
+                    and valid_birth(identity["birth"])
+                )
+
+            def current_leader():
+                identity = process_identity(child.pid)
+                if not valid_full(identity):
+                    raise RuntimeError()
+                if (
+                    identity["pid"] != child.pid
+                    or identity["uid"] != os.getuid()
+                    or identity["pgid"] != child.pid
+                    or identity["birth"] != captured_birth
+                ):
+                    raise RuntimeError()
+                if captured_pgid is not None and identity["pgid"] != captured_pgid:
+                    raise RuntimeError()
+                return identity
+
+            def empty_group():
+                remaining()
+                first = process_group_identities(child.pid)
+                if type(first) is not tuple or first:
+                    raise RuntimeError()
+                remaining()
+                second = process_group_identities(child.pid)
+                if type(second) is not tuple or second:
+                    raise RuntimeError()
+                remaining()
+                child.wait(timeout=0)
+
+            def validate_census(leader):
+                remaining()
+                census = process_group_identities(child.pid)
+                if type(census) is not tuple or not census:
+                    raise RuntimeError()
+                seen = set()
+                found_leader = False
+                for member in census:
+                    if not valid_full(member):
+                        raise RuntimeError()
+                    pid = member["pid"]
+                    if (
+                        pid in seen
+                        or member["uid"] != os.getuid()
+                        or member["pgid"] != child.pid
+                        or member["birth"] < captured_birth
+                    ):
+                        raise RuntimeError()
+                    seen.add(pid)
+                    if pid == child.pid:
+                        if member != leader:
+                            raise RuntimeError()
+                        found_leader = True
+                if not found_leader:
+                    raise RuntimeError()
+                remaining()
+
+            if type(child.pid) is not int or child.pid <= 0:
+                raise RuntimeError()
+            remaining()
+            if birth is None:
+                if child.poll() is None:
+                    raise RuntimeError()
+                empty_group()
+                return None
+            if type(birth) is not dict or set(birth) not in (
+                {"pid", "uid", "birth"},
+                {"pid", "uid", "pgid", "birth"},
+            ):
+                raise RuntimeError()
+            if type(birth["pid"]) is not int or birth["pid"] != child.pid:
+                raise RuntimeError()
+            if type(birth["uid"]) is not int or birth["uid"] != os.getuid():
+                raise RuntimeError()
+            if "pgid" in birth:
+                if type(birth["pgid"]) is not int or birth["pgid"] != child.pid:
+                    raise RuntimeError()
+                captured_pgid = birth["pgid"]
+            else:
+                captured_pgid = None
+            captured_birth = birth["birth"]
+            if not valid_birth(captured_birth):
+                raise RuntimeError()
+
+            remaining()
+            if child.poll() is not None:
+                empty_group()
+                return None
+            leader = current_leader()
+            validate_census(leader)
+
+            if child.poll() is not None:
+                empty_group()
+                return None
+            current_leader()
+            remaining()
+            os.killpg(child.pid, signal.SIGTERM)
+
+            while True:
+                remaining()
+                if child.poll() is not None:
+                    empty_group()
+                    return None
+                leader = current_leader()
+                validate_census(leader)
+                timeout = min(0.05, remaining())
+                self.shutdown.wait(timeout, cleanup=True)
+        except Exception:
+            # The child can exit between a poll and a kernel identity
+            # inspection — including immediately after our own SIGTERM.
+            # That is an ordinary, expected exit, not a blocked state:
+            # bounded-wait for the death to land, reap it, and prove the
+            # group empty with two scans. Fail closed only when the child
+            # stays alive with unreadable identity, or members remain.
+            # Never signal an unknown identity from this path.
+            try:
+                end = time.monotonic() + min(2.0, max(0.0, deadline - time.monotonic()))
+                while child.poll() is None and time.monotonic() < end:
+                    time.sleep(0.01)
+                if child.poll() is not None:
+                    # poll() reaped the child; prove emptiness with two scans
+                    # before any wait() call. No signal is ever issued here.
+                    first = process_group_identities(child.pid)
+                    second = process_group_identities(child.pid)
+                    if (type(first) is tuple and not first
+                            and type(second) is tuple and not second):
+                        return None
+            except Exception:
+                pass
+            self._cleanup_blocked = True
+            raise Fault("candidate_cleanup_failed") from None
+
+    def _capture(self, argv, timeout=90, env=None, control=False, purpose=None):
+        from .shutdown import ShutdownRequested
+        spawn_id = uuid.uuid4().hex
+        if purpose is None:
+            purpose = 'diagnostic'
         self._admit_helper()
         if self._candidate is not None or self._cleanup_blocked:
             raise Fault('candidate_cleanup_failed')
@@ -277,44 +434,96 @@ class Runtime:
         remaining = 900 - (time.monotonic() - self._operation_started)
         if remaining <= 0:
             raise Fault('service_control_timeout' if control else 'gate_failed')
-        deadline = time.monotonic() + min(timeout, remaining)
-        child = subprocess.Popen(argv, env=self.env if env is None else env, cwd=self.config,
-                                 stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                 stderr=subprocess.DEVNULL, start_new_session=True)
+        handle = self.recovery.spawn_intent(self._active_operation, spawn_id, purpose)
+        try:
+            permit = self.shutdown.commit(purpose)
+            self.shutdown.claim(permit)
+        except ShutdownRequested:
+            with contextlib.suppress(Exception):
+                self.recovery.mark_uncertain(handle)
+            raise Fault('controller_stopping') from None
+        child = None
+        journal = None
         birth = None
+        result = None
         try:
             try:
-                birth = _identity(child.pid)
-            except Fault:
-                if child.poll() is None:
-                    raise
-            stream = child.stdout
-            assert stream is not None  # Popen was explicitly given stdout=PIPE
-            out = bytearray()
-            with selectors.DefaultSelector() as reader:
-                reader.register(stream, selectors.EVENT_READ)
-                while True:
-                    available = deadline - time.monotonic()
-                    if available <= 0 or not reader.select(available):
-                        raise subprocess.TimeoutExpired(argv, timeout)
-                    part = os.read(stream.fileno(), min(65536, HELPER_OUTPUT_LIMIT + 1 - len(out)))
-                    if not part:
-                        break
-                    out.extend(part)
-                    if len(out) > HELPER_OUTPUT_LIMIT:
-                        raise Fault('gate_failed')
-            child.wait(timeout=max(.001, deadline-time.monotonic()))
-            if child.returncode:
-                raise Fault('service_control_denied' if control else 'gate_failed')
-            return bytes(out)
-        except subprocess.TimeoutExpired:
-            raise Fault('service_control_timeout' if control else 'gate_failed') from None
-        finally:
-            try:
-                self._owned_stop(child, birth)
+                deadline = time.monotonic() + min(timeout, remaining)
+                child = subprocess.Popen(argv, env=self.env if env is None else env,
+                                         cwd=self.config, stdin=subprocess.DEVNULL,
+                                         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                         start_new_session=True)
+                try:
+                    journal = _journal_identity(child.pid)
+                    birth = {k: journal[k] for k in ('pid', 'uid', 'birth')}
+                except Fault:
+                    if child.poll() is None:
+                        raise
+                if journal is not None:
+                    self.recovery.spawn_owned(handle, journal)
+                stream = child.stdout
+                assert stream is not None  # Popen was explicitly given stdout=PIPE
+                out = bytearray()
+                with selectors.DefaultSelector() as reader:
+                    reader.register(stream, selectors.EVENT_READ)
+                    while True:
+                        available = deadline - time.monotonic()
+                        if available <= 0 or not reader.select(available):
+                            raise subprocess.TimeoutExpired(argv, timeout)
+                        part = os.read(stream.fileno(),
+                                       min(65536, HELPER_OUTPUT_LIMIT + 1 - len(out)))
+                        if not part:
+                            break
+                        out.extend(part)
+                        if len(out) > HELPER_OUTPUT_LIMIT:
+                            raise Fault('gate_failed')
+                child.wait(timeout=max(.001, deadline-time.monotonic()))
+                if child.returncode:
+                    raise Fault('service_control_denied' if control else 'gate_failed')
+                result = bytes(out)
             finally:
-                if child.stdout is not None:
-                    child.stdout.close()
+                if child is not None:
+                    try:
+                        self._owned_stop(child, birth)
+                    finally:
+                        if child.stdout is not None:
+                            child.stdout.close()
+                        if child.stderr is not None:
+                            child.stderr.close()
+        except Fault:
+            # Deliberate conservatism: a helper that failed its business work
+            # (e.g. nonzero exit -> gate_failed) is journaled 'uncertain' even
+            # when cleanup was fully proven. The child is dead and reaped, so
+            # the label is semantically conservative, not exact — but an
+            # uncertain row only costs a cleared-ticket reconciliation before
+            # the next admission, and never fabricates closure for a helper
+            # whose work failed.
+            self._cleanup_blocked = self._cleanup_blocked or (journal is None)
+            with contextlib.suppress(Exception):
+                self.recovery.mark_uncertain(handle)
+            raise
+        except subprocess.TimeoutExpired:
+            with contextlib.suppress(Exception):
+                self.recovery.mark_uncertain(handle)
+            raise Fault('service_control_timeout' if control else 'gate_failed') from None
+        except Exception:
+            # Journal write or identity loss: never invent ownership/closure,
+            # stay sticky and refuse next work with a closed Fault.
+            with contextlib.suppress(Exception):
+                self.recovery.mark_uncertain(handle)
+            self._cleanup_blocked = True
+            raise Fault('recovery_invalid') from None
+        else:
+            if journal is not None:
+                try:
+                    self.recovery.spawn_closed(handle, journal, cleanup_proven=True)
+                except Exception:
+                    # Close-write failure after fully proven cleanup: state is
+                    # preserved and we fail loud; never return success while
+                    # the durable close is unproven.
+                    self._cleanup_blocked = True
+                    raise Fault('recovery_invalid') from None
+            return result
 
     def _listener(self, port):
         try:

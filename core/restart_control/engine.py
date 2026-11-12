@@ -174,6 +174,18 @@ class FixtureLifecyclePort:
     def bind_backend(self, backend):
         raise NotImplementedError
 
+    def spawn_intent(self, ticket, spawn_id, purpose):
+        raise NotImplementedError
+
+    def spawn_owned(self, handle, identity):
+        raise NotImplementedError
+
+    def spawn_closed(self, handle, identity, *, cleanup_proven):
+        raise NotImplementedError
+
+    def mark_uncertain(self, handle):
+        raise NotImplementedError
+
 
 class Controller:
     def __init__(self, state_dir, backend, uid=None, clock=time.time, monotonic=time.monotonic,
