@@ -1,0 +1,20 @@
+docs/evidence/2026-11-11-r1-integration-and-predecessor-inventory.md
+  s_dd74614dd379b0::t_933b8cd775b699 44-64
+  s_dd74614dd379b0::t_0e176fd42627d8 1-43,65-162
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "df304e6177212f0c8d1e5e0f688e05d089cd5017",
+  "prompts": {},
+  "sessions": {
+    "s_dd74614dd379b0": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261111_171824_0d780e0c",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
