@@ -428,9 +428,14 @@ def test_barrier_request_first_preparation_finish_pair(tmp_path, phase):
 
 def test_barrier_engine_prepared_write_failure_publishes_full_blocked_stage(tmp_path,
                                                                            monkeypatch):
+    from core.restart_control.shutdown import Shutdown as EngineShutdown
+
     class Backend:
         fixture = True
         label = "fixture.proxy"
+
+        def bind_lifecycle(self, shutdown, recovery):
+            pass  # bare barrier-engine fixture; journal path is exercised below
 
         def inspect(self):
             return {"identity": {"pid": 12, "uid": os.getuid(), "birth": [1, 0]},
@@ -453,7 +458,8 @@ def test_barrier_engine_prepared_write_failure_publishes_full_blocked_stage(tmp_
             return {"asset_digest": DIGEST, "runtime_digest": DIGEST}
 
     controller = engine.Controller(tmp_path / "engine", Backend(),
-                                   clock=lambda: 1.0, monotonic=lambda: 1.0)
+                                   clock=lambda: 1.0, monotonic=lambda: 1.0,
+                                   shutdown=EngineShutdown())
     real_write = engine.atomic_json
     writes = []
 

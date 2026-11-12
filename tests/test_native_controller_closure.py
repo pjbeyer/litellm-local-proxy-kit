@@ -33,6 +33,7 @@ sys.path.insert(0, str(ROOT/'core'))
 from restart_control import runtime as runtime_module
 from restart_control.engine import Controller, Fault, atomic_json
 from restart_control.runtime import Runtime
+from restart_control.shutdown import Shutdown
 from restart_control.runtime_identity import KIT_INPUTS, PROXY_INPUTS, file_fact
 
 RECEIPT = 'native-build.json'
@@ -120,7 +121,7 @@ def native_runtime(private_root):
     atomic_json(policy_path, policy)
     with mock.patch.dict(os.environ, {'OP_SERVICE_ACCOUNT_TOKEN': 'fixture-only',
                                       'PYTHONPATH': 'fixture-only', 'PYTHONHOME': 'fixture-only'}):
-        obj = Runtime(policy_path)
+        obj = Runtime(policy_path, shutdown=Shutdown())
     obj._capture = mock.Mock(return_value=json.dumps({'runtime_digest': 'a'*64}).encode())
     return obj
 
@@ -374,7 +375,9 @@ def test_prepare_blocks_on_unpaired_receipt_before_gates(native_runtime):
     runtime.fixture = True  # plan records must label this disposable world
     with mock.patch.object(runtime_module, 'native_receipt_fact', pairing_stub()), \
          mock.patch.object(runtime, 'inspect', return_value={'identity': identity, 'managed': True}):
-        controller = Controller(runtime.state, runtime)
+        # The controller must share the runtime's already-bound latch: a
+        # first-bound Runtime rejects any other valid latch by design.
+        controller = Controller(runtime.state, runtime, shutdown=runtime.shutdown)
         result = controller.handle({'op': 'prepare'})
     assert result['status'] == 'blocked' and result['code'] == 'runtime_invalid'
     # No gate, preflight or cold-start helper subprocess was ever launched.

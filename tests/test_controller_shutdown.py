@@ -100,23 +100,41 @@ def test_contract_is_immutable_snapshot():
 
 
 def test_production_constants_are_fixed_with_no_env_override(monkeypatch):
+    import importlib.util
+    import sys as _sys
     from core.restart_control import shutdown as module
+    # Reload an ISOLATED copy under a private module name: a real reload would
+    # replace the shared module's class objects in place, breaking every later
+    # isinstance-based lifecycle admission in the same process.
+    probe_name = "core.restart_control._shutdown_contract_probe"
+    spec = importlib.util.spec_from_file_location(probe_name, module.__file__)
+    assert spec is not None and spec.loader is not None
+
+    def isolated_reload():
+        isolated = importlib.util.module_from_spec(spec)
+        loader = spec.loader
+        assert loader is not None
+        with monkeypatch.context() as patch:
+            patch.setitem(_sys.modules, probe_name, isolated)
+            loader.exec_module(isolated)
+        return isolated
+
     for name, value in (("SHUTDOWN_DEADLINE_SECONDS", 5),
                         ("SUPERVISOR_EXIT_SECONDS", 500),
                         ("OSLOG_RATE_LIMIT", "9999"),
                         ("SHUTDOWN_VERSION", 7)):
         monkeypatch.setenv(name, str(value))
-    import importlib
-    importlib.reload(module)
-    assert module.SHUTDOWN_CONTRACT["version"] == 1
-    assert module.SHUTDOWN_CONTRACT["supervisor_exit_seconds"] == 60
-    assert module.SHUTDOWN_CONTRACT["shutdown_deadline_seconds"] == 50
-    assert module.SHUTDOWN_CONTRACT["logging_environment"] == {"OSLogRateLimit": "64"}
+    probe = isolated_reload()
+    assert probe.SHUTDOWN_CONTRACT["version"] == 1
+    assert probe.SHUTDOWN_CONTRACT["supervisor_exit_seconds"] == 60
+    assert probe.SHUTDOWN_CONTRACT["shutdown_deadline_seconds"] == 50
+    assert probe.SHUTDOWN_CONTRACT["logging_environment"] == {"OSLogRateLimit": "64"}
     monkeypatch.delenv("SHUTDOWN_DEADLINE_SECONDS")
     monkeypatch.delenv("SUPERVISOR_EXIT_SECONDS")
     monkeypatch.delenv("OSLOG_RATE_LIMIT")
     monkeypatch.delenv("SHUTDOWN_VERSION")
-    importlib.reload(module)
+    probe = isolated_reload()
+    assert probe.SHUTDOWN_CONTRACT["version"] == 1
 
 
 def test_checkpoint_admits_before_latch_and_refuses_after():
