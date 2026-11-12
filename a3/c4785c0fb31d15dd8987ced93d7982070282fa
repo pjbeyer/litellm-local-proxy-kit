@@ -1,0 +1,106 @@
+core/restart_control/runtime.py
+  s_2271c4bb02c5db::t_5bd1cfdd373360 251,261,268,270-376,378-387,389-398,422
+  s_2271c4bb02c5db::t_1333fa555148b0 22
+  s_844c15d501de73::t_397f8edc878b0e 400-411,416-420
+  s_2271c4bb02c5db::t_c7be8799a40fc2 448,483,510-511,514-515,526
+  s_039ee6aa9f3c63::t_9690b3912d6146 19
+  s_844c15d501de73::t_a026c28722424a 412-413
+  s_844c15d501de73::t_e96478ad65d9f0 257,259-260,262-267
+  s_844c15d501de73::t_b50d57a30cf899 414-415
+  s_039ee6aa9f3c63::t_ee512b8b9d678c 63-71
+  s_844c15d501de73::t_4617c7a2779dde 494-500
+  s_844c15d501de73::t_b291d9f0c41653 254-256,258
+  s_039ee6aa9f3c63::t_f9a7080d72a143 424-428,437-446,451-482,484-490,493,501-504,506-507,509,512-513,516-517
+  s_844c15d501de73::t_e6bdb1909722f4 491-492
+  s_844c15d501de73::t_03fefd526d38b3 518-525
+core/restart_control/engine.py
+  s_039ee6aa9f3c63::t_9750882d0f9687 177-188
+tests/test_controller_helper_cleanup.py
+  s_039ee6aa9f3c63::t_8387179f72239f 224
+  s_039ee6aa9f3c63::t_d27f98ea598252 180
+  s_691de8a1995791::t_33d8503ffce11c 1-178,181-205,209,212,218,231,235-254
+  s_691de8a1995791::t_01d28b5089ec06 206-208
+  s_691de8a1995791::t_fa1f228e953239 210-211
+  s_691de8a1995791::t_3d71fffcc02cbd 213-217
+  s_691de8a1995791::t_6dc9751513cc24 232-234
+  s_691de8a1995791::t_991c9114b6692a 255-257
+  s_039ee6aa9f3c63::t_5de6e6e0bfec70 179,219-223,225-230,258
+tests/test_controller_runtime_shutdown.py
+  s_039ee6aa9f3c63::t_c64e904527cad9 29
+  s_039ee6aa9f3c63::t_5910e94381aa31 324-327,331-332
+  s_039ee6aa9f3c63::t_20771638b81326 375-381
+  s_039ee6aa9f3c63::t_b4b83dfd69c251 419,489
+  s_039ee6aa9f3c63::t_2d55ce9b479204 355,402,475
+  s_039ee6aa9f3c63::t_77fff704cd92a9 219,221,225,234-235,237,241,244-246,252,267-271,274-275,281-284,288-290,293-298,301,303,309-312
+  s_039ee6aa9f3c63::t_51d20bb6b9de0a 345
+  s_7ae441c63d7c37::t_be0518ac60a89d 27-28
+  s_039ee6aa9f3c63::t_bb8e9744999a3f 33-34
+  s_7ae441c63d7c37::t_4bcebc8fc53162 88-89,91,100-101,104,106,111-112,114,156,165,169-170,175,177-178,183,192-193,196-197,201-218,220,222-224,226-233,236,238-240,242-243,247-251,253-266,272-273,276-280,285-287,291-292,299-300,302,304-308,313-323,328-330,333-344,346-354,356-374,382-401,403-418,420-474,476-488,490
+  s_7ae441c63d7c37::t_27845f2b1667dc 24-26
+  s_039ee6aa9f3c63::t_97ffbfe009ac3d 30-32
+  s_7ae441c63d7c37::t_29dd793422fe1b 90
+  s_7ae441c63d7c37::t_8fccc9557ca52f 92-94,97-99
+  s_7ae441c63d7c37::t_bb62bd26929033 102-103
+  s_7ae441c63d7c37::t_75727c41f57596 105
+  s_7ae441c63d7c37::t_3450389c6538ef 107-110
+  s_7ae441c63d7c37::t_4fee17466d75aa 113
+  s_7ae441c63d7c37::t_a7cbf5b7f2b3ff 115-117,153-155
+  s_7ae441c63d7c37::t_23a393b88af3ca 157-159,162-164
+  s_7ae441c63d7c37::t_9df69abf8d66c5 166-168
+  s_7ae441c63d7c37::t_6346c6d839373d 171-174
+  s_7ae441c63d7c37::t_5855f945a9e18b 176
+  s_7ae441c63d7c37::t_ca11d4749c71fe 179-182
+  s_7ae441c63d7c37::t_ddfb17ba98b3b1 184-186,189-191
+  s_7ae441c63d7c37::t_ffdd112eb7edb9 194-195
+  s_7ae441c63d7c37::t_4d089a57c1c9ad 198-200
+tests/restart_lifecycle_adapter.py
+  s_039ee6aa9f3c63::t_4d61228d972b4e 12-21,29-31,41-84
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "a3c4785c0fb31d15dd8987ced93d7982070282fa",
+  "prompts": {},
+  "sessions": {
+    "s_039ee6aa9f3c63": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261101_210254_0237ce",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_2271c4bb02c5db": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261111_173753_ff67cd",
+        "model": "smart-router"
+      },
+      "human_author": null
+    },
+    "s_691de8a1995791": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261105_053852_f82516",
+        "model": "glm-5.3"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_7ae441c63d7c37": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261105_053734_91be8d",
+        "model": "glm-5.3"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_844c15d501de73": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261112_055841_a4a1b1",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
