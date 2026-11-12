@@ -1,0 +1,312 @@
+integrations/hermes/proxy-lifecycle-guard/guard.py
+  s_b1a18a0bb18a46::t_0df9d05edb821e 1962-1993
+tests/test_guard_var_defaults_and_editors.py
+  s_b1a18a0bb18a46::t_368df22c99477c 30-35,37-46,50-69
+  s_b1a18a0bb18a46::t_1817cf54d6c9db 70-71
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_active_hardlink_target_pr0/hermes/lifecycle-guard/decisions.jsonl
+  s_844c15d501de73::t_1b1cbf2e252e81 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_active_hardlink_target_pr0/victim.txt
+  s_844c15d501de73::t_42c626d315cc80 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_active_hardlink_target_pr1/hermes/lifecycle-guard/decisions.jsonl
+  s_844c15d501de73::t_cbaacf10a57faa 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_active_hardlink_target_pr1/victim.txt
+  s_844c15d501de73::t_beac3e0ae88b09 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_active_hardlink_target_prcurrent
+  s_844c15d501de73::t_cf05a1a709effd 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_active_symlink_target_pre0/hermes/lifecycle-guard/decisions.jsonl
+  s_844c15d501de73::t_3e559988008ad8 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_active_symlink_target_pre0/victim.txt
+  s_844c15d501de73::t_243b6bc633bd65 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_active_symlink_target_pre1/hermes/lifecycle-guard/decisions.jsonl
+  s_844c15d501de73::t_c148f674332c1b 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_active_symlink_target_pre1/victim.txt
+  s_844c15d501de73::t_e65f60bf4bc01e 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_active_symlink_target_precurrent
+  s_844c15d501de73::t_f916177741e4ea 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_actual_guard_invalid_poli0/policy.json
+  s_844c15d501de73::t_cbccb693736b06 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_actual_guard_invalid_poli0/private-deploy/__init__.py
+  s_844c15d501de73::t_5aec347cd1e330 1-54
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_actual_guard_invalid_poli0/private-deploy/config.json
+  s_844c15d501de73::t_6f48edb5d0a094 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_actual_guard_invalid_poli0/private-deploy/guard.py
+  s_844c15d501de73::t_3373640777c945 1-3109
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_actual_guard_invalid_poli0/private-deploy/integrity.sha256
+  s_844c15d501de73::t_c5eb5f53450933 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_actual_guard_invalid_poli0/state/hermes/lifecycle-guard/decisions.jsonl
+  s_844c15d501de73::t_1a800f5ff3decb 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_actual_guard_invalid_policurrent
+  s_844c15d501de73::t_cfdb0eaf0a4ffe 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_captured_live_worker_survcurrent
+  s_844c15d501de73::t_83ee7129162004 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_child_rejects_invalid_cod0/policy.json
+  s_844c15d501de73::t_fd695218781488 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_child_rejects_invalid_cod0/private-deploy/guard.py
+  s_844c15d501de73::t_2d7ab26fde56a9 1-35
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_child_rejects_invalid_cod0/sink.jsonl
+  s_844c15d501de73::t_1aa071880ab8cc 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_child_rejects_invalid_cod1/policy.json
+  s_844c15d501de73::t_72b5603e091fc7 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_child_rejects_invalid_cod1/private-deploy/guard.py
+  s_844c15d501de73::t_ef74e928fde271 1-35
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_child_rejects_invalid_cod1/sink.jsonl
+  s_844c15d501de73::t_6a44ea5089711f 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_child_rejects_invalid_cod2/policy.json
+  s_844c15d501de73::t_5fd83d067bb14c 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_child_rejects_invalid_cod2/private-deploy/guard.py
+  s_844c15d501de73::t_b24292d5571cd1 1-35
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_child_rejects_invalid_cod2/sink.jsonl
+  s_844c15d501de73::t_2c7d0a207be916 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_child_rejects_invalid_cod3/policy.json
+  s_844c15d501de73::t_a042919f927d1a 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_child_rejects_invalid_cod3/private-deploy/guard.py
+  s_844c15d501de73::t_a2a6f277cc64d9 1-35
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_child_rejects_invalid_cod3/sink.jsonl
+  s_844c15d501de73::t_d96e2c27c7c94e 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_child_rejects_invalid_codcurrent
+  s_844c15d501de73::t_796a6607820650 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_cross_process_lock_is_non0/state/hermes/lifecycle-guard/decisions.jsonl
+  s_844c15d501de73::t_e8a73db8d79560 1-2
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_cross_process_lock_is_noncurrent
+  s_844c15d501de73::t_3860f9dd22269f 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_current_child_receipt_and0/policy.json
+  s_844c15d501de73::t_98177aab8a3aea 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_current_child_receipt_and0/private-deploy/guard.py
+  s_844c15d501de73::t_7c84ce825183d3 1-35
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_current_child_receipt_and0/sink.jsonl
+  s_844c15d501de73::t_4a61ec06b39c1a 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_current_child_receipt_andcurrent
+  s_844c15d501de73::t_0f5593da66087c 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_dead_captured_and_currentcurrent
+  s_844c15d501de73::t_762a8fe85e7009 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_dead_unstarted_fake_is_nocurrent
+  s_844c15d501de73::t_9bb4e95bc8572f 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_existing_0644_active_tigh0/hermes/lifecycle-guard/decisions.jsonl
+  s_844c15d501de73::t_15d7334f06128e 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_existing_0644_active_tighcurrent
+  s_844c15d501de73::t_4ab0ebf98d9b58 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_failed_truncate_leaves_du0/state/hermes/lifecycle-guard/decisions.jsonl
+  s_844c15d501de73::t_787ffcff3ccb55 1-2
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_failed_truncate_leaves_ducurrent
+  s_844c15d501de73::t_a33b1a329ad50f 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_fresh_process_rejects_ext0/state/hermes/lifecycle-guard/decisions.jsonl
+  s_844c15d501de73::t_431c6507888016 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_fresh_process_rejects_extcurrent
+  s_844c15d501de73::t_69631269a86a43 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_injected_active_uid_misma0/state/hermes/lifecycle-guard/decisions.jsonl
+  s_844c15d501de73::t_5e33535dd819dc 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_injected_active_uid_mismacurrent
+  s_844c15d501de73::t_fd4f7e1a1f0758 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_managed_directory_symlink0/decoy/keep.txt
+  s_844c15d501de73::t_ca262d95ff193b 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_managed_directory_symlink0/hermes/lifecycle-guard
+  s_844c15d501de73::t_fa08f4f290927e 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_managed_directory_symlink1/decoy/keep.txt
+  s_844c15d501de73::t_c474093bf80016 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_managed_directory_symlink1/hermes/lifecycle-guard
+  s_844c15d501de73::t_5ac48955e4ed52 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_managed_directory_symlinkcurrent
+  s_844c15d501de73::t_262fe5be1f6286 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_overflow_with_occupied_ro0/hermes/lifecycle-guard/decisions.jsonl
+  s_844c15d501de73::t_be604f46256f1a 1-3013
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_overflow_with_occupied_ro0/hermes/lifecycle-guard/decisions.jsonl.1
+  s_844c15d501de73::t_0afa763d383a2d 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_overflow_with_occupied_ro0/rotation-target.jsonl
+  s_844c15d501de73::t_e23d78cf7c8f33 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_overflow_with_occupied_ro1/hermes/lifecycle-guard/decisions.jsonl
+  s_844c15d501de73::t_b556313ce6b0cc 1-3013
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_overflow_with_occupied_ro1/hermes/lifecycle-guard/decisions.jsonl.1
+  s_844c15d501de73::t_a9e328211d3315 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_overflow_with_occupied_ro1/rotation-target.jsonl
+  s_844c15d501de73::t_b97744f77d989a 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_overflow_with_occupied_rocurrent
+  s_844c15d501de73::t_de8fa9e9fed378 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_render_deterministic_and_0/out1.yaml
+  s_328bb875c0604c::t_aa322f48dcdf5c 1-21
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_render_deterministic_and_0/out2.yaml
+  s_328bb875c0604c::t_8f204a6aaa13ff 1-21
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_render_deterministic_and_0/overlay.yaml
+  s_328bb875c0604c::t_9b13ae67f5a93f 1-9
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_render_deterministic_and_0/template.txt
+  s_328bb875c0604c::t_a31f6a5981dfc3 1-2
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_render_deterministic_and_current
+  s_328bb875c0604c::t_61d6f15b4526a6 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_render_staleness_check_fa0/overlay.yaml
+  s_328bb875c0604c::t_175f2b3b4b029f 1-6
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_render_staleness_check_fa0/stale.yaml
+  s_328bb875c0604c::t_c633617defb114 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_render_staleness_check_fa0/template.txt
+  s_328bb875c0604c::t_69a368d7c0bcb1 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_render_staleness_check_facurrent
+  s_328bb875c0604c::t_b3f9c14c9ea690 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_replacement_live_worker_icurrent
+  s_844c15d501de73::t_62deaae0fe2f95 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_schema_invalid_prior_json0/hermes/lifecycle-guard/decisions.jsonl
+  s_844c15d501de73::t_41a8da708fdad7 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_schema_invalid_prior_jsoncurrent
+  s_844c15d501de73::t_cc59c2d86c608d 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_seeded_non_utf8_line_is_r0/state/hermes/lifecycle-guard/decisions.jsonl
+  s_844c15d501de73::t_8e9edefa1ef736 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_seeded_non_utf8_line_is_rcurrent
+  s_844c15d501de73::t_404c2ebedb9c2f 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_seeded_valid_utf8_line_al0/state/hermes/lifecycle-guard/decisions.jsonl
+  s_844c15d501de73::t_2dfb30168bc124 1-2
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_seeded_valid_utf8_line_alcurrent
+  s_844c15d501de73::t_ef4e77ebee4b83 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_sink_ok_never_accesses_fi0/old.jsonl
+  s_844c15d501de73::t_6b329ae414b001 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_sink_ok_never_accesses_fi0/policy.json
+  s_844c15d501de73::t_3d5bdfc413641c 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_sink_ok_never_accesses_fi1/old-link.jsonl
+  s_844c15d501de73::t_f18ecae7bd04ab 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_sink_ok_never_accesses_fi1/old.jsonl
+  s_844c15d501de73::t_9674c36e0c893b 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_sink_ok_never_accesses_fi1/policy.json
+  s_844c15d501de73::t_262f1f31e97916 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_sink_ok_never_accesses_fi2/huge.jsonl
+  s_844c15d501de73::t_3660c347ffb175 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_sink_ok_never_accesses_fi2/old.jsonl
+  s_844c15d501de73::t_365cb20b710a90 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_sink_ok_never_accesses_fi2/policy.json
+  s_844c15d501de73::t_80aec131425f69 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_sink_ok_never_accesses_ficurrent
+  s_844c15d501de73::t_040ce8f78dec3d 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_sink_ok_rejects_non_dict_0/policy.json
+  s_844c15d501de73::t_54947059a7990c 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_sink_ok_rejects_non_dict_current
+  s_844c15d501de73::t_88d0251487e929 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_stale_valid_line_cannot_p0/policy.json
+  s_844c15d501de73::t_8adf05382dc84a 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_stale_valid_line_cannot_p0/sink.jsonl
+  s_844c15d501de73::t_cfb5625a238b52 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_stale_valid_line_cannot_pcurrent
+  s_844c15d501de73::t_ce25e235e5cc1e 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_symlinked_old_line_cannot0/old-sink.jsonl
+  s_844c15d501de73::t_e707f475a2f234 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_symlinked_old_line_cannot0/policy.json
+  s_844c15d501de73::t_9090da8581bd0b 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_symlinked_old_line_cannot0/sink-link.jsonl
+  s_844c15d501de73::t_f1a0e76039b9e9 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_symlinked_old_line_cannotcurrent
+  s_844c15d501de73::t_ed257211fc457a 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_two_fresh_processes_rotat0/state/hermes/lifecycle-guard/decisions.jsonl
+  s_844c15d501de73::t_98f9b10af94b4b 1-2
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_two_fresh_processes_rotat0/state/hermes/lifecycle-guard/decisions.jsonl.1
+  s_844c15d501de73::t_226fc7059142bc 1-5
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_two_fresh_processes_rotatcurrent
+  s_844c15d501de73::t_232818a9705c80 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_unsafe_lock_entry_is_pres0/state/hermes/lifecycle-guard/decisions.jsonl
+  s_844c15d501de73::t_eb8e6f01ff5b41 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_unsafe_lock_entry_is_pres0/state/hermes/lifecycle-guard/decisions.jsonl.lock
+  s_844c15d501de73::t_1a7b21b26cca7d 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_unsafe_lock_entry_is_pres0/victim.jsonl
+  s_844c15d501de73::t_1c04daca05e7eb 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_unsafe_lock_entry_is_pres1/state/hermes/lifecycle-guard/decisions.jsonl
+  s_844c15d501de73::t_bcf810939ddfc9 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_unsafe_lock_entry_is_pres1/state/hermes/lifecycle-guard/decisions.jsonl.lock
+  s_844c15d501de73::t_097f58e811ade5 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_unsafe_lock_entry_is_pres1/victim.jsonl
+  s_844c15d501de73::t_ddf74f65d3988f 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_unsafe_lock_entry_is_pres2/state/hermes/lifecycle-guard/decisions.jsonl
+  s_844c15d501de73::t_38541768261dec 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_unsafe_lock_entry_is_pres2/victim.jsonl
+  s_844c15d501de73::t_295e647e9ec410 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_unsafe_lock_entry_is_prescurrent
+  s_844c15d501de73::t_82818ba24adb54 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_wrapper_coverage_gate_acc0/config.yaml
+  s_328bb875c0604c::t_af9ac61bd350e6 1-7
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_wrapper_coverage_gate_acc0/credentials.toml
+  s_328bb875c0604c::t_5df3230ec33154 1-4
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_wrapper_coverage_gate_acc0/opshim/op
+  s_328bb875c0604c::t_36c6a2dd428e57 1-2
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_wrapper_coverage_gate_acccurrent
+  s_328bb875c0604c::t_5372ceaee9e41c 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_wrapper_coverage_gate_all0/config.yaml
+  s_328bb875c0604c::t_6e436e113a20ae 1-7
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_wrapper_coverage_gate_all0/credentials.toml
+  s_328bb875c0604c::t_f650526f957276 1-8
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_wrapper_coverage_gate_all0/opshim/op
+  s_328bb875c0604c::t_3abf4d7b8eaed6 1-2
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_wrapper_coverage_gate_all0/opshim2/op
+  s_328bb875c0604c::t_e791e086b00f6c 1-2
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_wrapper_coverage_gate_allcurrent
+  s_328bb875c0604c::t_660986f664a129 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_wrapper_fails_closed_on_o0/config.yaml
+  s_328bb875c0604c::t_ba328ae2b1332d 1-7
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_wrapper_fails_closed_on_o0/credentials.toml
+  s_328bb875c0604c::t_441b8ee13fccbc 1-4
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_wrapper_fails_closed_on_o0/opshim/op
+  s_328bb875c0604c::t_d99a61173a0c49 1-2
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_wrapper_fails_closed_on_ocurrent
+  s_328bb875c0604c::t_bdb62180547aa4 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_wrapper_fails_closed_on_r0/config.yaml
+  s_328bb875c0604c::t_8ae871e1a83572 1-2
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_wrapper_fails_closed_on_r0/credentials.toml
+  s_328bb875c0604c::t_f069c9fbf02866 1-4
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_wrapper_fails_closed_on_r0/opshim/op
+  s_328bb875c0604c::t_3f17df5d2b9092 1-2
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_wrapper_fails_closed_on_rcurrent
+  s_328bb875c0604c::t_fb7951887110be 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_wrapper_fails_closed_on_u0/config.yaml
+  s_328bb875c0604c::t_6537b104fc7a35 1-2
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_wrapper_fails_closed_on_u0/credentials.toml
+  s_328bb875c0604c::t_21fd99fbb46095 1-4
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_wrapper_fails_closed_on_u0/opshim/op
+  s_328bb875c0604c::t_03e9a9a2bb34b1 1-2
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_wrapper_fails_closed_on_ucurrent
+  s_328bb875c0604c::t_6ee095be96e97f 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_wrapper_fails_closed_with0/opshim/op
+  s_328bb875c0604c::t_69f0453772cd24 1-2
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_wrapper_fails_closed_withcurrent
+  s_328bb875c0604c::t_e9974ded975eae 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_wrapper_master_key_gate_p0/config.yaml
+  s_328bb875c0604c::t_a1f491caf7f1d7 1-2
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_wrapper_master_key_gate_p0/credentials.toml
+  s_328bb875c0604c::t_c4c508f85732e4 1-4
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_wrapper_master_key_gate_p0/opshim/op
+  s_328bb875c0604c::t_8229ad0eb889d5 1-2
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_wrapper_master_key_gate_pcurrent
+  s_328bb875c0604c::t_b994a5d3652177 1
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_wrapper_sentinel_negative0/config.yaml
+  s_328bb875c0604c::t_08814d1fcd937a 1-2
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_wrapper_sentinel_negative0/credentials.toml
+  s_328bb875c0604c::t_e657c82f5d7c67 1-4
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_wrapper_sentinel_negative0/opshim/op
+  s_328bb875c0604c::t_99b91443a97101 1-2
+.tmp-vv/pytest-of-pjbeyer/pytest-0/test_wrapper_sentinel_negativecurrent
+  s_328bb875c0604c::t_898450903ba91f 1
+.tmp-vv/pytest-of-pjbeyer/pytest-current
+  s_328bb875c0604c::t_fc657131109b1c 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "c4f0f06527eaca548e3afaa38dc1da765f6679e5",
+  "prompts": {},
+  "sessions": {
+    "s_328bb875c0604c": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261108_205851_88a243",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_844c15d501de73": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261112_055841_a4a1b1",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_b1a18a0bb18a46": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261103_122930_556d2b",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
