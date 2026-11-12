@@ -27,12 +27,46 @@ A = chr(39)
 
 
 def test_uy4_canonical_invocation_allows(scope):
-    # the family-standup cron canonical shape (issue repro)
+    # lpkit-hf5: BYTE-EXACT filed payload (session 41a5c291): the
+    # default is the VARIABLE $HOME/..., not a static literal —
+    # gate tests must never substitute literals for variable
+    # defaults (they mask unresolved-expansion refusals). $HOME is
+    # allowlisted for one-level env resolution; resolved text is
+    # re-analyzed in full.
     evaluate, _, _ = scope
-    cmd = ('"${HERMES_PYTHON:-/Users/x/.hermes/hermes-agent/venv/bin/'
-           'python3}" "/Users/x/.hermes/scripts/family_calendar_adapter'
-           '.py" merged --start')
+    cmd = ('"${HERMES_PYTHON:-$HOME/.hermes/hermes-agent/venv/bin/'
+           'python3}" \\\n'
+           '  "$HOME/.hermes/skills/productivity/family-standup/'
+           'scripts/family_calendar_adapter.py" merged \\\n'
+           '  --start "2026-11-13T00:00:00-05:00" \\\n'
+           '  --end "2026-11-13T23:59:59-05:00" \\\n'
+           '  --timezone America/New_York \\\n'
+           '  --write-artifact \\\n'
+           '  --target-date 2026-11-13 \\\n'
+           '  --phase morning')
     assert evaluate(cmd) is None
+
+
+@pytest.mark.parametrize("command", [
+    '"${PY:-$HOME/venv/bin/python3}" script.py',
+    '"${HERMES_PYTHON:-${HOME}/venv/bin/python3}" s.py',
+    'PY=/usr/bin/python3; "${PY:-$HOME/venv/python3}" script.py',
+])
+def test_hf5_home_default_forms_allow(scope, command):
+    evaluate, _, _ = scope
+    assert evaluate(command) is None
+
+
+@pytest.mark.parametrize("command", [
+    '"${PY:-$HOME/bin/pkill}" -f litellm',   # kill under $HOME default
+    'PY=$HOME/x; "${PY:-$HOME/bin/pkill}" -f litellm',
+    '"${PY:-$OTHER/x/python3}" script.py',   # non-allowlisted: refuse
+    '"${PY:-${HOME}${X}}" script.py',        # chained nesting: refuse
+    'PY=/usr/bin/pkill; "${PY:-$HOME/venv/python3}" -f litellm',
+])
+def test_hf5_home_default_adversarial(scope, command):
+    evaluate, _, _ = scope
+    assert evaluate(command) is not None
 
 
 @pytest.mark.parametrize("command", [

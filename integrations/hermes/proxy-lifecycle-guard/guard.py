@@ -1958,12 +1958,39 @@ def _analyze_chunk(chunk, policy, get_snapshot, depth=0, env=None):
                         _nm, _, _dflt = var.partition(sep)
                         if (_nm and re.fullmatch(
                                 r"[A-Za-z_]\w*", _nm) and _dflt
-                                and "$" not in _dflt
                                 and "`" not in _dflt
-                                and not _dflt.startswith("~")
-                                and re.fullmatch(
-                                    r"[A-Za-z0-9_./@:+-]+", _dflt)):
-                            resolved_default = _dflt
+                                and not _dflt.startswith("~")):
+                            # lpkit-hf5: ONE level of allowlisted env
+                            # resolution inside the written default.
+                            # $HOME is deterministic for the owning
+                            # user (the guard itself resolves its own
+                            # paths from os.environ["HOME"]), so
+                            # ${VAR:-$HOME/...} resolves against it.
+                            # Any other variable in the default is
+                            # unprovable and stays refused (FR-006).
+                            # Resolution is ANALYSIS: the substituted
+                            # text is re-analyzed in full below, so
+                            # signal intent under a $HOME default
+                            # still vetoes.
+                            cand = _dflt.replace("${HOME}", "\x00")
+                            cand = cand.replace("$HOME", "\x00")
+                            if "$" in cand.replace("\x00", ""):
+                                cand = None  # non-allowlisted var
+                            else:
+                                home = os.environ.get("HOME")
+                                if not home or any(
+                                        c in home for c in ' \t\n;$`"\\'+"'"):
+                                    cand = None  # HOME unset/unsafe
+                                else:
+                                    cand = cand.replace("\x00", home)
+                            if cand is not None and re.fullmatch(
+                                    r"[A-Za-z0-9_./@:+-]+", cand):
+                                resolved_default = cand
+                            elif (cand is None and "$" not in _dflt
+                                  and "`" not in _dflt
+                                  and re.fullmatch(
+                                      r"[A-Za-z0-9_./@:+-]+", _dflt)):
+                                resolved_default = _dflt
                         var = _nm
                     if resolved_default is not None or var in env:
                         # env literal wins (shell precedence: an
