@@ -844,9 +844,54 @@ CONTROL_KEYWORDS = frozenset({
 # verbs targeting the plugin directory veto.
 PLUGIN_DIR_MARKER = "plugins/proxy-lifecycle-guard"
 MUTATING_VERBS = frozenset({
-    "rm", "mv", "cp", "tee", "ln", "install", "chmod", "chown", "sed",
+    "rm", "mv", "cp", "tee", "ln", "install", "chmod", "chown",
     "rsync", "dd", "shred", "truncate", "red", "write",
 })
+
+# lpkit-1hh: stream editors whose IN-PLACE flags make them write
+# primitives; without the flag they are read-only filters.
+_INPLACE_EDITORS = frozenset({"sed", "perl", "ruby", "awk", "gawk"})
+
+
+def _editor_inplace_flags(chunk_low):
+    """True when a stream editor chunk carries an in-place modifier.
+
+    Recognized forms (bounded, token-level — not substring matches):
+    sed -i, -i suffixed (-i.bak), --in-place/-i in GNU short bundles,
+    perl -i / -pi / -pe with -i, ruby -i / -pi, awk/gawk -i inplace
+    (the -i flag plus the 'inplace' extension argument).
+    """
+    tokens = chunk_low.split()
+    if not tokens or tokens[0] not in _INPLACE_EDITORS:
+        return False
+    verb = tokens[0]
+    for i, t in enumerate(tokens[1:], 1):
+        if i > 12:
+            break  # bounded scan: options precede operands
+        if t == "--in-place" or t.startswith("--in-place="):
+            return True
+        if verb == "awk" or verb == "gawk":
+            if t == "-i":
+                return True  # awk -i (gawk inplace) — conservative
+            continue
+        if t == "-i" or (t.startswith("-i") and not t.startswith("-if")):
+            # sed -i[.suffix], perl -i, ruby -i; exclude -if (awk
+            # input-file flag) — conservative bundle handling
+            return True
+        if t.startswith("-") and "i" in t.strip("-"):
+            # short bundle containing i (perl -pi, sed -ni... but sed
+            # -ni is still an in-place read? no: -n suppresses print)
+            # Only bundles WITHOUT -n are writes for sed; perl -pi is
+            # a write (print implies loop).
+            if verb in ("perl", "ruby") and "n" not in t:
+                return True
+            if verb == "sed" and "n" in t and "i" in t:
+                # sed -ni: -n with -i still writes in-place output
+                return True
+            continue
+        if not t.startswith("-"):
+            break  # first operand: option scan ends
+    return False
 
 
 class _Block(Exception):
@@ -1874,8 +1919,10 @@ def _analyze_chunk(chunk, policy, get_snapshot, depth=0, env=None):
     # (the adapter pattern). Resolution is ANALYSIS, not a hole: the
     # substituted text is re-analyzed with the full pipeline, so a
     # resolved kill command still vetoes. Unresolvable indirection
-    # stays refused (FR-006).
-    if env:
+    # stays refused (FR-006). lpkit-uy4: the ${NAME:-default} form
+    # carries its default inline, so this path must run even when NO
+    # assignment is visible (env may be empty).
+    if env is not None:
         stage_list = _split_segments(chunk, ("|",), limit=MAX_STAGES)
         if stage_list:
             head_words = stage_list[0].strip().split()
@@ -1892,9 +1939,38 @@ def _analyze_chunk(chunk, policy, get_snapshot, depth=0, env=None):
                     var = None
                 if var:
                     var = var.lstrip("$").lstrip("{").rstrip("}")
-                    if var in env:
+                    # lpkit-uy4: ${NAME:-default} / ${NAME-default} in
+                    # command position resolves against the WRITTEN
+                    # default when the default is a statically
+                    # analyzable simple literal. The shell substitutes
+                    # the default whenever the variable is unset/empty
+                    # (:-) or unset (-); a value present in the env
+                    # could differ, so resolution is ANALYSIS, not a
+                    # hole: the substituted text is re-analyzed in
+                    # full, and any signal intent in the default (or
+                    # the remaining payload) still vetoes. A default
+                    # that is not a simple literal (nested expansion,
+                    # command substitution, empty) is unprovable and
+                    # stays refused (FR-006).
+                    resolved_default = None
+                    if ":-" in var or ("-" in var and ":" not in var):
+                        sep = ":-" if ":-" in var else "-"
+                        _nm, _, _dflt = var.partition(sep)
+                        if (_nm and re.fullmatch(
+                                r"[A-Za-z_]\w*", _nm) and _dflt
+                                and "$" not in _dflt
+                                and "`" not in _dflt
+                                and not _dflt.startswith("~")
+                                and re.fullmatch(
+                                    r"[A-Za-z0-9_./@:+-]+", _dflt)):
+                            resolved_default = _dflt
+                        var = _nm
+                    if resolved_default is not None or var in env:
+                        # env literal wins (shell precedence: an
+                        # assigned value suppresses the default)
+                        value = env.get(var, resolved_default)
                         resolved = " ".join(
-                            [env[var]] + head_words[1:])
+                            [value] + head_words[1:])
                         _analyze_shell_text(
                             resolved, policy, get_snapshot, depth + 1)
                         for stage in stage_list[1:]:
@@ -1912,6 +1988,33 @@ def _analyze_chunk(chunk, policy, get_snapshot, depth=0, env=None):
         if (first_word in MUTATING_VERBS
                 or any("plugin" in w for w in words[:1])):
             raise _Block()
+        # lpkit-1hh: a stream editor is a WRITE only in its in-place
+        # form. sed without -i/--in-place (and sibling editors perl,
+        # ruby, awk) is a read-only filter; scoring the read form as a
+        # write primitive false-positives every diagnostic sed -n on
+        # the guard's own files. The in-place modifier must be
+        # present as a flag (extract-the-modifier-then-check-
+        # destination, the z4b redirect pattern).
+        if first_word in _INPLACE_EDITORS:
+            flags = _editor_inplace_flags(low_chunk)
+            if flags:
+                raise _Block()
+        # lpkit-stg (found repro'ing 1hh): the plugin-dir write rule
+        # must hold for EVERY pipeline stage, not only the chunk
+        # head — echo x | rm <plugin>/guard.py previously slipped
+        # past the head-only check.
+        for stage in _split_segments(chunk, ("|",), limit=MAX_STAGES):
+            s = stage.strip().lower()
+            if not s:
+                continue
+            swords = s.split()
+            if not swords:
+                continue
+            sverb = swords[0]
+            if (sverb in MUTATING_VERBS
+                    or (sverb in _INPLACE_EDITORS
+                        and _editor_inplace_flags(s))):
+                raise _Block()
         # A redirect vetoes only when its file destination resolves
         # inside the plugin dir. Inert noise control on reads
         # (2>/dev/null, 2>&1) is not a write (lpkit-z4b finding A).
