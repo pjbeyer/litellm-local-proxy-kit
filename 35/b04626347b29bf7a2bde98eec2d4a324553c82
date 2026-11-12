@@ -1,0 +1,20 @@
+docs/handoffs/2026-11-11-t009-correction-prompt-owner-landing.md
+  s_2271c4bb02c5db::t_1311377992cbc7 16
+  s_2271c4bb02c5db::t_96b4e5ea34dbc8 1-15,17-189
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "35b04626347b29bf7a2bde98eec2d4a324553c82",
+  "prompts": {},
+  "sessions": {
+    "s_2271c4bb02c5db": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261111_173753_ff67cd",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
