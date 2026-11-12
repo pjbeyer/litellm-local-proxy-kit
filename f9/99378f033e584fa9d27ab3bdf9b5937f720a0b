@@ -1,0 +1,44 @@
+tests/test_native_runtime_identity.py
+  s_b1266271e2e4a7::t_560e82fc1ea371 109-110
+core/restart_control/process_identity.py
+  s_844c15d501de73::t_df3b586a127770 5-9,18,20-23
+core/restart_control/runtime_identity.py
+  s_844c15d501de73::t_003f26985bbff8 64-137
+  s_844c15d501de73::t_144bded04ba36e 7
+  s_b1266271e2e4a7::t_84c193548b28c5 263
+  s_844c15d501de73::t_65e591b9a3ad17 17-21,30-32
+  s_844c15d501de73::t_b2569c03710abf 170
+  s_b1266271e2e4a7::t_ebaf5b42ea4952 171
+  s_844c15d501de73::t_571550fb70d66e 264-265,270-272,274-285,287,316,320,327-330
+  s_844c15d501de73::t_f2d45c2fac6db6 266-269,273,286,289-290,317,326,331-351
+  s_844c15d501de73::t_4e46aa3c040efe 288,313-315,318,321-322
+  s_844c15d501de73::t_b43a10c2ace32b 33
+  s_844c15d501de73::t_078efda9093e4a 352-353
+  s_b1266271e2e4a7::t_6a85d3953fb21c 15
+core/check_pin.py
+  s_b1266271e2e4a7::t_80606f0c4391aa 49-54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "f999378f033e584fa9d27ab3bdf9b5937f720a0b",
+  "prompts": {},
+  "sessions": {
+    "s_844c15d501de73": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261112_055841_a4a1b1",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_b1266271e2e4a7": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261112_142843_0b5234",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
