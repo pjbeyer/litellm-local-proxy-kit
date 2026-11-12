@@ -13,6 +13,7 @@ import signal
 import selectors
 import socket
 import stat
+import struct
 import subprocess
 import time
 import threading
@@ -185,6 +186,7 @@ class Runtime:
             self._manifest_blob = (self.config/'credentials.toml').read_bytes()
             self._loaded_sources = source_facts(self.kit)
             self._last_proxy = None
+            self._proof_state = {'root': None}
             shutdown.checkpoint()
             if test_lifecycle is not None:
                 self.recovery = test_lifecycle
@@ -421,6 +423,319 @@ class Runtime:
             self._cleanup_blocked = True
             raise Fault("candidate_cleanup_failed") from None
 
+    _PROOF_OPS = frozenset({'bind', 'git_root', 'git_head', 'git_entries',
+                            'native_sources', 'native_tree', 'native_exports'})
+    _PROOF_REQUEST_LIMIT_BYTES = 4096
+    _PROOF_DATA_LIMIT = 4 * 1024 * 1024
+    _PROOF_MAX_REQUESTS = 64
+
+    def _serve_proof_channel(self, connection, deadline, state):
+        """Serve one worker's observations; each executes through the action gate.
+
+        Single-threaded: the parent blocks in recv while the worker runs;
+        every observation is a journalled, tracked helper spawn. No observer
+        commits after the shutdown latch; disconnection, unknown observer
+        state or cleanup failure is sticky recovery uncertainty, never a
+        success digest. One absolute deadline bounds the whole channel.
+        """
+        requests = 0
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise Fault('service_control_timeout')
+            request = self._proof_read_request(connection, deadline)
+            if request is None:  # worker closed the channel: proof finished
+                return
+            requests += 1
+            if requests > self._PROOF_MAX_REQUESTS:
+                raise Fault('invalid_request')
+            self._dispatch_proof_observation(connection, request, state, deadline)
+
+    def _proof_read_request(self, connection, deadline):
+        """Read one newline-terminated JSON request, exactly; None on EOF.
+
+        Silence while the worker verifies sources is normal: recv retries
+        until the absolute deadline, never a per-request timeout.
+        """
+        chunks = bytearray()
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise Fault('service_control_timeout')
+            connection.settimeout(min(remaining, 0.5))
+            try:
+                part = connection.recv(4096)
+            except TimeoutError:
+                continue
+            except (BlockingIOError, InterruptedError):
+                continue
+            if not part:
+                if chunks:
+                    raise Fault('invalid_request')
+                return None
+            chunks.extend(part)
+            if len(chunks) > self._PROOF_REQUEST_LIMIT_BYTES:
+                raise Fault('invalid_request')
+            if b'\n' in chunks:
+                line, _, tail = bytes(chunks).partition(b'\n')
+                # No pipelining: bytes after the first newline refuse.
+                if tail:
+                    raise Fault('invalid_request')
+                if not line:
+                    raise Fault('invalid_request')
+                return line
+
+    def _dispatch_proof_observation(self, connection, request, state, deadline):
+        """Validate one closed observation request and execute it journalled."""
+        try:
+            decoded = json.loads(request)
+        except Exception:
+            raise Fault('invalid_request') from None
+        if (type(decoded) is not dict or decoded.get('version') != 1
+                or type(decoded.get('seq')) is not int or decoded['seq'] < 1
+                or type(decoded.get('op')) is not str):
+            raise Fault('invalid_request')
+        op = decoded['op']
+        if op not in self._PROOF_OPS:
+            raise Fault('invalid_request')
+        if op == 'bind':
+            if (decoded['seq'] != 1 or set(decoded) != {
+                    'version', 'seq', 'op', 'nonce', 'pid', 'source_sha256',
+                    'pin_sha256'}):
+                raise Fault('invalid_request')
+        else:
+            if decoded['seq'] != state['next_seq']:
+                raise Fault('invalid_request')
+            if op == 'git_root':
+                if set(decoded) != {'version', 'seq', 'op', 'path'}:
+                    raise Fault('invalid_request')
+            elif op == 'git_entries':
+                if set(decoded) != {'version', 'seq', 'op', 'relative'}:
+                    raise Fault('invalid_request')
+                if (type(decoded['relative']) is not str or not decoded['relative']
+                        or decoded['relative'].startswith('/')):
+                    raise Fault('invalid_request')
+            elif set(decoded) != {'version', 'seq', 'op'}:
+                raise Fault('invalid_request')
+            state['next_seq'] = decoded['seq'] + 1
+        status, data = self._execute_proof_observation(op, decoded, state, deadline)
+        self._proof_respond(connection, status, data)
+
+    def _execute_proof_observation(self, op, request, state, deadline):
+        """Run one observation through the journal-attached action gate.
+
+        Returns (0, data) on success or (1, b'') refusal. Protocol forgery
+        (bind mismatch) tears the channel down; admission refusals answer
+        the worker with a refusal byte and fail its proof.
+        """
+        if op == 'bind':
+            fact = self._loaded_sources['core/restart_control/runtime_identity.py']
+            if (request['nonce'] != state['nonce']
+                    or request['source_sha256'] != fact['sha256']
+                    or request['pid'] != state['pid']
+                    or request['pin_sha256'] != state['pin_sha256']):
+                raise Fault('invalid_request')
+            return 0, b''
+        if op == 'bind-shape':  # unreachable; keeps linters honest
+            raise Fault('invalid_request')
+        if op == 'git_root':
+            if state['root'] is not None:
+                return 1, b''
+            try:
+                nominated = Path(request['path']).resolve(strict=True)
+            except Exception:
+                return 1, b''
+            if nominated.name != 'litellm' or not nominated.is_dir():
+                return 1, b''
+            root_raw = self._capture(
+                ['git', '-C', str(nominated), 'rev-parse', '--show-toplevel'],
+                timeout=60, purpose='runtime-proof')
+            root = Path(root_raw.decode().strip()).resolve()
+            head = self._capture(
+                ['git', '-C', str(root), 'rev-parse', 'HEAD'],
+                timeout=60, purpose='runtime-proof').decode().strip()
+            pin = read_pin(self.config/'pin.lock')
+            if not head.startswith(pin['patch_tip']):
+                return 1, b''
+            state['root'] = root
+            return 0, str(root).encode()
+        root = state['root']
+        if root is None:
+            return 1, b''
+        if op == 'git_head':
+            return 0, self._capture(
+                ['git', '-C', str(root), 'rev-parse', 'HEAD'],
+                timeout=60, purpose='runtime-proof')
+        if op == 'git_entries':
+            relative = request['relative']
+            try:
+                (root/relative).resolve(strict=True).relative_to(root)
+            except Exception:
+                return 1, b''
+            return 0, self._capture(
+                ['git', '-C', str(root), 'ls-tree', '-rz', 'HEAD', '--', relative],
+                timeout=60, purpose='runtime-proof')
+        if op == 'native_sources':
+            return 0, self._capture(
+                ['git', '-C', str(root), 'ls-tree', '-rz', 'HEAD', '--',
+                 'litellm-rust', '.cargo'],
+                timeout=60, purpose='runtime-proof')
+        if op == 'native_tree':
+            return 0, self._capture(
+                ['git', '-C', str(root), 'rev-parse', 'HEAD:litellm-rust'],
+                timeout=60, purpose='runtime-proof')
+        if op == 'native_exports':
+            from .runtime_identity import NATIVE_PATH
+            return 0, self._capture(
+                ['/usr/bin/nm', '-gU', str(root/NATIVE_PATH)],
+                timeout=60, purpose='runtime-proof')
+        raise Fault('invalid_request')
+
+    def _proof_respond(self, connection, status, data):
+        """Fixed status/length framing; refusal is one byte, no payload."""
+        if data is None:
+            data = b''
+        if len(data) > self._PROOF_DATA_LIMIT:
+            raise Fault('invalid_request')
+        connection.settimeout(2.0)
+        connection.sendall(struct.pack('>BI', status, len(data)))
+        if data:
+            connection.sendall(data)
+
+    _PROOF_WORKER_SOURCE = 'core/restart_control/proof_worker.py'
+
+    def run_proof_worker(self):
+        """Fresh isolated pinned-interpreter proof worker for every proof.
+
+        The worker is our own single helper child: fixed script, -I -B, no
+        controller-package imports, one inherited anonymous socketpair. The
+        parent owns its Popen/PID/birth/group and serves every observation
+        through the journal-attached action gate; worker stdout carries only
+        the existing bounded proof result. Cleanup follows _capture's exact
+        contract: single SIGTERM, bounded reap, group census, sticky
+        uncertainty on any doubt.
+        """
+        import socket as socket_module
+        from .shutdown import ShutdownRequested
+        if (self._proof_state.get('root') is not None or
+                self._candidate is not None or self._cleanup_blocked):
+            raise Fault('recovery_invalid')
+        worker_source = self.controller_root/'restart_control'/'proof_worker.py'
+        fact = self._loaded_sources[self._PROOF_WORKER_SOURCE]
+        if file_fact(worker_source) != fact:
+            raise Fault('runtime_invalid')
+        nonce = uuid.uuid4().hex
+        spawn_id = uuid.uuid4().hex
+        parent_end, child_end = socket_module.socketpair()
+        child = None
+        journal = None
+        birth = None
+        handle = None
+        out = None
+        try:
+            self._admit_helper()
+            handle = self.recovery.spawn_intent(self._active_operation,
+                                                spawn_id, 'runtime-proof')
+            try:
+                permit = self.shutdown.commit('runtime-proof')
+                self.shutdown.claim(permit)
+            except ShutdownRequested:
+                with contextlib.suppress(Exception):
+                    self.recovery.mark_uncertain(handle)
+                raise Fault('controller_stopping') from None
+            deadline = time.monotonic() + 120
+            argv = [self.python, '-I', '-B', str(worker_source),
+                    str(self.config/'pin.lock'), str(child_end.fileno()), nonce]
+            child = subprocess.Popen(
+                argv, env=self.env, cwd=self.config, stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                start_new_session=True, pass_fds=(child_end.fileno(),))
+            try:
+                journal = _journal_identity(child.pid)
+                birth = {k: journal[k] for k in ('pid', 'uid', 'birth')}
+            except Fault:
+                if child.poll() is None:
+                    raise
+                journal = None
+                birth = None
+            if journal is not None:
+                self.recovery.spawn_owned(handle, journal)
+            state = {'next_seq': 2, 'nonce': nonce, 'pid': child.pid,
+                     'pin_sha256': file_fact(self.config/'pin.lock')['sha256'],
+                     'root': None}
+            child_end.close()
+            try:
+                self._serve_proof_channel(parent_end, deadline, state)
+                out = self._read_worker_stdout(child, deadline)
+            finally:
+                with contextlib.suppress(Exception):
+                    parent_end.close()
+                with contextlib.suppress(Exception):
+                    if child.poll() is not None:
+                        child.wait(timeout=1)
+                if child.stdout is not None:
+                    child.stdout.close()
+        except Fault:
+            self._cleanup_blocked = self._cleanup_blocked or (journal is None)
+            if handle is not None:
+                with contextlib.suppress(Exception):
+                    self.recovery.mark_uncertain(handle)
+            raise
+        except Exception:
+            # Journal write or identity loss: never invent ownership/closure.
+            self._cleanup_blocked = True
+            if handle is not None:
+                with contextlib.suppress(Exception):
+                    self.recovery.mark_uncertain(handle)
+            raise Fault('recovery_invalid') from None
+        else:
+            if journal is not None:
+                try:
+                    self.recovery.spawn_closed(handle, journal, cleanup_proven=True)
+                except Exception:
+                    self._cleanup_blocked = True
+                    raise Fault('recovery_invalid') from None
+            self._proof_state['root'] = None
+            return out
+        finally:
+            # Worker cleanup is never an unowned escalation: our own child,
+            # identity-proven stop through _owned_stop, bounded reap.
+            with contextlib.suppress(Exception):
+                child_end.close()
+            if child is not None:
+                try:
+                    self._owned_stop(child, birth)
+                finally:
+                    if child.stdout is not None:
+                        child.stdout.close()
+                    if child.stderr is not None:
+                        child.stderr.close()
+
+    def _read_worker_stdout(self, child, deadline):
+        """Bounded proof-result read during pipe reads, not post-buffering."""
+        stream = child.stdout
+        assert stream is not None
+        out = bytearray()
+        with selectors.DefaultSelector() as reader:
+            reader.register(stream, selectors.EVENT_READ)
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise Fault('service_control_timeout')
+                if not reader.select(min(remaining, 0.1)):
+                    continue
+                part = os.read(stream.fileno(),
+                               min(65536, HELPER_OUTPUT_LIMIT + 1 - len(out)))
+                if not part:
+                    break
+                out.extend(part)
+                if len(out) > HELPER_OUTPUT_LIMIT:
+                    raise Fault('gate_failed')
+        child.wait(timeout=max(.001, deadline-time.monotonic()))
+        if child.returncode:
+            raise Fault('gate_failed')
+        return bytes(out)
+
     def _capture(self, argv, timeout=90, env=None, control=False, purpose=None):
         from .shutdown import ShutdownRequested
         spawn_id = uuid.uuid4().hex
@@ -634,8 +949,7 @@ class Runtime:
                 inputs['deployment/'+name] = _native_receipt(deployment_pin, name)
             exemptions = self.deployment/'drift-exemptions.yaml'
             inputs['drift-exemptions.yaml'] = _regular(exemptions) if exemptions.exists() else None
-            proof = json.loads(self._capture([self.python, str(self.kit/'core/restart_control/runtime_identity.py'),
-                                             str(self.config/'pin.lock')], timeout=90))
+            proof = json.loads(self.run_proof_worker())
             runtime_digest = proof['runtime_digest']
             full = {'kit': facts, 'proxy': proxy, 'inputs': inputs,
                     'policy_digest': self.policy_digest, 'runtime_digest': runtime_digest,

@@ -183,7 +183,7 @@ def runtime(private_root):
     with mock.patch.dict(os.environ, {'OP_SERVICE_ACCOUNT_TOKEN': 'fixture-only',
                                      'PYTHONPATH': 'fixture-only', 'PYTHONHOME': 'fixture-only'}):
         obj = Runtime(policy_path, test_lifecycle=FixtureLifecycleAdapter(namespace='restart_control'))
-    obj._capture = mock.Mock(return_value=json.dumps({'runtime_digest': 'a'*64}).encode())
+    obj.run_proof_worker = mock.Mock(return_value=json.dumps({'runtime_digest': 'a'*64}).encode())
     return obj
 
 
@@ -234,7 +234,7 @@ def test_runtime_drift_refuses_restore_without_writes(runtime):
     path.mkdir(mode=0o700)
     binding = runtime.snapshot_lkg(path)
     old = (runtime.config/'run-proxy-wrapper.sh').read_bytes()
-    runtime._capture.return_value = json.dumps({'runtime_digest': 'b'*64}).encode()
+    runtime.run_proof_worker.return_value = json.dumps({'runtime_digest': 'b'*64}).encode()
     with pytest.raises(Fault, match='lkg_invalid'):
         runtime.restore_lkg(path, binding)
     assert (runtime.config/'run-proxy-wrapper.sh').read_bytes() == old
@@ -275,7 +275,7 @@ def test_installer_owned_layout_and_isolated_daemon_status(runtime, private_root
 
 
 def test_fast_candidate_exit_is_reaped_and_allows_later_helpers(runtime):
-    del runtime._capture  # exercise the real fixed helper, not the fixture seam
+    del runtime.run_proof_worker  # exercise the real fixed helper, not the fixture seam
     runtime._listener = lambda _: None
     def gone(_):
         runtime._candidate.wait(timeout=5)
@@ -289,7 +289,7 @@ def test_fast_candidate_exit_is_reaped_and_allows_later_helpers(runtime):
 
 
 def test_helper_stdout_is_bounded_during_capture(runtime):
-    del runtime._capture
+    del runtime.run_proof_worker
     children = []
     original = subprocess.Popen
     def retained(*args, **kwargs):

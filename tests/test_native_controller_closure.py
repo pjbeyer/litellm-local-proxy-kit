@@ -122,7 +122,7 @@ def native_runtime(private_root):
     with mock.patch.dict(os.environ, {'OP_SERVICE_ACCOUNT_TOKEN': 'fixture-only',
                                       'PYTHONPATH': 'fixture-only', 'PYTHONHOME': 'fixture-only'}):
         obj = Runtime(policy_path, shutdown=Shutdown())
-    obj._capture = mock.Mock(return_value=json.dumps({'runtime_digest': 'a'*64}).encode())
+    obj.run_proof_worker = mock.Mock(return_value=json.dumps({'runtime_digest': 'a'*64}).encode())
     return obj
 
 
@@ -172,11 +172,11 @@ def test_paired_receipt_frozen_into_installed_and_deployment_digests(native_runt
         absent = runtime.freeze()
         install_receipt(runtime)
         present = runtime.freeze()
-        # The standalone prove_runtime helper is still invoked, after the
-        # source/installed/deployment facts, via the isolated interpreter.
-        runtime._capture.assert_called_with([runtime.python,
-                                             str(runtime.kit/'core/restart_control/runtime_identity.py'),
-                                             str(runtime.config/'pin.lock')], timeout=90)
+        # The standalone proof runs inside the isolated worker now: the
+        # controller never imports LiteLLM for proof, and every observation
+        # executes in the parent through the journal-attached action gate.
+        assert runtime.run_proof_worker.call_count == 2
+        runtime.run_proof_worker.assert_called_with()
         assert present['asset_digest'] != absent['asset_digest']
         other = install_receipt(runtime, receipt_bytes=RECEIPT_BYTES+b"{\"other\":true}\n")
         rotated = runtime.freeze()
@@ -230,7 +230,7 @@ def test_receipt_defects_block_freeze_before_proof_and_gates(native_runtime, sta
         with pytest.raises(Fault, match='runtime_invalid'):
             runtime.freeze()
     # No proof subprocess, installer, drift check or preflight ever ran…
-    runtime._capture.assert_not_called()
+    runtime.run_proof_worker.assert_not_called()
     # …and no stale evidence was deleted or repaired.
     if before is not None:
         assert (runtime.config/RECEIPT).read_bytes() == before
@@ -249,7 +249,7 @@ def test_deployment_receipt_defects_block_freeze_before_helpers(native_runtime):
     with mock.patch.object(runtime_module, 'native_receipt_fact', pairing_stub()):
         with pytest.raises(Fault, match='runtime_invalid'):
             runtime.freeze()
-    runtime._capture.assert_not_called()
+    runtime.run_proof_worker.assert_not_called()
     assert (root/RECEIPT).read_bytes() == RECEIPT_BYTES  # preserved, not removed
 
     # Native-expecting deployment pin without its receipt also fails closed.
@@ -258,21 +258,21 @@ def test_deployment_receipt_defects_block_freeze_before_helpers(native_runtime):
     with mock.patch.object(runtime_module, 'native_receipt_fact', pairing_stub()):
         with pytest.raises(Fault, match='runtime_invalid'):
             runtime.freeze()
-    runtime._capture.assert_not_called()
+    runtime.run_proof_worker.assert_not_called()
 
     # A fully paired deployment receipt freezes cleanly.
     (root/RECEIPT).write_bytes(RECEIPT_BYTES)
     (root/'pin.lock').write_text(native_pin(hashlib.sha256(RECEIPT_BYTES).hexdigest()))
     with mock.patch.object(runtime_module, 'native_receipt_fact', pairing_stub()):
         runtime.freeze()
-    runtime._capture.assert_called_once()
+    runtime.run_proof_worker.assert_called_once()
 
 
 def test_shared_pairing_failure_is_closed(native_runtime):
     with mock.patch.object(runtime_module, 'native_receipt_fact', side_effect=ValueError('unavailable')):
         with pytest.raises(Fault, match='runtime_invalid'):
             native_runtime.freeze()
-    native_runtime._capture.assert_not_called()
+    native_runtime.run_proof_worker.assert_not_called()
 
 
 # -- LKG receipt mutation and presence drift ----------------------------------
@@ -381,7 +381,7 @@ def test_prepare_blocks_on_unpaired_receipt_before_gates(native_runtime):
         result = controller.handle({'op': 'prepare'})
     assert result['status'] == 'blocked' and result['code'] == 'runtime_invalid'
     # No gate, preflight or cold-start helper subprocess was ever launched.
-    runtime._capture.assert_not_called()
+    runtime.run_proof_worker.assert_not_called()
     assert (runtime.config/RECEIPT).read_bytes() == RECEIPT_BYTES
 
 
@@ -401,10 +401,10 @@ def test_real_shared_metadata_pairing_and_drift(native_runtime, native_case):
     binding = runtime.snapshot_lkg(path)
     runtime.validate_lkg(path, binding)
     runtime.restore_lkg(path, binding)
-    runtime._capture.reset_mock()
+    runtime.run_proof_worker.reset_mock()
     changed = (runtime.config/RECEIPT).read_bytes()+b' '
     (runtime.config/RECEIPT).write_bytes(changed)
     with pytest.raises(Fault, match='runtime_invalid'):
         runtime.freeze()
-    runtime._capture.assert_not_called()
+    runtime.run_proof_worker.assert_not_called()
     assert (runtime.config/RECEIPT).read_bytes() == changed
