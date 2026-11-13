@@ -6,6 +6,63 @@ import sys
 # -I intentionally removes script-directory imports. Add only this fixed,
 # operator-owned installed package root, not cwd or a caller's PYTHONPATH.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+# Cache-free controller bootstrap (T010): before any controller-package
+# import, install a fixed-root loader that compiles the adjacent controller
+# source bytes directly. A timestamp-valid poisoned .pyc can never load;
+# no caller path or environment selects controller sources. Trusted stdlib
+# and external dependency resolution is unchanged; bytecode writes are
+# disabled before these imports.
+sys.dont_write_bytecode = True
+import importlib.abc
+import importlib.machinery
+
+
+class _SourceOnlyLoader(importlib.abc.Loader):
+    """Compile the exact source bytes; never read or write a .pyc."""
+
+    def create_module(self, spec):
+        return None
+
+    def exec_module(self, module):
+        spec = module.__spec__
+        assert spec is not None and spec.origin is not None
+        path = Path(spec.origin)
+        code = compile(path.read_bytes(), str(path), 'exec', dont_inherit=True)
+        exec(code, module.__dict__)
+
+
+class _FixedRootFinder(importlib.abc.MetaPathFinder):
+    """Resolve only restart_control modules from this entrypoint's fixed root."""
+
+    def find_spec(self, fullname, path=None, target=None):
+        root = Path(__file__).resolve().parent/'restart_control'
+        if fullname == 'restart_control':
+            source = root/'__init__.py'
+            is_package = True
+        elif fullname.startswith('restart_control.'):
+            parts = fullname.split('.')[1:]
+            if not parts or any(not part.isidentifier() for part in parts):
+                return None
+            source = (root.joinpath(*parts)).with_suffix('.py')
+            is_package = False
+        else:
+            return None
+        # A missing source never resolves here: defer to normal machinery,
+        # which raises the ordinary ImportError and can still find e.g. a
+        # genuine namespace package. No caller path or environment selects
+        # controller sources.
+        if not source.is_file():
+            return None
+        spec = importlib.machinery.ModuleSpec(
+            fullname, _SourceOnlyLoader(), origin=str(source), is_package=is_package)
+        if is_package:
+            spec.submodule_search_locations = [str(source.parent)]
+        return spec
+
+
+sys.meta_path.insert(0, _FixedRootFinder())
+
 import argparse
 import json
 import signal
