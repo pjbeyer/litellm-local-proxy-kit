@@ -1,0 +1,26 @@
+tests/test_cache_free_bootstrap.py
+  s_b1266271e2e4a7::t_0666561a9a7c4d 17
+  s_b1266271e2e4a7::t_69dae7679f5237 88,93
+  s_b1266271e2e4a7::t_dc6515e8ebb172 66-69,72,76
+  s_b1266271e2e4a7::t_8de12411253e16 1-16,18-65,70-71,73-75,77-87,89-92,94-119
+core/restart_controller.py
+  s_b1266271e2e4a7::t_d2bc6ad23c13b9 39,41,47,50-55
+  s_b1266271e2e4a7::t_c28ee4a360e3f8 28-30
+  s_b1266271e2e4a7::t_57f5d89d37f894 9-27,31-38,40,42-46,48-49,56-65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "e93c530c5a0579b56624001b07876fe332fe9f3f",
+  "prompts": {},
+  "sessions": {
+    "s_b1266271e2e4a7": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261112_142843_0b5234",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
