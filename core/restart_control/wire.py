@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 from .engine import Fault, private_dir, strict_json
+from .shutdown import SHUTDOWN_CONTRACT
 
 
 LIMIT = 65536
@@ -80,7 +81,15 @@ def _serve_one(connection, controller):
 
 
 def serve(socket_path, controller, stop_event=None):
-    """Serve until stop_event is set; never replace an existing endpoint."""
+    """Serve until stop_event is set; never replace an existing endpoint.
+
+    The drain joins accepted workers under ONE remaining deadline taken
+    from the stop source's shared shutdown budget when it exposes one
+    (``remaining(limit, cleanup=True)``), else the fixed contract budget —
+    never a fresh budget per worker. The listener stops first so no new
+    connection is accepted during the drain, and socket cleanup stays
+    inode-safe: only the exact bound inode is unlinked.
+    """
     path = Path(socket_path)
     private_dir(path.parent)
     if path.exists() or path.is_symlink():
@@ -114,13 +123,29 @@ def serve(socket_path, controller, stop_event=None):
         raise Fault("state_io") from None
     finally:
         listener.close()
-        deadline = time.monotonic() + 1000
-        for worker in workers:
-            worker.join(max(0, deadline - time.monotonic()))
+        _drain(workers, stop_event)
         if inode is not None:
             with contextlib.suppress(OSError):
                 if path.lstat().st_ino == inode:
                     path.unlink()
+
+
+def _drain(workers, stop_event):
+    """Join accepted workers under one shared remaining deadline."""
+    budget = float(SHUTDOWN_CONTRACT["shutdown_deadline_seconds"])
+    remaining = getattr(stop_event, "remaining", None)
+    if callable(remaining):
+        try:
+            granted = remaining(budget, cleanup=True)
+            if isinstance(granted, (int, float)):
+                budget = float(granted)
+            else:
+                budget = 0.0
+        except Exception:
+            budget = 0.0
+    deadline = time.monotonic() + max(0.0, budget)
+    for worker in workers:
+        worker.join(max(0, deadline - time.monotonic()))
 
 
 def client(socket_path, request, timeout=900):

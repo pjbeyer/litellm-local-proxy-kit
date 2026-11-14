@@ -77,13 +77,21 @@ class Parser(argparse.ArgumentParser):
 
 
 class ShutdownView:
-    """Read-only Event shape for the wire server's existing drain loop."""
+    """Read-only Event shape for the wire server's existing drain loop.
+
+    Exposes the shared shutdown deadline budget so the wire drain joins
+    accepted workers under the one remaining shared deadline, never a
+    fresh budget per worker.
+    """
 
     def __init__(self, shutdown):
         self.shutdown = shutdown
 
     def is_set(self):
         return self.shutdown.requested
+
+    def remaining(self, limit, *, cleanup):
+        return self.shutdown.remaining(limit, cleanup=cleanup)
 
 
 def main(argv=None):

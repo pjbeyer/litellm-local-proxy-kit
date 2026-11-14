@@ -8,6 +8,8 @@ simulated in-handler calls and threads, never delivered OS signals.
 import importlib.util
 import dataclasses
 import math
+import os
+from pathlib import Path
 import sys
 import threading
 import time
@@ -698,3 +700,201 @@ def test_commitment_clock_reentry_cannot_admit_after_latch():
     with pytest.raises(ShutdownRequested, match="controller_stopping"):
         latch.commit("primary-stop")
     assert latch.requested
+
+
+# -- T013: wire/CLI bounded drain over real Unix sockets ----------------------
+
+import tempfile
+
+
+class _LatchView:
+    """Event shape exposing the shared shutdown budget like the CLI view."""
+
+    def __init__(self, shutdown):
+        self.shutdown = shutdown
+
+    def is_set(self):
+        return self.shutdown.requested
+
+    def remaining(self, limit, *, cleanup):
+        return self.shutdown.remaining(limit, cleanup=cleanup)
+
+
+def _wait_bound(path, thread, timeout=5.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if path.exists():
+            return
+        assert thread.is_alive(), "server exited before binding"
+        time.sleep(0.01)
+    raise AssertionError("socket never bound")
+
+
+def _serve_root():
+    """Private 0700 parent like the real state dir; wire refuses looser.
+
+    Created under TMPDIR like every other suite: the wire validator walks
+    every ancestor and refuses symlinked paths, which pytest's default
+    basetemp (/var -> /private/var) contains.
+    """
+    root = Path(tempfile.mkdtemp(prefix="t013-", dir=os.environ.get("TMPDIR")
+                                 or tempfile.gettempdir()))/"state"
+    root.mkdir(mode=0o700)
+    return root
+
+
+def test_wire_drain_joins_under_one_shared_budget(tmp_path):
+    """Stuck workers share ONE deadline from the latch, not per-worker."""
+    import socket
+    from core.restart_control.shutdown import Shutdown
+    from core.restart_control.wire import serve, client
+
+    class StuckController:
+        uid = os.getuid()
+
+        def __init__(self):
+            self.entered = threading.Event()
+
+        def handle(self, request):
+            self.entered.set()
+            time.sleep(60)  # stuck far beyond any drain budget
+
+    controller = StuckController()
+    now = [0.0]
+    shutdown = Shutdown(clock=lambda: now[0])
+    view = _LatchView(shutdown)
+    path = _serve_root()/"controller.sock"
+    thread = threading.Thread(target=serve, args=(path, controller, view), daemon=True)
+    thread.start()
+    _wait_bound(path, thread)
+    try:
+        client(path, {"op": "status"}, timeout=5)
+    except Exception:
+        pass
+    assert controller.entered.wait(5)
+    # Latch, then run the shared clock past the fixed deadline so the
+    # drain's cleanup budget is exhausted before it starts.
+    shutdown.request()
+    now[0] = 60.0  # past the 50s deadline fixed at request time
+    started = time.monotonic()
+    thread.join(10)
+    elapsed = time.monotonic() - started
+    # The stuck worker never finishes; the drain must give up at the
+    # exhausted shared budget, not wait 50s per worker or forever.
+    assert not thread.is_alive(), "serve did not return after shared budget"
+    assert elapsed < 5, f"drain waited {elapsed:.1f}s; budget was exhausted"
+    assert not path.exists(), "socket not unlinked after drain"
+
+
+def test_wire_drain_uses_fixed_budget_without_latch_view(tmp_path):
+    """A plain Event stop source falls back to the fixed contract budget."""
+    from core.restart_control.wire import serve, client
+
+    class SlowController:
+        uid = os.getuid()
+
+        def handle(self, request):
+            time.sleep(1.5)
+            return {"status": "ok"}
+
+    controller = SlowController()
+    stop = threading.Event()
+    path = _serve_root()/"controller.sock"
+    thread = threading.Thread(target=serve, args=(path, controller, stop), daemon=True)
+    thread.start()
+    _wait_bound(path, thread)
+    client(path, {"op": "status"}, timeout=5)
+    stop.set()
+    started = time.monotonic()
+    thread.join(30)
+    elapsed = time.monotonic() - started
+    assert not thread.is_alive()
+    # The slow worker finishes inside the 50s fixed budget; the drain waits
+    # for it (join is bounded) and the socket is cleaned up.
+    assert elapsed < 10
+    assert not path.exists()
+
+
+def test_wire_drain_repeated_signals_and_lost_clients(tmp_path):
+    """Repeated shutdown requests, queued connections and lost clients."""
+    import socket
+    from core.restart_control.shutdown import Shutdown
+    from core.restart_control.wire import serve
+
+    class Controller:
+        uid = os.getuid()
+
+        def handle(self, request):
+            return {"status": "ok"}
+
+    controller = Controller()
+    shutdown = Shutdown()
+    view = _LatchView(shutdown)
+    path = _serve_root()/"controller.sock"
+    thread = threading.Thread(target=serve, args=(path, controller, view), daemon=True)
+    thread.start()
+    _wait_bound(path, thread)
+    # Lost client: connect and vanish without sending anything.
+    lost = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    lost.connect(str(path))
+    lost.close()
+    # A queued connection the listener never accepted stays in the backlog.
+    queued = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    queued.connect(str(path))
+    queued.sendall(b'{"op":"status"}\n')
+    queued.recv(1)  # server may answer; irrelevant to the drain
+    queued.close()
+    # Repeated signals: the first fixes the deadline, later ones no-op.
+    for _ in range(5):
+        shutdown.request()
+    thread.join(30)
+    assert not thread.is_alive(), "repeated signals stalled the drain"
+    assert not path.exists(), "socket not cleaned after repeated signals"
+
+
+def test_wire_drain_inodesafe_cleanup_never_unlinks_replacement(tmp_path):
+    """A replaced socket file at the same path is never unlinked."""
+    from core.restart_control.shutdown import Shutdown
+    from core.restart_control.wire import serve
+
+    class Controller:
+        uid = os.getuid()
+
+        def handle(self, request):
+            return {"status": "ok"}
+
+    controller = Controller()
+    view = _LatchView(Shutdown())
+    path = _serve_root()/"controller.sock"
+    thread = threading.Thread(target=serve, args=(path, controller, view), daemon=True)
+    thread.start()
+    _wait_bound(path, thread)
+    bound_inode = path.lstat().st_ino
+    # Replace the socket with a different file before the drain cleans up.
+    path.unlink()
+    replacement = path
+    replacement.write_text("replacement")
+    view.shutdown.request()
+    thread.join(30)
+    assert not thread.is_alive()
+    # The replacement survived: only the exact bound inode is ever unlinked.
+    assert replacement.read_text() == "replacement"
+    assert replacement.lstat().st_ino != bound_inode
+
+
+def test_cli_view_exposes_shared_budget():
+    """The CLI's ShutdownView forwards remaining() to the shared latch."""
+    from core.restart_controller import ShutdownView
+    from core.restart_control.shutdown import Shutdown
+
+    latch = Shutdown(clock=lambda: 0.0)
+    view = ShutdownView(latch)
+    assert view.is_set() is False
+    assert view.remaining(50, cleanup=True) == 50.0
+    latch.request()
+    assert view.is_set() is True
+    # After the latch the cleanup budget is the remaining shared deadline
+    # (50s contract from t=0 means the deadline is 50.0; clock is frozen).
+    assert view.remaining(50, cleanup=True) == 50.0
+    with pytest.raises(Exception):
+        view.remaining(50, cleanup=False)  # normal admission fails closed
