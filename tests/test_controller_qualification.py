@@ -26,9 +26,10 @@ def context(runtime, private_root):
         'ProgramArguments': [runtime.python, '-I', str(runtime.controller_root/'restart_controller.py'),
                              '--policy', str(runtime.policy_path), 'serve'],
         'WorkingDirectory': str(runtime.controller_root), 'RunAtLoad': True, 'KeepAlive': True,
-        'ThrottleInterval': 30, 'ExitTimeOut': 1000,
+        'ThrottleInterval': 30, 'ExitTimeOut': 60,
         'EnvironmentVariables': {'HOME': str(home),
-            'PATH': '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin'},
+            'PATH': '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
+            'OSLogRateLimit': '64'},
         'StandardOutPath': '/dev/null', 'StandardErrorPath': '/dev/null'}
     supervisor.write_bytes(plistlib.dumps(expected, sort_keys=True))
     supervisor.chmod(0o600)
@@ -99,7 +100,7 @@ def test_matching_birth_cannot_hide_wrong_loaded_controller(context, variant):
     elif variant == 'environment': changes['EnvironmentVariables'] = dict(expected['EnvironmentVariables'], PATH='/usr/bin')
     elif variant == 'extra_environment': changes['EnvironmentVariables'] = dict(expected['EnvironmentVariables'], FIXTURE_UNEXPECTED='1')
     elif variant == 'service_name': changes['EnvironmentVariables'] = dict(expected['EnvironmentVariables'], XPC_SERVICE_NAME='fixture.wrong')
-    elif variant == 'exit_timeout': changes['ExitTimeOut'] = 60
+    elif variant == 'exit_timeout': changes['ExitTimeOut'] = 1000  # old generation
     else: changes['ThrottleInterval'] = 90
     with pytest.raises(Fault, match='qualification_invalid'):
         qualify(context, loaded_text(context, changes))
@@ -171,15 +172,37 @@ def test_installer_and_qualification_share_generated_definition(context):
         assert controller_job(context.runtime.policy, context.runtime.policy_path, context.runtime.python) == context.expected
 
 
-@pytest.mark.parametrize('variant', ['duplicate', 'nested_only', 'malformed', 'wrong_with_nested_match'])
+@pytest.mark.parametrize('variant', ['duplicate', 'nested_only', 'malformed', 'wrong_with_nested_match', 'clamped_declaration'])
 def test_loaded_exit_timeout_observation_is_unique_top_level_and_exact(context, variant):
     qualify(context)
-    line='\texit timeout = 1000\n'
+    line='\texit timeout = 60\n'
     text=loaded_text(context)
     assert text.count(line)==1
-    if variant=='duplicate':text=text.replace(line,line+'\texit timeout = 60\n')
-    elif variant=='nested_only':text=text.replace(line,'\tresource coalition = {\n\t\texit timeout = 1000\n\t}\n')
+    if variant=='duplicate':text=text.replace(line,line+'\texit timeout = 1000\n')
+    elif variant=='nested_only':text=text.replace(line,'\tresource coalition = {\n\t\texit timeout = 60\n\t}\n')
     elif variant=='malformed':text=text.replace(line,'\texit timeout = true\n')
-    else:text=text.replace(line,'\texit timeout = 60\n\tresource coalition = {\n\t\texit timeout = 1000\n\t}\n')
+    elif variant=='clamped_declaration':text=text.replace(line,'\texit timeout = 59.5\n')
+    else:text=text.replace(line,'\texit timeout = 1000\n\tresource coalition = {\n\t\texit timeout = 60\n\t}\n')
+    with pytest.raises(Fault, match='qualification_invalid'):
+        qualify(context,text)
+
+
+@pytest.mark.parametrize('variant', ['missing', 'wrong_value', 'wrong_type', 'duplicate'])
+def test_loaded_logging_environment_is_declared_exactly(context, variant):
+    """OSLogRateLimit is a declared key, not an implicitly ignored extra."""
+    qualify(context)
+    text=loaded_text(context)
+    if variant=='missing':
+        text='\n'.join(l for l in text.splitlines()
+                       if not l.strip().startswith('OSLogRateLimit =>'))
+    elif variant=='wrong_value':
+        text=text.replace('OSLogRateLimit => 64','OSLogRateLimit => 128')
+    elif variant=='wrong_type':
+        text=text.replace('OSLogRateLimit => 64','OSLogRateLimit => true')
+    else:
+        env_line='\t\tOSLogRateLimit => 64\n'
+        # duplicate the exact env line inside the environment block
+        text=text.replace(env_line, env_line+'\t\tOSLogRateLimit => 64\n')
+    text=text+'\n'
     with pytest.raises(Fault, match='qualification_invalid'):
         qualify(context,text)

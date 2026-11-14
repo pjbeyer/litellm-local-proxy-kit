@@ -33,15 +33,23 @@ POLICY_FIELDS = {'version', 'kit_root', 'deployment_root', 'plist', 'auto_plist'
 
 
 def controller_job(policy, policy_path, python):
-    """The single generated controller definition used by install and qualify."""
+    """The single generated controller definition used by install and qualify.
+
+    The supervision generation is declared, not observed: the exit timeout
+    and the launchd logging key come from the frozen SHUTDOWN_CONTRACT so
+    installer and qualification share one exact source.
+    """
+    from .shutdown import SHUTDOWN_CONTRACT
     destination = Path(policy['controller_root'])
     return {'Label': policy['controller_label'],
         'ProgramArguments': [python, '-I', str(destination/'restart_controller.py'),
                              '--policy', str(policy_path), 'serve'],
         'WorkingDirectory': str(destination), 'RunAtLoad': True, 'KeepAlive': True,
-        'ThrottleInterval': 30, 'ExitTimeOut': 1000,
+        'ThrottleInterval': 30,
+        'ExitTimeOut': SHUTDOWN_CONTRACT['supervisor_exit_seconds'],
         'EnvironmentVariables': {'HOME': str(Path.home()),
-            'PATH': '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin'},
+            'PATH': '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
+            **SHUTDOWN_CONTRACT['logging_environment']},
         'StandardOutPath': '/dev/null', 'StandardErrorPath': '/dev/null'}
 
 
@@ -982,6 +990,11 @@ class Runtime:
                 for line in envmatch.group(1).splitlines():
                     if ' => ' in line:
                         key, value = line.strip().split(' => ', 1)
+                        # A repeated key cannot attest which value launchd
+                        # actually loaded; the observation is ambiguous and
+                        # refuses rather than picking one.
+                        if key in actual_env:
+                            return None
                         actual_env[key] = value
             parity = (field('path') == str(expected_path) and args == expected['ProgramArguments']
                       and all(actual_env.get(k) == v for k, v in expected['EnvironmentVariables'].items())
