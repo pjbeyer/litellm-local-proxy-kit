@@ -1,0 +1,42 @@
+core/restart_control/wire.py
+  s_a99f3fbae17f52::t_9ce3635938aeb0 140-143
+  s_a99f3fbae17f52::t_736bebc491ef2b 135
+  s_a99f3fbae17f52::t_833b6cf203fd1c 15
+  s_a99f3fbae17f52::t_5a74f4628db1f8 139
+  s_a99f3fbae17f52::t_5cd563d711c591 84-92,126,133-134,136-138,144-148
+  s_a99f3fbae17f52::t_687f3aae9c53f3 149-150
+core/restart_controller.py
+  s_a99f3fbae17f52::t_44297ffad56e81 80-85,94
+  s_a99f3fbae17f52::t_ec840bc447a975 93
+  s_a99f3fbae17f52::t_f49519304542d4 95
+tests/test_controller_shutdown.py
+  s_a99f3fbae17f52::t_ac928ff0d80f63 765
+  s_a99f3fbae17f52::t_730f44d47de701 797
+  s_a99f3fbae17f52::t_b1b8189d648996 867,874
+  s_a99f3fbae17f52::t_c994e1c14b2674 11
+  s_a99f3fbae17f52::t_59ef9f2e240b20 762-763,774-775,777,779,781-782,784
+  s_a99f3fbae17f52::t_0bc46af3b9e469 703-705,709-717,719-729,731,734,745-761,764,766-773,776,778,780,783,785-796,798-800,802-831,833-866,868-873,875-898
+  s_a99f3fbae17f52::t_318e04b24bd59f 706-708,718,730,732-733,735-740
+  s_a99f3fbae17f52::t_b6951b2f5605ce 801
+  s_a99f3fbae17f52::t_506c69c27a65b4 832
+  s_a99f3fbae17f52::t_d04b5f8b1b66e1 899
+  s_a99f3fbae17f52::t_840accb83135ca 741-744
+  s_a99f3fbae17f52::t_dfabfe9ab3369c 12
+  s_a99f3fbae17f52::t_19ede3c525da50 900
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "924f68ba2d4172a0617381508856db2e3993a06c",
+  "prompts": {},
+  "sessions": {
+    "s_a99f3fbae17f52": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261114_162836_2a4e22",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
