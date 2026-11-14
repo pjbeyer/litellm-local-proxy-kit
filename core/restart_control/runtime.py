@@ -1,6 +1,7 @@
 """Fixed macOS backend. No caller-provided commands, primary signals or logs."""
 from __future__ import annotations
 import contextlib
+import hashlib
 import http.client
 import json
 import math
@@ -197,6 +198,25 @@ class Runtime:
             raise
         except Fault:
             raise
+        except Exception:
+            raise Fault('runtime_invalid') from None
+
+    def binding_facts(self):
+        """Pre-freeze journal binding facts from already-loaded sources.
+
+        No spawn, no proof: the controller source digest comes from the
+        loaded kit facts and the controller-plist digest is the exact
+        generated controller plist bytes (identical to the installed
+        supervisor file when qualification passes). Null asset/runtime
+        digests bind pre-freeze work only; freeze fills both later.
+        """
+        try:
+            controller = {name: self._loaded_sources[name] for name in CONTROLLER_INPUTS}
+            job = controller_job(self.policy, self.policy_path, self.python)
+            return {'policy_digest': self.policy_digest,
+                    'controller_digest': canonical_digest(controller),
+                    'controller_plist_digest': hashlib.sha256(
+                        plistlib.dumps(job, sort_keys=True)).hexdigest()}
         except Exception:
             raise Fault('runtime_invalid') from None
 

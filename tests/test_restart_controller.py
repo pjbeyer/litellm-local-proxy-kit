@@ -28,6 +28,11 @@ class FixtureBackend:
         self.fail = None
         self.managed = True
         self.identity = {"pid": 123, "uid": os.getuid(), "birth": [1, 2]}
+        self.approval_root = Path()  # wired by setUp to the controller approvals dir
+
+    def binding_facts(self):
+        self.call("binding_facts")
+        return {"policy_digest": D, "controller_digest": D, "controller_plist_digest": D}
 
     def call(self, name, value=None):
         self.calls.append(name)
@@ -87,6 +92,7 @@ class ControllerTest(unittest.TestCase):
         self.controller = Controller(self.root / "state", self.backend,
                                      clock=lambda: self.now, monotonic=lambda: self.mono,
                                      test_lifecycle=FixtureLifecycleAdapter(namespace='core'))
+        self.backend.approval_root = self.controller.approvals
 
     def prepare(self):
         result = self.controller.handle({"op": "prepare"})

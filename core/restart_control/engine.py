@@ -326,33 +326,91 @@ class Controller:
             raise Fault("state_io") from None
         return _result("ok", epoch=self.epoch, recent=recent)
 
+    def _admit(self):
+        """Latch admission between backend steps; never wrap the stop away."""
+        from .shutdown import ShutdownRequested
+        try:
+            self.shutdown.checkpoint()
+        except ShutdownRequested:
+            raise Fault("controller_stopping") from None
+
+    def _journal(self, name, *args, **kwargs):
+        """One closed mapping from journal failure to a recovery Fault."""
+        from .recovery import RecoveryError
+        try:
+            return getattr(self.recovery, name)(*args, **kwargs)
+        except Fault:
+            raise
+        except RecoveryError:
+            raise Fault("recovery_invalid") from None
+        except Exception:
+            raise Fault("recovery_invalid") from None
+
+    def _begin_backend_operation(self, ticket):
+        """Give a lifecycle-aware backend the exact active journal context."""
+        starter = getattr(self.backend, "begin_operation", None)
+        if starter is None:
+            return
+        try:
+            starter(ticket)
+        except Fault:
+            raise
+        except Exception:
+            raise Fault("recovery_invalid") from None
+
     def _prepare(self):
         wall, mono = self._time()
         request_id = uuid.uuid4().hex
         before = None
+        ticket = None
         plan = {"request_id": request_id, "phase": "preparing", "controller_epoch": self.epoch,
                 "scope": "fixture" if getattr(self.backend, "fixture", False) else "production",
                 "shared_state_side_effects": not getattr(self.backend, "fixture", False)}
-        self._record(plan)
         try:
+            self._admit()
             before = self._inspect()
             if before["identity"]["uid"] != self.uid:
                 raise Fault("primary_changed")
+            facts = getattr(self.backend, "binding_facts", None)
+            if facts is not None:
+                facts = self._call("binding_facts")
+                if (not isinstance(facts, dict)
+                        or set(facts) != {"policy_digest", "controller_digest", "controller_plist_digest"}
+                        or not all(isinstance(facts[k], str) and _DIGEST.fullmatch(facts[k]) for k in facts)):
+                    raise Fault("runtime_invalid")
+            if facts is not None:
+                binding = {"request_id": request_id, "kind": "proxy",
+                           "controller_epoch": self.epoch,
+                           "policy_digest": facts["policy_digest"],
+                           "controller_digest": facts["controller_digest"],
+                           "controller_plist_digest": facts["controller_plist_digest"],
+                           "asset_digest": None, "runtime_digest": None}
+                # The preparing operation is durable before any helper can
+                # exist and before its request record: the store requires a
+                # request to be covered by an operation row.
+                ticket = self._journal("begin", binding, plan["scope"])
+                self._begin_backend_operation(ticket)
+            self._record(plan)
             frozen = self._freeze()
+            self._admit()
             self._call("check_gates")
             primary_checks = self._call("accept_primary", before["identity"])
+            self._admit()
             candidate_checks = self._call("rehearse")
             if not isinstance(primary_checks, dict) or not isinstance(candidate_checks, dict):
                 raise Fault("candidate_failed")
-            binding = {"asset_digest": frozen["asset_digest"], "runtime_digest": frozen["runtime_digest"]}
+            binding2 = {"asset_digest": frozen["asset_digest"], "runtime_digest": frozen["runtime_digest"]}
             snapshot_path = self.snapshots / request_id
             private_dir(snapshot_path)
+            self._admit()
             lkg_binding = self._call("snapshot_lkg", snapshot_path)
-            if lkg_binding != binding:
+            if lkg_binding != binding2:
                 raise Fault("lkg_invalid")
+            self._admit()
             after = self._inspect()
             if after != before:
                 raise Fault("primary_changed")
+            self._admit()
             if self._freeze() != frozen:
                 raise Fault("plan_stale")
             if not before["managed"]:
@@ -360,11 +418,15 @@ class Controller:
             wall, mono = self._time()
             plan.update({"phase": "prepared", "uid": self.uid, "label": self.backend.label,
                          "original_identity": before["identity"], **frozen,
-                         "candidate_binding": binding, "lkg_binding": lkg_binding,
+                         "candidate_binding": binding2, "lkg_binding": lkg_binding,
                          "primary_checks": primary_checks, "candidate_checks": candidate_checks,
                          "prepared_at": wall, "prepared_monotonic": mono,
                          "expires_at": wall + 300, "expires_monotonic": mono + 300})
             self._record(plan)
+            # Fill both frozen digests once and close the preparation stage.
+            ticket = self._journal("bind_frozen", ticket,
+                                   frozen["asset_digest"], frozen["runtime_digest"])
+            self._journal("finish", ticket)
             return _result("prepared", **plan)
         except Fault as exc:
             if before is not None:
@@ -374,6 +436,14 @@ class Controller:
                     plan["original_preserved"] = False
             plan.update(phase="blocked", code=exc.code)
             self._record(plan)
+            if ticket is not None:
+                # Zero-control interruption: close the preparing stage against
+                # the durable blocked request; a failed close leaves the row
+                # pending for operator reconciliation, never a silent retry.
+                with contextlib.suppress(Exception):
+                    self._journal("finish", ticket)
+                with contextlib.suppress(Exception):
+                    self._journal("end_operation", ticket)
             return _result("blocked", exc.code, request_id=request_id,
                            original_preserved=plan.get("original_preserved", False), scope=plan["scope"])
 
@@ -404,13 +474,15 @@ class Controller:
         plan["phase"] = phase
         self._record(plan)
 
-    def _manual(self, plan, code):
+    def _manual(self, plan, ticket, code):
         failed_phase = plan["phase"]
         plan.update(code=code, failed_phase=failed_phase)
         # A failed durable write cannot authorize another service-control call.
         # Preserve the previous on-disk uncertainty and report manual recovery.
         with contextlib.suppress(Fault):
             self._phase(plan, "manual_recovery_required")
+        with contextlib.suppress(Exception):
+            self._journal("phase", ticket, "manual_recovery_required")
         return _result("manual_recovery_required", code, request_id=plan["request_id"],
                        failed_phase=failed_phase, scope=plan["scope"])
 
@@ -437,13 +509,18 @@ class Controller:
             raise Fault("plan_stale")
         if request["asset_digest"] != plan.get("asset_digest"):
             raise Fault("plan_stale")
-        self._call("qualify", plan)
+        # A checked refusal (missing/invalid/stale approval) must not poison
+        # the durable prepared record: validate fully before any journal
+        # reopen; reopen then revalidates the unconsumed record itself.
         approval = self._approval(plan, wall, mono)
+        self._admit()
+        self._call("qualify", plan)
         if self._freeze() != {k: plan[k] for k in ("asset_digest", "runtime_digest", "policy_digest", "controller_digest")}:
             raise Fault("plan_stale")
         current = self._inspect()
         if current["identity"] != plan["original_identity"] or not current["managed"]:
             raise Fault("primary_changed")
+        self._admit()
         self._call("check_gates")
         snapshot_path = self.snapshots / request_id
         self._call("validate_lkg", snapshot_path, plan["lkg_binding"])
@@ -452,9 +529,19 @@ class Controller:
         self._approval(plan, wall, mono)
         if self._freeze() != {k: plan[k] for k in ("asset_digest", "runtime_digest", "policy_digest", "controller_digest")} or self._inspect() != current:
             raise Fault("plan_stale")
+        self._admit()
         self._call("qualify", plan)
         wall, mono = self._time()
         self._approval(plan, wall, mono)
+        # Reopen the durable prepared operation as restart_pending under the
+        # mutation lock only after every read-only validation holds: from
+        # here a refusal is interruption, and the journal gates control.
+        ticket = self._journal("operation_ticket", request_id)
+        ticket = self._journal("reopen_restart", ticket)
+        self._begin_backend_operation(ticket)
+        # Arm the fence before the first primary-control commitment; sync the
+        # fence and the consumed approval before any control action.
+        self._journal("arm_mutation", ticket)
         consumed = self.approvals / (request_id + ".consumed")
         try:
             os.replace(approval, consumed)
@@ -466,39 +553,79 @@ class Controller:
         except OSError:
             raise Fault("state_io") from None
         self._phase(plan, "intent_consumed")
+        ticket = self._journal("phase", ticket, "intent_consumed")
+        committed = False
         try:
             self._phase(plan, "stopping")
+            permit = self._commit_control("service-stop")
+            ticket = self._journal("phase", ticket, "stopping",
+                                   committed_action=(self.shutdown, permit))
+            committed = True
+            self._admit()
             self._call("qualify", plan)
             wall, mono = self._time()
             self._approval(plan, wall, mono, consumed=True)
             self._call("stop")
             self._phase(plan, "starting")
+            ticket = self._journal("phase", ticket, "starting")
             self._call("start")
         except Fault as exc:
-            return self._manual(plan, exc.code)
+            return self._manual(plan, ticket, exc.code)
         try:
             self._phase(plan, "postchecking")
+            ticket = self._journal("phase", ticket, "postchecking")
             accepted = self._accept_started(plan["original_identity"])
             plan["started"] = accepted
             self._phase(plan, "restarted")
+            self._finish_accepted(ticket, plan, "restarted")
             return _result("restarted", request_id=request_id, checks=accepted.get("checks", {}), scope=plan["scope"])
         except Fault as exc:
             if exc.code in {"service_control_denied", "service_control_timeout", "state_io"}:
-                return self._manual(plan, exc.code)
+                return self._manual(plan, ticket, exc.code)
         try:
             self._phase(plan, "rollback_stopping")
+            if not committed:
+                permit = self._commit_control("service-stop")
+                ticket = self._journal("phase", ticket, "rollback_stopping",
+                                       committed_action=(self.shutdown, permit))
+            else:
+                ticket = self._journal("phase", ticket, "rollback_stopping")
             self._call("stop")
             self._phase(plan, "rollback_restoring")
+            ticket = self._journal("phase", ticket, "rollback_restoring")
             self._call("restore_lkg", snapshot_path, plan["lkg_binding"])
             self._phase(plan, "rollback_starting")
+            ticket = self._journal("phase", ticket, "rollback_starting")
             self._call("start")
             self._phase(plan, "rollback_postchecking")
+            ticket = self._journal("phase", ticket, "rollback_postchecking")
             accepted = self._accept_started(plan["original_identity"])
             plan["rollback"] = accepted
             self._phase(plan, "rolled_back")
+            self._finish_accepted(ticket, plan, "rolled_back")
             return _result("rolled_back", request_id=request_id, checks=accepted.get("checks", {}), scope=plan["scope"])
         except Fault as exc:
-            return self._manual(plan, exc.code)
+            return self._manual(plan, ticket, exc.code)
+
+    def _commit_control(self, purpose):
+        """One-permit commitment for the first primary control action."""
+        from .shutdown import ShutdownRequested
+        try:
+            return self.shutdown.commit(purpose)
+        except ShutdownRequested:
+            raise Fault("controller_stopping") from None
+
+    def _finish_accepted(self, ticket, plan, terminal):
+        """Close the journaled restart and clear the fence after acceptance.
+
+        RecoveryStore.phase() rejects terminal phases by design; the accepted
+        terminal transition is finish()'s alone: it rechecks the complete
+        engine request, the consumed approval and closed children before
+        clearing the fence.
+        """
+        plan["phase"] = terminal
+        self._record(plan)
+        self._journal("finish", ticket)
 
     def handle(self, request):
         if not isinstance(request, dict) or type(request.get("op")) is not str:

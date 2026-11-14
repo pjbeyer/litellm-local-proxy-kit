@@ -213,6 +213,7 @@ class FakeLaunchctlBackend:
         self.birth_usec_delta = 0
         self.qualify_hooks = {}        # qualify ordinal -> callable
         self.restored = None
+        self.approval_root = Path()   # set by FixtureRig to the state root's approvals dir
 
     def _note(self, name):
         self.calls.append(name)
@@ -236,6 +237,12 @@ class FakeLaunchctlBackend:
     def freeze(self):
         self._note("freeze")
         return dict(FIXTURE_FREEZE)
+
+    def binding_facts(self):
+        self._note("binding_facts")
+        return {"policy_digest": FIXTURE_FREEZE["policy_digest"],
+                "controller_digest": FIXTURE_FREEZE["controller_digest"],
+                "controller_plist_digest": hashlib.sha256(b"fixture-controller-plist").hexdigest()}
 
     def check_gates(self):
         self._note("check_gates")
@@ -380,6 +387,7 @@ class FixtureRig:
         self.mono = [500.0]
         self.backend = FakeLaunchctlBackend(self.root, self.script)
         self.state = self.root / "state"
+        self.backend.approval_root = self.state / "approvals"
         self.controller = Controller(self.state, self.backend,
                                      clock=lambda: self.wall[0],
                                      monotonic=lambda: self.mono[0],
