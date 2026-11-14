@@ -13,7 +13,10 @@ from unittest import mock
 import pytest
 from test_restart_runtime import runtime, private_root
 from restart_control.engine import Fault, atomic_json
+from restart_control.runtime import (CANARY_EVIDENCE_KEYS, CANARY_CHECK_KEYS,
+                                     controller_job, controller_supervision)
 from restart_control.runtime_identity import file_fact
+from restart_control.shutdown import SHUTDOWN_CONTRACT
 
 
 @pytest.fixture
@@ -36,17 +39,44 @@ def context(runtime, private_root):
     plan = dict(runtime.freeze(), controller_epoch='a'*32)
     identity = {'pid': os.getpid(), 'uid': os.getuid(), 'birth': [1, 1]}
     now, mono = time.time(), time.monotonic()
-    record = {'version': 1, 'operator_uid': os.getuid(),
+    # Fixture canary evidence: scope 'fixture' only; the real producer
+    # arrives in later tasks and fixture records never become accepted
+    # production qualifications.
+    evidence = {'version': 1, 'scope': 'fixture', 'nonce': '0'*32,
+        'boot_identity': 'fixture-boot-identity', 'operator_uid': os.getuid(),
+        'controller_identity': identity, 'controller_epoch': plan['controller_epoch'],
+        'controller_digest': plan['controller_digest'], 'policy_digest': plan['policy_digest'],
+        'controller_plist_digest': hashlib.sha256(supervisor.read_bytes()).hexdigest(),
+        'controller_supervision': controller_supervision(expected),
+        'shutdown_contract': json.loads(json.dumps(dict(SHUTDOWN_CONTRACT))),
+        'canary_label': 'local.restart-canary.'+'0'*32, 'canary_plist_digest': 'd'*64,
+        'incarnations': [{'pid': 41001, 'uid': os.getuid(), 'ppid': 1, 'pgid': 41001,
+                          'birth': [2, 0], 'runs': 1},
+                         {'pid': 41002, 'uid': os.getuid(), 'ppid': 1, 'pgid': 41002,
+                          'birth': [3, 0], 'runs': 2}],
+        'checks': {key: True for key in CANARY_CHECK_KEYS}, 'detail_digest': 'e'*64,
+        'issued_at': now-1, 'issued_monotonic': mono-1}
+    assert set(evidence) == CANARY_EVIDENCE_KEYS
+    evidence_dir = runtime.state/'canary'/'evidence'
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    blob = json.dumps(evidence, sort_keys=True).encode()
+    evidence_path = evidence_dir/(hashlib.sha256(blob).hexdigest()+'.json')
+    evidence_path.write_bytes(blob)
+    evidence_path.chmod(0o600)
+    canary_digest = file_fact(evidence_path)['sha256']
+    record = {'version': 2, 'operator_uid': os.getuid(),
         'controller_label': expected['Label'], 'controller_identity': identity,
         'controller_digest': plan['controller_digest'], 'policy_digest': plan['policy_digest'],
         'plist_digest': file_fact(runtime.plist)['sha256'], 'controller_epoch': plan['controller_epoch'],
         'issued_at': now-1, 'expires_at': now+60, 'issued_monotonic': mono-1,
-        'expires_monotonic': mono+60, 'canary_evidence_digest': 'b'*64,
+        'expires_monotonic': mono+60, 'canary_evidence_digest': canary_digest,
+        'shutdown_contract': json.loads(json.dumps(dict(SHUTDOWN_CONTRACT))),
         'controller_plist_digest': hashlib.sha256(supervisor.read_bytes()).hexdigest(),
-        'controller_supervision': {key: expected[key] for key in ('KeepAlive', 'ThrottleInterval', 'RunAtLoad', 'ExitTimeOut')}}
+        'controller_supervision': controller_supervision(expected)}
     atomic_json(runtime.state/'qualification.json', record)
     value = SimpleNamespace(runtime=runtime, home=home, supervisor=supervisor, expected=expected,
-                            record=record, plan=plan, identity=identity)
+                            record=record, plan=plan, identity=identity,
+                            evidence=evidence, evidence_path=evidence_path)
     yield value
 
 
@@ -206,3 +236,111 @@ def test_loaded_logging_environment_is_declared_exactly(context, variant):
     text=text+'\n'
     with pytest.raises(Fault, match='qualification_invalid'):
         qualify(context,text)
+
+
+# -- T015: qualification v2 shutdown-contract and evidence bindings -----------
+
+@pytest.mark.parametrize('variant', ['missing', 'extra_field', 'legacy_version', 'boolean_version',
+                                   'wrong_deadline', 'wrong_logging', 'extra_contract_key'])
+def test_shutdown_contract_binding_downgrades_in_turn(context, variant):
+    """Each independent shutdown-contract binding refuses on its own."""
+    qualify(context)
+    record = copy.deepcopy(context.record)
+    if variant == 'missing':
+        record.pop('shutdown_contract')
+    elif variant == 'extra_field':
+        record['unexpected_binding'] = 1
+    elif variant == 'legacy_version':
+        record['version'] = 1  # legacy v1 records refuse; no automatic upgrade
+    elif variant == 'boolean_version':
+        record['version'] = True
+    elif variant == 'wrong_deadline':
+        record['shutdown_contract']['shutdown_deadline_seconds'] = 100
+    elif variant == 'wrong_logging':
+        record['shutdown_contract']['logging_environment']['OSLogRateLimit'] = '128'
+    else:
+        record['shutdown_contract']['future_key'] = 'fixture'
+    atomic_json(context.runtime.state/'qualification.json', record)
+    with pytest.raises(Fault, match='qualification_invalid'):
+        qualify(context)
+
+
+@pytest.mark.parametrize('variant', ['missing_file', 'digest_mismatch', 'public_mode', 'unowned',
+                                   'symlink', 'extra_key', 'wrong_scope', 'false_check', 'bad_checks'])
+def test_canary_evidence_file_bindings_fail_closed(context, variant):
+    """The evidence digest references a validated fixed-path file, not a string."""
+    qualify(context)
+    record = copy.deepcopy(context.record)
+    evidence = copy.deepcopy(context.evidence)
+    if variant == 'missing_file':
+        context.evidence_path.unlink()
+        atomic_json(context.runtime.state/'qualification.json', record)
+        with pytest.raises(Fault, match='qualification_invalid'):
+            qualify(context)
+        return
+    if variant == 'digest_mismatch':
+        # Record points at a digest that has no matching evidence file.
+        record['canary_evidence_digest'] = 'f'*64
+    elif variant == 'public_mode':
+        context.evidence_path.chmod(0o644)
+    elif variant == 'unowned':
+        real_stat = Path.stat
+        def stat_fixture(path, *args, **kwargs):
+            info = real_stat(path, *args, **kwargs)
+            if path == context.evidence_path and kwargs.get('follow_symlinks', True):
+                return SimpleNamespace(st_uid=os.getuid()+1)
+            return info
+        atomic_json(context.runtime.state/'qualification.json', record)
+        with mock.patch('restart_control.runtime.Path.stat', autospec=True, side_effect=stat_fixture):
+            with pytest.raises(Fault, match='qualification_invalid'):
+                qualify(context)
+        return
+    elif variant == 'symlink':
+        target = context.evidence_path.with_suffix('.target')
+        context.evidence_path.rename(target)
+        context.evidence_path.symlink_to(target)
+    elif variant == 'extra_key':
+        evidence['unexpected'] = 1
+        blob = json.dumps(evidence, sort_keys=True).encode()
+        record['canary_evidence_digest'] = hashlib.sha256(blob).hexdigest()
+        path = context.evidence_path.parent/(hashlib.sha256(blob).hexdigest()+'.json')
+        path.write_bytes(blob); path.chmod(0o600)
+    elif variant == 'wrong_scope':
+        evidence['scope'] = 'intended-controller'  # fixture files cannot claim production scope
+        blob = json.dumps(evidence, sort_keys=True).encode()
+        record['canary_evidence_digest'] = hashlib.sha256(blob).hexdigest()
+        path = context.evidence_path.parent/(hashlib.sha256(blob).hexdigest()+'.json')
+        path.write_bytes(blob); path.chmod(0o600)
+    elif variant == 'false_check':
+        evidence['checks']['cleanup'] = False
+        blob = json.dumps(evidence, sort_keys=True).encode()
+        record['canary_evidence_digest'] = hashlib.sha256(blob).hexdigest()
+        path = context.evidence_path.parent/(hashlib.sha256(blob).hexdigest()+'.json')
+        path.write_bytes(blob); path.chmod(0o600)
+    else:
+        evidence['checks'] = {**evidence['checks'], 'surprise': True}
+        blob = json.dumps(evidence, sort_keys=True).encode()
+        record['canary_evidence_digest'] = hashlib.sha256(blob).hexdigest()
+        path = context.evidence_path.parent/(hashlib.sha256(blob).hexdigest()+'.json')
+        path.write_bytes(blob); path.chmod(0o600)
+    atomic_json(context.runtime.state/'qualification.json', record)
+    with pytest.raises(Fault, match='qualification_invalid'):
+        qualify(context)
+
+
+def test_sibling_evidence_never_qualifies_another_identity(context):
+    """An isolated sibling controller's evidence cannot qualify this record."""
+    qualify(context)
+    # Re-point the record at a second, separately-owned evidence file that
+    # binds a different controller identity (a sibling test context).
+    sibling = copy.deepcopy(context.evidence)
+    sibling['controller_identity'] = {'pid': 99999, 'uid': os.getuid(), 'birth': [9, 9]}
+    blob = json.dumps(sibling, sort_keys=True).encode()
+    digest = hashlib.sha256(blob).hexdigest()
+    path = context.evidence_path.parent/(digest+'.json')
+    path.write_bytes(blob); path.chmod(0o600)
+    record = copy.deepcopy(context.record)
+    record['canary_evidence_digest'] = digest
+    atomic_json(context.runtime.state/'qualification.json', record)
+    with pytest.raises(Fault, match='qualification_invalid'):
+        qualify(context)

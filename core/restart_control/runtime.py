@@ -57,6 +57,20 @@ def controller_supervision(job):
     return {key: job[key] for key in ('KeepAlive', 'ThrottleInterval', 'RunAtLoad', 'ExitTimeOut')}
 
 
+# Qualification v2 canary-evidence schema (plan §9): the closed envelope key
+# set and derived-check key set qualification revalidates. The producer
+# arrives in later tasks; fixture records carry scope 'fixture' only and can
+# never be accepted as real production qualifications.
+CANARY_EVIDENCE_KEYS = {'version', 'scope', 'nonce', 'boot_identity', 'operator_uid',
+                        'controller_identity', 'controller_epoch', 'controller_digest',
+                        'policy_digest', 'controller_plist_digest', 'controller_supervision',
+                        'shutdown_contract', 'canary_label', 'canary_plist_digest',
+                        'incarnations', 'checks', 'detail_digest', 'issued_at', 'issued_monotonic'}
+CANARY_CHECK_KEYS = {'loaded_definition', 'bootstrap', 'keepalive', 'bootout',
+                     'cleanup', 'shutdown_budget'}
+CANARY_EVIDENCE_SCOPES = {'fixture'}
+
+
 REQUEST_TIMEOUT = 15.0
 HELPER_OUTPUT_LIMIT = 4 * 1024 * 1024
 
@@ -1447,6 +1461,7 @@ class Runtime:
             record = _read_json(self.state/'qualification.json')
         except FileNotFoundError:
             raise Fault('qualification_missing') from None
+        from .shutdown import SHUTDOWN_CONTRACT
         try:
             own = process_identity(os.getpid())
             expected = controller_job(self.policy, self.policy_path, self.python)
@@ -1456,12 +1471,22 @@ class Runtime:
                     or supervisor.read_bytes() != plistlib.dumps(expected, sort_keys=True)):
                 raise ValueError('controller_supervision_invalid')
             job = self._job_state(self.policy['controller_label'], expected=expected, expected_path=supervisor)
+            # Qualification v2: the closed key set gains exactly shutdown_contract.
+            # A version-1 record or any missing/extra field refuses; no
+            # automatic upgrade of legacy evidence is permitted.
             fields = {'version', 'operator_uid', 'controller_label', 'controller_identity',
                       'controller_digest', 'policy_digest', 'plist_digest', 'controller_epoch',
-                      'issued_at', 'expires_at', 'issued_monotonic', 'expires_monotonic', 'canary_evidence_digest',
+                      'issued_at', 'expires_at', 'issued_monotonic', 'expires_monotonic',
+                      'canary_evidence_digest', 'shutdown_contract',
                       'controller_plist_digest', 'controller_supervision'}
-            if (set(record) != fields or type(record['version']) is not int or record['version'] != 1
+            if (set(record) != fields or type(record['version']) is not int or record['version'] != 2
                     or type(record['operator_uid']) is not int):
+                raise ValueError('qualification_invalid')
+            # The shutdown contract is bound by canonical structured comparison,
+            # not a digest-shaped string: a new source/plist/schema is a new
+            # generation and never a reinterpretation of existing evidence.
+            if canonical_digest(record['shutdown_contract']) != canonical_digest(
+                    json.loads(json.dumps(dict(SHUTDOWN_CONTRACT)))):
                 raise ValueError('qualification_invalid')
             identity = {k: own[k] for k in ('pid', 'uid', 'birth')}
             if (own['ppid'] != 1 or record['operator_uid'] != os.getuid() or not job or not job.get('parity') or job['identity'] != identity
@@ -1474,6 +1499,42 @@ class Runtime:
                     or record['controller_plist_digest'] != supervisor_fact['sha256']
                     or canonical_digest(record['controller_supervision']) != canonical_digest(controller_supervision(expected))
                     or not re.fullmatch('[0-9a-f]{64}', record['canary_evidence_digest'])):
+                raise ValueError('qualification_invalid')
+            # The canary evidence is a referenced validated file, not a digest
+            # string: fixed path under canary/evidence/, owned regular 0600,
+            # hash-bound to this record. A sibling controller's evidence or a
+            # missing/unowned/replaced file never qualifies another identity.
+            evidence_path = self.state/'canary'/'evidence'/(record['canary_evidence_digest']+'.json')
+            evidence_fact = _regular(evidence_path)
+            if (evidence_fact['mode'] != 0o600 or evidence_path.stat().st_uid != os.getuid()
+                    or evidence_fact['sha256'] != record['canary_evidence_digest']):
+                raise ValueError('qualification_invalid')
+            evidence = _read_json(evidence_path)
+            # Evidence alone cannot create qualification: validate the closed
+            # v1 evidence structure and require a fixture scope label so a
+            # fixture record can never masquerade as production qualification.
+            if (not isinstance(evidence, dict) or set(evidence) != CANARY_EVIDENCE_KEYS
+                    or type(evidence['version']) is not int or evidence['version'] != 1
+                    or evidence['scope'] not in CANARY_EVIDENCE_SCOPES
+                    or evidence['operator_uid'] != os.getuid()
+                    or not isinstance(evidence.get('checks'), dict)
+                    or set(evidence['checks']) != CANARY_CHECK_KEYS
+                    or any(value is not True for value in evidence['checks'].values())):
+                raise ValueError('qualification_invalid')
+            # The evidence binds THIS controller: identity, epoch and every
+            # digest binding must equal the operator record's, so a sibling
+            # controller's evidence never qualifies another identity.
+            if (canonical_digest(evidence['controller_identity']) != canonical_digest(record['controller_identity'])
+                    or evidence['controller_epoch'] != record['controller_epoch']
+                    or evidence['controller_digest'] != record['controller_digest']
+                    or evidence['policy_digest'] != record['policy_digest']
+                    or evidence['controller_plist_digest'] != record['controller_plist_digest']
+                    or canonical_digest(evidence['controller_supervision']) != canonical_digest(record['controller_supervision'])
+                    or canonical_digest(evidence['shutdown_contract']) != canonical_digest(record['shutdown_contract'])
+                    or not isinstance(evidence.get('incarnations'), list) or len(evidence['incarnations']) != 2
+                    or canonical_digest(evidence['incarnations'][0]) == canonical_digest(evidence['incarnations'][1])
+                    or not re.fullmatch('[0-9a-f]{64}', evidence['detail_digest'])
+                    or not re.fullmatch('[0-9a-f]{32}', evidence['nonce'])):
                 raise ValueError('qualification_invalid')
             for first, last, now in (('issued_at', 'expires_at', time.time()),
                                      ('issued_monotonic', 'expires_monotonic', time.monotonic())):
