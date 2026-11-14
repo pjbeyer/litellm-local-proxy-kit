@@ -71,13 +71,13 @@ def loaded_text(context, changes=None):
 
 def qualify(context, text=None):
     payload = loaded_text(context) if text is None else text
-    def print_only(argv, **kwargs):
+    def observe_only(self, argv, timeout, env=None, control=False):
         assert argv == ['/bin/launchctl', 'print', f'gui/{os.getuid()}/'+context.expected['Label']]
-        return subprocess.CompletedProcess(argv, 0, stdout=payload, stderr='')
+        return 0, payload.encode()
     with mock.patch('restart_control.runtime.Path.home', return_value=context.home), \
          mock.patch('restart_control.runtime.process_identity', return_value={**context.identity, 'ppid': 1}), \
          mock.patch('restart_control.runtime._identity', side_effect=lambda pid: dict(context.identity, pid=pid)), \
-         mock.patch('restart_control.runtime.subprocess.run', side_effect=print_only):
+         mock.patch.object(type(context.runtime), '_observe', autospec=True, side_effect=observe_only):
         context.runtime.qualify(context.plan)
 
 

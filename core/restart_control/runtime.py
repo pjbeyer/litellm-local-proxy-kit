@@ -21,7 +21,8 @@ import uuid
 
 from .engine import Fault, atomic_json, canonical_digest, private_dir, _read_json
 from .process_identity import process_identity, process_group_identities
-from .runtime_identity import (CONTROLLER_INPUTS, PROXY_INPUTS, file_fact, source_facts)
+from .runtime_identity import (CONTROLLER_INPUTS, PROXY_INPUTS, file_fact, source_facts,
+                               _owned_observer_stop)
 
 from .runtime_identity import PROXY_OPTIONAL_INPUTS, native_receipt_fact, read_pin
 
@@ -736,6 +737,86 @@ class Runtime:
             raise Fault('gate_failed')
         return bytes(out)
 
+    def _observe(self, argv, timeout, env=None, control=False):
+        """Run one read-only observation child (lsof, launchctl print).
+
+        Latch-checked before the child is created, bounded pipe reads
+        against one absolute deadline, and SIGTERM-only cleanup through
+        the shared primitive — the last two implicit-kill subprocess.run
+        sites are gone. A surviving observer after its grace window is
+        sticky cleanup uncertainty. Like the pre-existing observation
+        one-shots, these short-lived read-only children are outside the
+        journaled tracked-spawn family (per-poll journaling would
+        exhaust the frozen 64-spawn recovery cap during acceptance
+        polling); the latch check before each child and the bounded
+        no-escalation cleanup are the SC-003/SC-004 obligations here.
+        Unlike _capture a nonzero exit is a RESULT, not a failure: lsof
+        returns 1 for no listener and launchctl print is nonzero for a
+        missing service, so callers inspect the status.
+        """
+        from .shutdown import ShutdownRequested
+        try:
+            self.shutdown.checkpoint()
+        except ShutdownRequested:
+            raise Fault('controller_stopping') from None
+        if self._cleanup_blocked:
+            raise Fault('candidate_cleanup_failed')
+        if self._operation_started is None:
+            self._operation_started = time.monotonic()
+        remaining = 900 - (time.monotonic() - self._operation_started)
+        if remaining <= 0:
+            raise Fault('service_control_timeout' if control else 'gate_failed')
+        child = None
+        try:
+            deadline = time.monotonic() + min(timeout, remaining)
+            child = subprocess.Popen(argv, env=self.env if env is None else env,
+                                     cwd=self.config, stdin=subprocess.DEVNULL,
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                     start_new_session=True)
+            stream, errors = child.stdout, child.stderr
+            assert stream is not None and errors is not None
+            out, err = bytearray(), bytearray()
+            with selectors.DefaultSelector() as reader:
+                reader.register(stream, selectors.EVENT_READ)
+                reader.register(errors, selectors.EVENT_READ)
+                while reader.get_map():
+                    available = deadline - time.monotonic()
+                    if available <= 0 or not reader.select(available):
+                        raise subprocess.TimeoutExpired(argv, timeout)
+                    for key, _ in reader.select(0):
+                        target = out if key.fd == stream.fileno() else err
+                        data = os.read(key.fd,
+                                       min(65536, HELPER_OUTPUT_LIMIT + 1 - len(target)))
+                        if not data:
+                            reader.unregister(key.fileobj)
+                            continue
+                        target.extend(data)
+                    if len(out) > HELPER_OUTPUT_LIMIT or len(err) > HELPER_OUTPUT_LIMIT:
+                        raise ValueError('observation_overflow')
+            child.wait(timeout=max(.001, deadline-time.monotonic()))
+            return child.returncode, bytes(out)
+        except subprocess.TimeoutExpired:
+            raise Fault('service_control_timeout' if control else 'gate_failed') from None
+        except ShutdownRequested:
+            raise Fault('controller_stopping') from None
+        except Exception:
+            raise Fault('unmanaged_listener') from None
+        finally:
+            # Single SIGTERM, bounded reap, never SIGKILL or killpg. A
+            # surviving observer is sticky; the business Fault still
+            # propagates.
+            if child is not None:
+                try:
+                    if child.poll() is None:
+                        _owned_observer_stop(child)
+                except Exception:
+                    self._cleanup_blocked = True
+                finally:
+                    if child.stdout is not None:
+                        child.stdout.close()
+                    if child.stderr is not None:
+                        child.stderr.close()
+
     def _capture(self, argv, timeout=90, env=None, control=False, purpose=None):
         from .shutdown import ShutdownRequested
         spawn_id = uuid.uuid4().hex
@@ -841,20 +922,21 @@ class Runtime:
             return result
 
     def _listener(self, port):
-        try:
-            r = subprocess.run(['/usr/sbin/lsof', '-t', '-nP', '-iTCP:'+str(port), '-sTCP:LISTEN'],
-                               env=self.env, capture_output=True, timeout=5)
-            values = r.stdout.decode().split()
-            if r.returncode == 1 and not values and not r.stderr.strip():
-                return None
-            if r.returncode or not values or any(not v.isdigit() for v in values):
-                raise ValueError('unknown_listener')
-            pids = set(map(int, values))
-            if len(pids) != 1:
-                raise ValueError('ambiguous_listener')
-            return _identity(pids.pop())
-        except Exception:
-            raise Fault('unmanaged_listener') from None
+        if type(port) is not int or port not in (self.port, self.policy['candidate_port']):
+            raise Fault('unmanaged_listener')
+        status, out = self._observe(['/usr/sbin/lsof', '-t', '-nP', '-iTCP:'+str(port), '-sTCP:LISTEN'],
+                                    timeout=10)
+        # lsof exit 1 with empty output and empty stderr is its documented
+        # "nothing matches" result; any other shape is an unknown state.
+        if status == 1 and not out.strip():
+            return None
+        values = out.decode().split()
+        if status or not values or any(not v.isdigit() for v in values):
+            raise Fault('unmanaged_listener')
+        pids = set(map(int, values))
+        if len(pids) != 1:
+            raise Fault('ambiguous_listener')
+        return _identity(pids.pop())
 
     def _job_state(self, label=None, expected=None, expected_path=None):
         label = label or self.label
@@ -862,11 +944,11 @@ class Runtime:
         expected = self.job if expected is None else expected
         expected_path = self.auto_plist if expected_path is None else expected_path
         try:
-            r = subprocess.run(['/bin/launchctl', 'print', f'gui/{os.getuid()}/'+label],
-                               env=self.env, capture_output=True, text=True, timeout=10)
-            if r.returncode:
+            status, raw = self._observe(['/bin/launchctl', 'print', f'gui/{os.getuid()}/'+label],
+                                        timeout=10)
+            if status:
                 return None
-            text = r.stdout
+            text = raw.decode('utf-8', 'replace')
             def field(key):
                 match = re.search(r'(?m)^\s*'+re.escape(key)+r' = (.+)$', text)
                 return match.group(1).strip() if match else None
@@ -962,9 +1044,21 @@ class Runtime:
             raise Fault('runtime_invalid') from None
 
     def check_gates(self):
+        from .shutdown import ShutdownRequested
+        checkpoints = []
+        def admit():
+            try:
+                self.shutdown.checkpoint()
+            except ShutdownRequested:
+                raise Fault('controller_stopping') from None
+            checkpoints.append(1)
+        admit()
         self._capture(['/bin/bash', str(self.kit/'core/installer.sh'), str(self.deployment), '--verify'], 90)
+        admit()
         self._capture([self.python, str(self.kit/'core/drift_check.py'), '--deployment-root', str(self.deployment)], 90)
+        admit()
         self._capture([*self.job['ProgramArguments'], '--preflight'], 180)
+        admit()
         try:
             import yaml
             config = yaml.safe_load((self.config/'config.rendered.yaml').read_text())
@@ -976,6 +1070,7 @@ class Runtime:
             if len(rows) != 1 or rows[0].get('required') is not True:
                 raise ValueError('master_row_invalid')
             row = rows[0]
+            admit()
             if row.get('source', 'op') == 'op':
                 sa = self._capture(['/usr/bin/security', 'find-generic-password', '-s',
                                     self.env['OP_KEYCHAIN_SERVICE'], '-a', self.env['OP_KEYCHAIN_ACCOUNT'], '-w'], 15).decode().strip()
@@ -986,28 +1081,37 @@ class Runtime:
                 op = shutil.which('op', path=self.env['PATH'])
                 if not op:
                     raise ValueError('resolver_unavailable')
+                admit()
                 key = self._capture([op, 'read', row['op_ref']], 30, env=env).decode().strip()
                 del sa, env
             elif row.get('source') == 'flexai-token':
                 tool = shutil.which('flexai', path=self.env['PATH'])
                 if not tool:
                     raise ValueError('resolver_unavailable')
+                admit()
                 key = self._capture([tool, 'auth', 'print-token'], 30).decode().strip()
             else:
                 raise ValueError('master_source_invalid')
             if not key or key.startswith('op://') or any(c.isspace() for c in key):
                 raise ValueError('master_unresolved')
             self._key = key
+        except ShutdownRequested:
+            raise Fault('controller_stopping') from None
         except Exception:
             raise Fault('gate_failed') from None
 
     def _request(self, port, path, key=None, payload=None):
+        from .shutdown import ShutdownRequested
         if port not in (self.port, self.policy['candidate_port']) or path not in (
                 '/health/liveliness', '/health/readiness', '/v1/models', '/v1/chat/completions'):
             raise Fault('postcheck_failed')
         headers = {'Content-Type': 'application/json'}
         if key is not None:
             headers['Authorization'] = 'Bearer '+key
+        try:
+            self.shutdown.checkpoint()
+        except ShutdownRequested:
+            raise Fault('controller_stopping') from None
         if self._operation_started is None:
             self._operation_started = time.monotonic()
         budget = min(REQUEST_TIMEOUT, 900 - (time.monotonic() - self._operation_started))
@@ -1016,48 +1120,79 @@ class Runtime:
         # http.client has no ambient-proxy or redirect machinery. The fixed
         # literal host, approved port and closed path define the only URL.
         connection = http.client.HTTPConnection('127.0.0.1', port, timeout=budget)
-        expired, owned_socket = threading.Event(), []
-        def expire():
-            expired.set()
-            if owned_socket:
-                with contextlib.suppress(OSError):
-                    owned_socket[0].shutdown(socket.SHUT_RDWR)
-        timer = threading.Timer(budget, expire)
+        # One absolute deadline bounds the whole request. The socket's own
+        # timeout is the only mechanism that reliably interrupts a blocked
+        # recv on macOS (neither close() nor SHUT_RDWR from another thread
+        # does), so the deadline IS the socket timeout; SC-004's
+        # shared-deadline observability comes from the budget cap at each
+        # admission and the latch checked between every request in
+        # _accept's wake-polled loop.
+        # Absolute deadline: the socket timeout is per-operation and never
+        # trips against a slow trickle (one byte inside every window), so a
+        # timer force-closes the connection at the budget. Between recv
+        # calls the closed fd surfaces immediately; a fully blocked recv
+        # is covered by the socket timeout.
+        closing = threading.Event()
+        def interrupt():
+            if not closing.is_set():
+                closing.set()
+                # SHUT_RDWR surfaces EOF to the next recv — the only
+                # reliable interrupt when bytes keep trickling in inside
+                # every timeout window. close() alone is a refcount
+                # decrement while the response file exists, so the fd
+                # would stay open and the buffered read would continue.
+                with contextlib.suppress(Exception):
+                    connection.sock.shutdown(socket.SHUT_RDWR)
+                with contextlib.suppress(Exception):
+                    connection.close()
+        timer = threading.Timer(budget, interrupt)
         timer.daemon = True
         timer.start()
+        connect_deadline = time.monotonic() + budget
         try:
             connection.connect()
-            owned_socket.append(connection.sock)
-            if expired.is_set():
-                raise Fault('postcheck_failed')
+            if time.monotonic() >= connect_deadline:
+                raise TimeoutError('request_budget')
             connection.request('POST' if payload is not None else 'GET', path,
                  body=json.dumps(payload).encode() if payload is not None else None, headers=headers)
             with connection.getresponse() as result:
                 if result.status != 200:
                     return result.status, {}
                 body = result.read(1024 * 1024 + 1)
-                if expired.is_set() or len(body) > 1024 * 1024:
+                if len(body) > 1024 * 1024:
                     raise Fault('postcheck_failed')
+                # A trickle can satisfy read() inside every timeout window
+                # yet outlive the budget before EOF; refuse results that
+                # landed after the absolute deadline.
+                if closing.is_set():
+                    raise TimeoutError('request_budget')
                 return result.status, json.loads(body)
         except Exception:
             raise Fault('postcheck_failed') from None
         finally:
             timer.cancel()
-            connection.close()
+            with contextlib.suppress(Exception):
+                connection.close()
 
     def _accept(self, port, guard, deadline, startup=False):
+        from .shutdown import ShutdownRequested
         while True:
             identity = guard()
             try:
                 ready = identity is not None and self._request(port, '/health/readiness')[0] == 200
             except Fault:
                 ready = False
+            except ShutdownRequested:
+                raise
             guard()
             if ready:
                 break
             if not startup or time.monotonic() >= deadline:
                 raise Fault('postcheck_failed')
-            time.sleep(.5)
+            # Wake-poll: sleep is bounded and observes the shared latch, so
+            # a shutdown request interrupts the wait immediately.
+            if self.shutdown.wait(0.5):
+                raise Fault('controller_stopping')
         results = {}
         for path in ('/health/liveliness', '/health/readiness'):
             guard()
@@ -1101,32 +1236,90 @@ class Runtime:
         return self._accept(self.port, guard, time.monotonic(), startup=False)
 
     def rehearse(self):
+        from .shutdown import ShutdownRequested
         self._admit_helper()
         port = self.policy['candidate_port']
-        if self._candidate is not None or self._listener(port) is not None:
+        if self._candidate is not None or self._cleanup_blocked:
+            raise Fault('candidate_cleanup_failed')
+        if self._listener(port) is not None:
             raise Fault('candidate_failed')
         argv = [*self.job['ProgramArguments'][:2], str(port)]
-        child = subprocess.Popen(argv, env=self.env, cwd=self.config, stdout=subprocess.DEVNULL,
-                                 stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, start_new_session=True)
-        self._candidate = child
-        birth = None
-        def guard():
-            if child.poll() is not None or _identity(child.pid) != birth:
-                raise Fault('candidate_failed')
-            listener = self._listener(port)
-            if listener is not None and listener != birth:
-                raise Fault('candidate_failed')
-            return listener
+        spawn_id = uuid.uuid4().hex
+        handle = self.recovery.spawn_intent(self._active_operation, spawn_id, 'candidate')
         try:
-            birth = _identity(child.pid)
+            permit = self.shutdown.commit('candidate')
+            self.shutdown.claim(permit)
+        except ShutdownRequested:
+            with contextlib.suppress(Exception):
+                self.recovery.mark_uncertain(handle)
+            raise Fault('controller_stopping') from None
+        child = None
+        journal = None
+        birth = None
+        interrupted = False
+        try:
+            child = subprocess.Popen(argv, env=self.env, cwd=self.config,
+                                     stdout=subprocess.DEVNULL,
+                                     stderr=subprocess.DEVNULL,
+                                     stdin=subprocess.DEVNULL, start_new_session=True)
+            try:
+                journal = _journal_identity(child.pid)
+                birth = {k: journal[k] for k in ('pid', 'uid', 'birth')}
+            except Fault:
+                if child.poll() is None:
+                    raise
+            if journal is not None:
+                self.recovery.spawn_owned(handle, journal)
+            self._candidate = child
+            def guard():
+                nonlocal interrupted
+                try:
+                    self.shutdown.checkpoint()
+                except ShutdownRequested:
+                    interrupted = True
+                    raise Fault('controller_stopping') from None
+                if child.poll() is not None or _identity(child.pid) != birth:
+                    raise Fault('candidate_failed')
+                listener = self._listener(port)
+                if listener is not None and listener != birth:
+                    raise Fault('candidate_failed')
+                return listener
             return self._accept(port, guard, time.monotonic()+180, startup=True)
         except Fault:
-            raise Fault('candidate_failed') from None
+            # A latched interruption is never disguised as a candidate
+            # business failure: it surfaces as the closed stopping code.
+            raise Fault('controller_stopping' if interrupted else 'candidate_failed') from None
+        except ShutdownRequested:
+            raise Fault('controller_stopping') from None
+        except Exception:
+            # Journal write or identity loss: never invent ownership/closure.
+            self._cleanup_blocked = True
+            with contextlib.suppress(Exception):
+                self.recovery.mark_uncertain(handle)
+            raise Fault('recovery_invalid') from None
         finally:
-            self._owned_stop(child, birth)
-            if self._listener(port) is not None:
-                raise Fault('candidate_cleanup_failed')
-            self._candidate = None
+            if child is not None:
+                try:
+                    self._owned_stop(child, birth)
+                finally:
+                    self._candidate = None
+            try:
+                if self._listener(port) is not None:
+                    self._cleanup_blocked = True
+                    raise Fault('candidate_cleanup_failed')
+            except Fault:
+                if not interrupted:
+                    raise
+            if journal is not None:
+                if self._cleanup_blocked:
+                    with contextlib.suppress(Exception):
+                        self.recovery.mark_uncertain(handle)
+                else:
+                    try:
+                        self.recovery.spawn_closed(handle, journal, cleanup_proven=True)
+                    except Exception:
+                        self._cleanup_blocked = True
+                        raise Fault('recovery_invalid') from None
 
     def _optional_names(self):
         return set(PROXY_OPTIONAL_INPUTS)
