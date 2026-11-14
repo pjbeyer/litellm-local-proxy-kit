@@ -110,6 +110,18 @@ authorization boundary. Bypass classes, by design:
    bridge handle from the owning tool process. Bounds are capped by the
    schema: a valid policy cannot configure the guard past its hook budget.
    These are environment-specific, non-secret values — never commit them.
+
+   Effective size bounds (lpkit-5j5): beyond the config's
+   `input_text_bytes` (above), the guard enforces an inner structural
+   cap of MAX_TEXT_CHARS = 65536 chars on terminal commands and on
+   execute_code/browser_exec code (HEAD_SCAN inspection window: 8192
+   chars). Inputs over the cap take the FR-007 bound decision table —
+   kill-family intent in the inspectable head vetoes; intent-free,
+   provable input allows; anything unprovable refuses with
+   BOUND_SIZE — never a blanket veto for benign over-cap input.
+   Refusal messages intentionally carry no numbers (sanitization
+   discipline); the numeric bounds are documented here and in the
+   guard module docstring.
 4. Set owner-only permissions (no group/world write) on `config.json`.
 5. Establish the integrity reference (owner action): compute SHA-256 of the
    policy and of each deployed source file (`guard.py`, `__init__.py`) and

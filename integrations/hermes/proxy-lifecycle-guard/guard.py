@@ -34,6 +34,14 @@ operations that need PID resolution: /usr/sbin/lsof -t -nP -iTCP:<port>
 Discovery output is never printed. No environment variables are read.
 
 Intentional limitations (documented, not hidden):
+- Size bounds (lpkit-5j5): terminal commands and execute_code/browser_exec
+  code are capped at MAX_TEXT_CHARS = 65536 chars (the chunk-splitter cap);
+  inputs over the cap take the FR-007 bound decision table (head-scan rows
+  a/b/c), not a blanket veto. The HEAD_SCAN inspection window is 8192 chars.
+  config.json input_text_bytes (default 262144) is the OUTER policy bound
+  enforced on terminal text; the 64K cap is the inner structural bound that
+  applies to both tool surfaces. The refusal messages stay sanitized (no
+  numbers) — the bounds live here and in the README.
 - Residual risk: hidden/imported/encoded code, indirection the matcher cannot
   resolve, and model-controlled edits to the policy file itself remain
   outside this guarantee.
@@ -715,8 +723,14 @@ CATEGORIES = {
 DECISION_MESSAGES = {
     "VETO": None,  # assigned below: the veto template IS BLOCK_MESSAGE
     "BOUND_SIZE": (
+        # lpkit-5j5: the actual bound is documented in the module
+        # docstring and README (MAX_TEXT_CHARS 65536, HEAD_SCAN 8192;
+        # config input_text_bytes 262144 is the outer policy bound).
+        # The message itself stays sanitized — no numbers (the
+        # suite's sanitization gate pins no-digits-in-messages).
         "Blocked by the LiteLLM proxy lifecycle guard: the input is too "
-        "large to prove safe; reduce the input size and resubmit."
+        "large to prove safe; reduce the input size and resubmit "
+        "(see the guard README for the size bounds)."
     ),
     "BOUND_DEPTH": (
         "Blocked by the LiteLLM proxy lifecycle guard: the call nesting is "
@@ -851,6 +865,29 @@ MUTATING_VERBS = frozenset({
 # lpkit-1hh: stream editors whose IN-PLACE flags make them write
 # primitives; without the flag they are read-only filters.
 _INPLACE_EDITORS = frozenset({"sed", "perl", "ruby", "awk", "gawk"})
+
+
+def _verb_basename(word):
+    """lpkit-528: canonical mutating-verb name for a command word.
+
+    Strips a leading absolute/relative path and the 'command'/
+    'builtin'/'sudo -u root' wrapper so '/usr/bin/rm' scores as 'rm'
+    — the plugin-dir write rule must be path-insensitive (FR-011):
+    absolute-path invocation of the same binary is the same write.
+    Returns None for words that are not paths or wrappers."""
+    w = word.strip().strip('"\'')
+    if w.startswith("command ") or w.startswith("builtin "):
+        w = w.split(None, 1)[1] if len(w.split(None, 1)) > 1 else ""
+    if "/" in w:
+        w = w.rsplit("/", 1)[-1]
+    return w
+
+
+def _is_mutating_verb_word(word):
+    """True when the command word names a mutating verb, path-
+    insensitively (lpkit-528)."""
+    base = _verb_basename(word)
+    return base in MUTATING_VERBS if base else False
 
 
 def _editor_inplace_flags(chunk_low):
@@ -1799,6 +1836,42 @@ def _strip_shell_comments(text):
     return "".join(out)
 
 
+def _resolve_default_expansion(raw_value):
+    """lpkit-ebr: resolve an assignment value that is exactly ONE
+    ${NAME:-default} / ${NAME-default} expansion (optionally
+    quoted), using the hf5 allowlist rules ($HOME only; any other
+    variable unprovable). Returns the resolved literal or None."""
+    v = raw_value
+    if v[:1] in ('"', "'") and v[-1:] == v[:1] and len(v) >= 2:
+        v = v[1:-1]
+    if not (v.startswith("${") and v.endswith("}")):
+        return None
+    inner = v[2:-1]
+    sep = None
+    if ":-" in inner:
+        sep = ":-"
+    elif "-" in inner and ":" not in inner:
+        sep = "-"
+    if sep is None:
+        return None
+    nm, _, dflt = inner.partition(sep)
+    if not (nm and re.fullmatch(r"[A-Za-z_]\w*", nm) and dflt
+            and "`" not in dflt
+            and not dflt.startswith("~")):
+        return None
+    cand = dflt.replace("${HOME}", "\x00")
+    cand = cand.replace("$HOME", "\x00")
+    if "$" in cand.replace("\x00", ""):
+        return None  # non-allowlisted variable
+    home = os.environ.get("HOME")
+    if not home or any(c in home for c in ' \t\n;$`"\\' + "'"):
+        return None  # HOME unset/unsafe
+    cand = cand.replace("\x00", home)
+    if not re.fullmatch(r"[A-Za-z0-9_./@:+-]+", cand):
+        return None
+    return cand
+
+
 def _collect_literal_vars(text):
     """Map NAME -> simple literal value for visible assignments.
 
@@ -1806,8 +1879,12 @@ def _collect_literal_vars(text):
     collected (NAME="literal", NAME='literal', NAME=word). Any
     substitution, concatenation, or interpolation in the value makes
     the variable UNRESOLVED (excluded) — resolution must be analysis,
-    not a hole (lpkit-5ix). Bounded to 32 entries.
-    """
+    not a hole (lpkit-5ix). EXCEPTION (lpkit-ebr): an assignment
+    whose value is exactly ONE ${NAME:-default} expansion (optionally
+    quoted) resolves via the hf5 allowlist rules and stores the
+    RESOLVED default, so the later command-position "$NAME" lookup
+    succeeds; unresolvable defaults keep the variable out of the map
+    (FR-006 refuse). Bounded to 32 entries."""
     env = {}
     for m in re.finditer(
             r"(?:^|[\n;|&])([A-Za-z_]\w*)=(\"[^\"]*\"|'[^']*'"
@@ -1818,7 +1895,13 @@ def _collect_literal_vars(text):
         if raw[:1] in ('"', "'"):
             value = raw[1:-1]
             if "$" in value or "`" in value or "\\" in value:
-                continue  # interpolation: unresolvable
+                # lpkit-ebr: a single ${NAME:-default} expansion in an
+                # assignment value resolves (hf5 allowlist); other
+                # interpolation stays unresolvable
+                resolved = _resolve_default_expansion(raw)
+                if resolved is not None:
+                    env[name] = resolved
+                continue
         else:
             if not re.fullmatch(r"[A-Za-z0-9_./@-]+", raw):
                 continue
@@ -2011,8 +2094,15 @@ def _analyze_chunk(chunk, policy, get_snapshot, depth=0, env=None):
     low_chunk = chunk.lower()
     if PLUGIN_DIR_MARKER in low_chunk:
         words = low_chunk.split()
-        first_word = words[0] if words else ""
-        if (first_word in MUTATING_VERBS
+        # lpkit-528: skip shell wrapper tokens (command, builtin,
+        # sudo, nohup, env...) so the OWNING verb is scored
+        wi = 0
+        while (wi < len(words) and words[wi] in
+               ("command", "builtin", "sudo", "nohup", "env",
+                "nice", "xargs")):
+            wi += 1
+        first_word = words[wi] if wi < len(words) else ""
+        if (_is_mutating_verb_word(first_word)
                 or any("plugin" in w for w in words[:1])):
             raise _Block()
         # lpkit-1hh: a stream editor is a WRITE only in its in-place
@@ -2022,7 +2112,7 @@ def _analyze_chunk(chunk, policy, get_snapshot, depth=0, env=None):
         # the guard's own files. The in-place modifier must be
         # present as a flag (extract-the-modifier-then-check-
         # destination, the z4b redirect pattern).
-        if first_word in _INPLACE_EDITORS:
+        if _verb_basename(first_word) in _INPLACE_EDITORS:
             flags = _editor_inplace_flags(low_chunk)
             if flags:
                 raise _Block()
@@ -2038,8 +2128,8 @@ def _analyze_chunk(chunk, policy, get_snapshot, depth=0, env=None):
             if not swords:
                 continue
             sverb = swords[0]
-            if (sverb in MUTATING_VERBS
-                    or (sverb in _INPLACE_EDITORS
+            if (_is_mutating_verb_word(sverb)
+                    or (_verb_basename(sverb) in _INPLACE_EDITORS
                         and _editor_inplace_flags(s))):
                 raise _Block()
         # A redirect vetoes only when its file destination resolves
@@ -2665,7 +2755,23 @@ def _analyze_code_text(text, policy, get_snapshot):
     if not isinstance(text, str):
         raise _Block()
     if len(text) > MAX_TEXT_CHARS:
-        raise _Block()
+        # lpkit-5j5: over-cap code takes the FR-007 bound decision
+        # table (the shell path's rows a/b/c), NOT a hard VETO:
+        # (b) kill-family intent in the inspectable head vetoes (the
+        # veto is never lost to the bound); (a) intent-free full-text
+        # keyword scan + provable head allows; (c) anything
+        # unprovable refuses BOUND_SIZE with the documented bound.
+        head = text[:HEAD_SCAN_CHARS]
+        if _full_text_kill_intent(text, policy):
+            raise _Block()
+        try:
+            ast.parse(head)
+        except SyntaxError:
+            raise _BoundRefuse("BOUND_SIZE") from None
+        if _OS_KILL_RE.search(text):
+            # unprovable os.kill shape in the uninspectable remainder
+            raise _BoundRefuse("BOUND_SIZE")
+        return
     # Syntactic validity gate: code that does not parse as Python cannot
     # be statically proven safe. A real newline inside a single-quoted
     # string (the git multi-paragraph -m convention pasted into code, as
