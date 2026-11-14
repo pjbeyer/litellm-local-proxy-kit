@@ -1,0 +1,60 @@
+core/restart_control/engine.py
+  s_a99f3fbae17f52::t_5a6a94720411ee 388-390,393
+  s_a99f3fbae17f52::t_b3fa76340aab96 445-446
+  s_5a441e3eabb79b::t_81f5c169be9b68 516-517,523,532,542-544,556,560-562,564,570,573,576,580,584,595,598,601,605,608-618,626-628
+  s_a99f3fbae17f52::t_179f9694ffeaf7 536-541
+  s_5a441e3eabb79b::t_75ed95544e7e7e 557,563
+  s_5a441e3eabb79b::t_118b9ce4cec127 587
+  s_5a441e3eabb79b::t_28f8a5f7a00d3a 619-625
+  s_5a441e3eabb79b::t_4cd1c33e9898c5 588-592
+  s_a99f3fbae17f52::t_f0c518347d510f 374-380
+  s_a99f3fbae17f52::t_b1d468f65a9e9d 381-387,391-392
+  s_a99f3fbae17f52::t_56d20196a0f1d2 512-514
+  s_5a441e3eabb79b::t_46ddfdc138a93e 477,484-485
+  s_5a441e3eabb79b::t_45f7c6a12c760e 329-360,365,370,395,398,402,405,407,409,413,421,426-429,439-444
+core/restart_control/runtime.py
+  s_5a441e3eabb79b::t_aedec07cbfc95a 4
+  s_5a441e3eabb79b::t_c737c3322b3ff3 204-206,212-214,216-217,220-222
+  s_5a441e3eabb79b::t_8c55f919559b26 207-211,215,218-219
+tests/restart_lifecycle_adapter.py
+  s_5a441e3eabb79b::t_dcc7b7724218cd 2
+  s_5a441e3eabb79b::t_63b8a92a34f483 13-21
+  s_5a441e3eabb79b::t_55922710c8e3d1 74-76
+  s_a99f3fbae17f52::t_eb4a3ec9106de9 167-173
+  s_5a441e3eabb79b::t_c1fa00ad92cd83 205-213
+  s_5a441e3eabb79b::t_b537c5071a17e2 42-44,48-51,58-73,77-103,108-166,174-204,214-241
+  s_5a441e3eabb79b::t_c28827fd0b5b53 104-107
+tests/test_restart_controller.py
+  s_5a441e3eabb79b::t_357d0c5ef411d9 31
+  s_5a441e3eabb79b::t_63db0db71f9c71 33-35
+  s_5a441e3eabb79b::t_cd9c8122b5c41c 95
+  s_5a441e3eabb79b::t_8d65d1d6530e86 32
+tests/test_restart_lifecycle_fixtures.py
+  s_5a441e3eabb79b::t_fc4312d1098d36 390
+  s_5a441e3eabb79b::t_112aa95a5109f9 216
+  s_5a441e3eabb79b::t_6f33678396cbf8 241-246
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "361a6a84716d4cacc34cd1302a863080fd4ec1ea",
+  "prompts": {},
+  "sessions": {
+    "s_5a441e3eabb79b": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261114_153728_5a0f11",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_a99f3fbae17f52": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261114_162836_2a4e22",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
