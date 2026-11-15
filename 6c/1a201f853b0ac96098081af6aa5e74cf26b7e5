@@ -1,0 +1,21 @@
+core/restart_control/canary.py
+  s_fa8397285f8e39::t_185734e6922a72 314-323
+tests/test_controller_canary.py
+  s_fa8397285f8e39::t_b75c55000269a1 536-549
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "6c1a201f853b0ac96098081af6aa5e74cf26b7e5",
+  "prompts": {},
+  "sessions": {
+    "s_fa8397285f8e39": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261115_071947_efc532",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
