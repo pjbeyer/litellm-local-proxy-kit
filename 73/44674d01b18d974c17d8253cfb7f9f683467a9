@@ -1,0 +1,36 @@
+core/restart_controller.py
+  s_5470f5a3c2944b::t_92b08c5ee26fe9 104
+  s_5470f5a3c2944b::t_cbeadb46064093 129-135
+tests/test_controller_canary.py
+  s_a99f3fbae17f52::t_fcbee29f3a3628 435
+  s_a99f3fbae17f52::t_b6e8a48fb66df4 429-434,436-473,476,503-504
+  s_a99f3fbae17f52::t_bb29c139f2b79e 474-475,477-502
+  s_a99f3fbae17f52::t_c2bd85fd834d6c 505-507
+  s_5470f5a3c2944b::t_f496fe273838aa 508-521
+core/restart_control/canary.py
+  s_a99f3fbae17f52::t_40d882ad43d3eb 288-350
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "7344674d01b18d974c17d8253cfb7f9f683467a9",
+  "prompts": {},
+  "sessions": {
+    "s_5470f5a3c2944b": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261114_195710_337b84",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_a99f3fbae17f52": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261114_162836_2a4e22",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
