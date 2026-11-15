@@ -1,0 +1,46 @@
+core/restart_control/runtime_identity.py
+  s_a99f3fbae17f52::t_afaa3c604d4434 44
+core/restart_control/canary.py
+  s_a99f3fbae17f52::t_d1c64bee86d4bf 91,98
+  s_a99f3fbae17f52::t_b7e95367ab1378 349-351,353-356
+  s_a99f3fbae17f52::t_900a0432b64e7c 127,130-133,139
+  s_a99f3fbae17f52::t_9a2d359b33ecd5 352
+  s_a99f3fbae17f52::t_7b06547910319b 211-212
+  s_a99f3fbae17f52::t_2092a601a0014b 140
+  s_a99f3fbae17f52::t_f9743700cd847d 1-18,20-90,92-97,99,104-126,128-129,134-138,141-161,163-164,166-167,169-176,178-195,198,208-210,213-340,357,364-365,382-405
+  s_a99f3fbae17f52::t_9f4fa9a6ae11e4 345-348,361-363,366-381
+  s_a99f3fbae17f52::t_419b93dbc9ec35 196-197,199-207
+  s_a99f3fbae17f52::t_851ba28ce3ab6e 406
+  s_a99f3fbae17f52::t_161cab88ed2e6b 19
+  s_a99f3fbae17f52::t_a5e9e55670aad1 162,165,168,177
+  s_a99f3fbae17f52::t_563f38bdcf6e07 100-103
+  s_a99f3fbae17f52::t_563ff93214b44b 342-344,358-360
+  s_a99f3fbae17f52::t_3e391710a21f03 341
+tests/test_controller_canary.py
+  s_a99f3fbae17f52::t_c309b117b0aca0 1-9,11-12,14-18,21-110,117-129,131-151,153-165,167-183,185-189,191-196,198-204,206-255,257-262,264-268,270-335
+  s_a99f3fbae17f52::t_441ed5b87a4ae3 263,269
+  s_a99f3fbae17f52::t_efe85bdd09c72b 10,13,19-20
+  s_a99f3fbae17f52::t_6d79ae5424234a 130,152
+  s_a99f3fbae17f52::t_0d61820766e3ee 190
+  s_a99f3fbae17f52::t_0ab66d3ccb3944 166
+  s_a99f3fbae17f52::t_b044cb66bbf8ff 184
+  s_a99f3fbae17f52::t_0cc186b20aa816 111-116
+  s_a99f3fbae17f52::t_a5b8f8321afe30 197,205
+  s_a99f3fbae17f52::t_fd1dae81fcdc42 256
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "dcd871b622a8cd56d63934d36e8db05f49cf68e9",
+  "prompts": {},
+  "sessions": {
+    "s_a99f3fbae17f52": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261114_162836_2a4e22",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
