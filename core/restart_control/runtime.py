@@ -1040,10 +1040,14 @@ class Runtime:
                 for line in envmatch.group(1).splitlines():
                     if ' => ' in line:
                         key, value = line.strip().split(' => ', 1)
-                        # A repeated key cannot attest which value launchd
-                        # actually loaded; the observation is ambiguous and
-                        # refuses rather than picking one.
-                        if key in actual_env:
+                        # A repeated key with a DIFFERENT value cannot
+                        # attest which one launchd actually loaded; the
+                        # observation is ambiguous and refuses rather
+                        # than picking one. An identical repeat is not
+                        # ambiguous: launchd re-emits injected defaults
+                        # (e.g. OSLogRateLimit) alongside the plist's own
+                        # copy, and both sightings agree.
+                        if key in actual_env and actual_env[key] != value:
                             return None
                         actual_env[key] = value
             parity = (field('path') == str(expected_path) and args == expected['ProgramArguments']

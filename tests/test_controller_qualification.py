@@ -260,7 +260,7 @@ def test_loaded_exit_timeout_observation_is_unique_top_level_and_exact(context, 
         qualify(context,text)
 
 
-@pytest.mark.parametrize('variant', ['missing', 'wrong_value', 'wrong_type', 'duplicate'])
+@pytest.mark.parametrize('variant', ['missing', 'wrong_value', 'wrong_type', 'conflicting_duplicate'])
 def test_loaded_logging_environment_is_declared_exactly(context, variant):
     """OSLogRateLimit is a declared key, not an implicitly ignored extra."""
     qualify(context)
@@ -274,11 +274,25 @@ def test_loaded_logging_environment_is_declared_exactly(context, variant):
         text=text.replace('OSLogRateLimit => 64','OSLogRateLimit => true')
     else:
         env_line='\t\tOSLogRateLimit => 64\n'
-        # duplicate the exact env line inside the environment block
-        text=text.replace(env_line, env_line+'\t\tOSLogRateLimit => 64\n')
+        # a CONFLICTING repeat cannot attest which value launchd loaded
+        text=text.replace(env_line, env_line+'\t\tOSLogRateLimit => 128\n')
     text=text+'\n'
     with pytest.raises(Fault, match='qualification_invalid'):
         qualify(context,text)
+
+
+def test_identical_repeated_environment_value_is_not_ambiguous(context):
+    """launchd re-emits injected defaults alongside the plist's copy.
+
+    Live gate-4 finding: launchctl print lists OSLogRateLimit twice
+    (launchd's own injected default and the plist's declared copy)
+    with the SAME value. An identical repeat attests one loaded
+    value; only a conflicting repeat is ambiguous and refuses.
+    """
+    qualify(context)
+    env_line='\t\tOSLogRateLimit => 64\n'
+    text=loaded_text(context).replace(env_line, env_line+env_line)+'\n'
+    qualify(context, text)
 
 
 # -- T015: qualification v2 shutdown-contract and evidence bindings -----------
