@@ -533,6 +533,20 @@ def test_worker_refuses_unconsumed_scope(tmp_path):
     assert not (scope/'incarnation-1.json').exists()
 
 
+def test_worker_refuses_absent_scope_without_creating_it(tmp_path):
+    """Live gate-4 finding: an orphaned KeepAlive job respawned its worker
+    every 30 seconds against a fresh state root; the old behavior created
+    the scope directory BEFORE validating it, so each refused respawn
+    re-poisoned the namespace scan with an empty foreign scope dir
+    (observed: runs = 44). A refusing worker must write nothing.
+    """
+    assert not (tmp_path/'canary'/NONCE).exists()
+    with pytest.raises(Fault):
+        canary.run_canary_worker(tmp_path, NONCE)
+    # Nothing was created: no canary/ namespace at all.
+    assert not (tmp_path/'canary').exists()
+
+
 def test_canary_worker_shutdown_deadline(tmp_path):
     """SIGTERM latches the shared 50s budget; the worker exits cooperatively."""
     import signal

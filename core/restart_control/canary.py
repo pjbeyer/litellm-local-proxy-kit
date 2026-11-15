@@ -311,7 +311,16 @@ def run_canary_worker(state, nonce, *, stdout=None):
 
     if stdout is None:
         stdout = sys.stdout
-    scope = canary_scope(state, nonce)
+    # A refusing worker must write NOTHING: derive the scope path without
+    # creating it and validate the consumed-scope invariants first. Only a
+    # genuinely consumed scope (its own arm and the lane's generated plist
+    # present) may be materialized by the worker — live gate-4 finding: a
+    # launchd KeepAlive respawn loop of an orphaned job re-created its empty
+    # scope dir in a fresh state root on every 30-second attempt, poisoning
+    # the namespace scan (runs = 44 before discovery).
+    scope = Path(state)/"canary"/nonce
+    if not scope.is_dir():
+        raise Fault("recovery_invalid")
     first = scope/"incarnation-1.json"
     second = scope/"incarnation-2.json"
     if second.exists():
