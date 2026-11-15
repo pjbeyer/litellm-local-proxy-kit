@@ -1,0 +1,34 @@
+tests/test_controller_interruption.py
+  s_ae146e96df3530::t_29ecbf7b8450b5 421-598,600-601
+tests/crash_driver.py
+  s_ae146e96df3530::t_174ef3b5eb9d20 53,55
+  s_ae146e96df3530::t_0558321ac042a7 110-118
+  s_ae146e96df3530::t_81b1a511e2db19 1-14,27-28,36-39,43-45,121,127,132-134,137,140,144,146-161,166-194,198-232
+  s_ae146e96df3530::t_541aa91079dc56 64-65,69-70,85-86,162-163
+  s_ae146e96df3530::t_080204e7465c4e 122-126,128-131
+  s_ae146e96df3530::t_0cdb35210bbbb9 164-165
+  s_ae146e96df3530::t_f97e8120943ec7 15-26,29-35,40-42,46-52,54,56-63,66-68,71-84,87-109,119-120,135-136,145,195-197,233-236
+  s_ae146e96df3530::t_bde064a4d6a32f 138-139,141-143
+tests/test_controller_recovery.py
+  s_ae146e96df3530::t_2d3c6f6b26dadb 440-445
+core/restart_control/engine.py
+  s_ae146e96df3530::t_a6be758bb7db62 425-429,432
+core/restart_control/canary.py
+  s_ae146e96df3530::t_1ddbf2c193f72c 343-346,349-352
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "bfd041087924ce379cdf2bce5250a0f09800b64d",
+  "prompts": {},
+  "sessions": {
+    "s_ae146e96df3530": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261114_215341_baa459",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
