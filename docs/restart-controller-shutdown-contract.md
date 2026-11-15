@@ -1,6 +1,6 @@
 # Cap-aware controller shutdown amendment
 
-**OWNER-APPROVED DESIGN AND IMPLEMENTATION PLAN — offline implementation in progress. Not deployed or platform-qualified.**
+**OWNER-APPROVED DESIGN — offline implementation COMPLETE (T001–T025), reviewed and test-verified; NOT deployed, NOT live-canary-run, and NOT platform-qualified. Activation, the isolated-canary lane, and handoff remain separate owner gates (see T026 packet requirements).**
 
 This proposed amendment extends [the controller contract](restart-controller.md)
 and [operations guide](restart-controller-operations.md). It does not create a
