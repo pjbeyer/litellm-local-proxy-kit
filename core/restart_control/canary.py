@@ -1,0 +1,406 @@
+"""Disposable launchd canary envelopes, scope validation and startup scan.
+
+T016: frozen schemas and validation only. No service control, no spawn, no
+credential resolution and no raw subprocess output — arming (T017), the
+worker (T018) and startup orchestration (T019) arrive later. Every check
+fails closed: an ambiguous, stale, foreign or unrecognized canary record
+blocks mutation admission; it can never be silently upgraded, deleted or
+reinterpreted.
+
+Scope derivation is one-way: the label, directory and file names follow
+from the arm nonce by fixed rules (plan section 4) and are never accepted
+from a caller, an RPC field or an environment value. A canary scope that
+collides with an existing job, a production label or an unexpected file
+refuses rather than probing further.
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import stat
+
+from pathlib import Path
+
+from .engine import Fault, _read_json, canonical_digest, private_dir
+
+__all__ = ["ARM_KEYS", "EVIDENCE_KEYS", "CHECK_KEYS", "EVIDENCE_SCOPES",
+           "DETAIL_KEYS", "STEP_ORDER", "STEP_APPLICABILITY",
+           "canary_label", "canary_scope",
+           "validate_arm", "validate_evidence", "validate_detail",
+           "scan_canary_namespace"]
+
+_NONCE = re.compile(r"[0-9a-f]{32}\Z")
+_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
+_EPOCH = re.compile(r"[0-9a-f]{32}\Z")
+_LABEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\Z")
+_UUID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\Z")
+_BOUND_S = 65536          # canonical JSON byte bound for one record
+_BOUND_POPULATION = 4096  # directory entries scanned in one namespace walk
+
+# Plan section 2: the arm envelope under canary/intent.json.
+ARM_KEYS = {"version", "operator_uid", "nonce", "policy_digest",
+            "controller_digest", "controller_plist_digest", "boot_identity",
+            "issued_at", "expires_at", "issued_monotonic", "expires_monotonic"}
+
+# Plan section 9: the evidence envelope under canary/evidence/<digest>.json.
+EVIDENCE_KEYS = {"version", "scope", "nonce", "boot_identity", "operator_uid",
+                 "controller_identity", "controller_epoch", "controller_digest",
+                 "policy_digest", "controller_plist_digest", "controller_supervision",
+                 "shutdown_contract", "canary_label", "canary_plist_digest",
+                 "incarnations", "checks", "detail_digest", "issued_at", "issued_monotonic"}
+
+CHECK_KEYS = {"loaded_definition", "bootstrap", "keepalive", "bootout",
+               "cleanup", "shutdown_budget"}
+
+# Plan section 8: only fixture scope is accepted offline; live classes
+# arrive with the producer in later tasks. A fixture record can never be
+# relabeled as production qualification by editing its scope string.
+EVIDENCE_SCOPES = {"fixture", "isolated-launchd", "intended-controller"}
+
+# Plan "Closed canary detail": the detail record under
+# canary/detail/<detail_digest>.json.
+DETAIL_KEYS = {"version", "nonce", "boot_identity", "controller_identity",
+               "controller_epoch", "steps", "shutdown"}
+
+STEP_ORDER = ("bootstrap", "first_loaded", "exit_once", "keepalive",
+               "bootout", "cleanup")
+
+# Per-step applicability frozen from the plan: identity/runs/loaded fields
+# are explicit null where not applicable — never omitted — and exit_code is
+# exactly 0 for bootstrap/bootout, null otherwise.
+STEP_APPLICABILITY = {
+    "bootstrap":     {"identity": None, "runs": None, "loaded": None, "exit_code": 0},
+    "first_loaded":  {"identity": "first", "runs": 1, "loaded": True, "exit_code": None},
+    "exit_once":     {"identity": "first", "runs": 1, "loaded": None, "exit_code": None},
+    "keepalive":     {"identity": "second", "runs": 2, "loaded": True, "exit_code": None},
+    "bootout":       {"identity": "second", "runs": 2, "loaded": None, "exit_code": 0},
+    "cleanup":        {"identity": None, "runs": 0, "loaded": None, "exit_code": None},
+}
+
+STEP_KEYS = {"name", "started_monotonic", "completed_monotonic", "outcome",
+             "identity", "runs", "loaded_exit_seconds",
+             "loaded_environment_digest", "exit_code"}
+
+SHUTDOWN_KEYS = {"identity", "requested_monotonic", "exit_observed_monotonic",
+                  "cleanup_completed_monotonic", "deadline_seconds"}
+
+
+def canary_label(nonce):
+    """The one disposable label derived from an arm nonce (never caller-set)."""
+    if not isinstance(nonce, str) or not _NONCE.fullmatch(nonce):
+        raise ValueError("canary_nonce_invalid")
+    return "local.restart-canary." + nonce
+
+
+def canary_scope(state, nonce):
+    """The one private scope directory derived from state and nonce."""
+    if not isinstance(nonce, str) or not _NONCE.fullmatch(nonce):
+        raise ValueError("canary_nonce_invalid")
+    root = Path(state)/"canary"
+    if not root.exists():
+        private_dir(root)
+    return private_dir(root/nonce)
+
+
+def _plain_int(value):
+    return type(value) is int
+
+
+def _finite(value):
+    return type(value) in (int, float) and value == value and value not in (
+        float("inf"), float("-inf"))
+
+
+def _identity(value):
+    if (type(value) is not dict or set(value) != {"pid", "uid", "ppid", "pgid", "birth"}
+            or any(not _plain_int(value[k]) for k in ("pid", "uid", "ppid", "pgid"))):
+        raise ValueError("canary_identity_invalid")
+    birth = value["birth"]
+    if (type(birth) is not list or len(birth) != 2
+            or any(not _plain_int(p) for p in birth)
+            or birth[0] <= 0 or not 0 <= birth[1] < 1000000):
+        raise ValueError("canary_identity_invalid")
+    return value
+
+
+def validate_arm(record, *, operator_uid):
+    """Validate one arm envelope: closed keys, exact generation bindings.
+
+    The operator UID is compared against the caller-supplied current uid.
+    Freshness (dual-clock expiry) is checked separately by arm_is_fresh; a
+    valid arm returns its nonce. Anything else refuses — an arm is never
+    normalized, completed or upgraded in place.
+    """
+    if not isinstance(record, dict) or set(record) != ARM_KEYS:
+        raise ValueError("canary_arm_invalid")
+    if (record["version"] != 1 or not _plain_int(record["version"])
+            or not _plain_int(record["operator_uid"])
+            or record["operator_uid"] != operator_uid
+            or not isinstance(record["nonce"], str) or not _NONCE.fullmatch(record["nonce"])
+            or not _DIGEST.fullmatch(record["policy_digest"] or "")
+            or not _DIGEST.fullmatch(record["controller_digest"] or "")
+            or not _DIGEST.fullmatch(record["controller_plist_digest"] or "")
+            or not _UUID.fullmatch(record["boot_identity"] or "")
+            or not _finite(record["issued_at"]) or not _finite(record["expires_at"])
+            or not _finite(record["issued_monotonic"]) or not _finite(record["expires_monotonic"])):
+        raise ValueError("canary_arm_invalid")
+    if not (record["issued_at"] < record["expires_at"]
+            and 0 < record["expires_at"] - record["issued_at"] <= 300
+            and record["issued_monotonic"] < record["expires_monotonic"]
+            and 0 < record["expires_monotonic"] - record["issued_monotonic"] <= 300):
+        raise ValueError("canary_arm_invalid")
+    return record["nonce"]
+
+
+def arm_is_fresh(record, wall, mono):
+    """Dual-clock freshness check: valid only inside BOTH expiry windows."""
+    return (record["issued_at"] <= wall < record["expires_at"]
+            and record["issued_monotonic"] <= mono < record["expires_monotonic"])
+
+
+def validate_evidence(record, *, operator_uid, expected=None):
+    """Validate one evidence envelope and derive its checks independently.
+
+    ``operator_uid`` is the current uid the envelope must be owned by;
+    ``expected`` carries the cross-bound bindings (identity, epoch, source/
+    policy/plist digests, supervision, shutdown contract) the envelope must
+    equal. The producer booleans are never trusted — every check is derived
+    from the values present. ``scope`` must be a known evidence class; a
+    fixture record stays fixture scope forever.
+    """
+    if not isinstance(record, dict) or set(record) != EVIDENCE_KEYS:
+        raise ValueError("canary_evidence_invalid")
+    if (record["version"] != 1 or not _plain_int(record["version"])
+            or record["scope"] not in EVIDENCE_SCOPES
+            or not _plain_int(record["operator_uid"])
+            or record["operator_uid"] != operator_uid
+            or not _NONCE.fullmatch(record["nonce"] or "")
+            or not _UUID.fullmatch(record["boot_identity"] or "")):
+        raise ValueError("canary_evidence_invalid")
+    _identity(record["controller_identity"])
+    if not _EPOCH.fullmatch(record["controller_epoch"] or ""):
+        raise ValueError("canary_evidence_invalid")
+    for key in ("controller_digest", "policy_digest",
+                "controller_plist_digest", "canary_plist_digest",
+                "detail_digest"):
+        if not _DIGEST.fullmatch(record[key] or ""):
+            raise ValueError("canary_evidence_invalid")
+    # The canary label is derived, never stated: it must equal the label
+    # derived from the envelope's own nonce.
+    if record["canary_label"] != canary_label(record["nonce"]):
+        raise ValueError("canary_evidence_invalid")
+    if not _LABEL.fullmatch(record["canary_label"] or ""):
+        raise ValueError("canary_evidence_invalid")
+    # Exactly two ordered incarnations with distinct births and run counts
+    # 1 then 2 (KeepAlive's second distinct birth). Identity is strict;
+    # `runs` is a separate observed key on the incarnation.
+    born = record["incarnations"]
+    if not isinstance(born, list) or len(born) != 2:
+        raise ValueError("canary_evidence_invalid")
+    for entry in born:
+        if not isinstance(entry, dict) or set(entry) != {"pid", "uid", "ppid",
+                "pgid", "birth", "runs"}:
+            raise ValueError("canary_evidence_invalid")
+        _identity({k: entry[k] for k in ("pid", "uid", "ppid", "pgid", "birth")})
+    if (born[0]["birth"] == born[1]["birth"]
+            or born[0]["runs"] != 1 or born[1]["runs"] != 2):
+        raise ValueError("canary_evidence_invalid")
+    if not isinstance(record["checks"], dict) or set(record["checks"]) != CHECK_KEYS:
+        raise ValueError("canary_evidence_invalid")
+    if any(type(value) is not bool for value in record["checks"].values()):
+        raise ValueError("canary_evidence_invalid")
+    if expected is not None:
+        for key in ("controller_identity", "controller_epoch",
+                    "controller_digest", "policy_digest",
+                    "controller_plist_digest", "boot_identity", "nonce"):
+            if record[key] != expected[key]:
+                raise ValueError("canary_evidence_binding_invalid")
+        if (canonical_digest(record["controller_supervision"]) != canonical_digest(expected["controller_supervision"])
+                or canonical_digest(record["shutdown_contract"]) != canonical_digest(expected["shutdown_contract"])):
+            raise ValueError("canary_evidence_binding_invalid")
+    return record
+
+
+def validate_detail(record, *, expected=None):
+    """Validate one closed detail record and derive its step outcomes.
+
+    Success is derived from the ordered per-step values (identity, runs,
+    loaded timeout/environment digest, exit codes) and the observed
+    shutdown timing — never from the outcome word alone.
+    """
+    if not isinstance(record, dict) or set(record) != DETAIL_KEYS:
+        raise ValueError("canary_detail_invalid")
+    if (record["version"] != 1 or not _plain_int(record["version"])
+            or not _NONCE.fullmatch(record["nonce"] or "")
+            or not _UUID.fullmatch(record["boot_identity"] or "")):
+        raise ValueError("canary_detail_invalid")
+    _identity(record["controller_identity"])
+    if not _EPOCH.fullmatch(record["controller_epoch"] or ""):
+        raise ValueError("canary_detail_invalid")
+    if expected is not None:
+        for key in ("nonce", "boot_identity", "controller_identity",
+                    "controller_epoch"):
+            if record[key] != expected[key]:
+                raise ValueError("canary_detail_binding_invalid")
+    steps = record["steps"]
+    if (not isinstance(steps, list) or len(steps) != len(STEP_ORDER)
+            or not all(isinstance(step, dict) and set(step) == STEP_KEYS
+                       for step in steps)
+            or [step["name"] for step in steps] != list(STEP_ORDER)):
+        raise ValueError("canary_detail_invalid")
+    previous = None
+    for step, rule in zip(steps, (STEP_APPLICABILITY[name] for name in STEP_ORDER)):
+        if (not _finite(step["started_monotonic"]) or not _finite(step["completed_monotonic"])
+                or not (step["started_monotonic"] <= step["completed_monotonic"])
+                or (previous is not None and step["started_monotonic"] < previous)):
+            raise ValueError("canary_detail_invalid")
+        previous = step["completed_monotonic"]
+        if step["exit_code"] != rule["exit_code"]:
+            raise ValueError("canary_detail_invalid")
+        if rule["identity"] is None:
+            if step["identity"] is not None or step["runs"] != rule["runs"]:
+                raise ValueError("canary_detail_invalid")
+        else:
+            _identity(step["identity"])
+            if step["runs"] != rule["runs"]:
+                raise ValueError("canary_detail_invalid")
+        if rule["loaded"]:
+            if step["loaded_exit_seconds"] != 60 or not _DIGEST.fullmatch(
+                    step["loaded_environment_digest"] or ""):
+                raise ValueError("canary_detail_invalid")
+        else:
+            if (step["loaded_exit_seconds"] is not None
+                    or step["loaded_environment_digest"] is not None):
+                raise ValueError("canary_detail_invalid")
+    shutdown = record["shutdown"]
+    if not isinstance(shutdown, dict) or set(shutdown) != SHUTDOWN_KEYS:
+        raise ValueError("canary_detail_invalid")
+    _identity(shutdown["identity"])
+    if (shutdown["deadline_seconds"] != 50 or not _plain_int(shutdown["deadline_seconds"])
+            or not _finite(shutdown["requested_monotonic"])
+            or not _finite(shutdown["exit_observed_monotonic"])
+            or not _finite(shutdown["cleanup_completed_monotonic"])
+            or not (shutdown["requested_monotonic"] <= shutdown["exit_observed_monotonic"]
+                    <= shutdown["cleanup_completed_monotonic"])
+            or shutdown["cleanup_completed_monotonic"] > shutdown["requested_monotonic"] + 50):
+        raise ValueError("canary_detail_invalid")
+    return record
+
+
+def scan_canary_namespace(state, *, wall=None, mono=None):
+    """Bounded no-arm startup recovery scan of the fixed canary namespace.
+
+    Walks the COMPLETE fixed namespace under ``canary/``: the arm file,
+    every consumed nonce scope, evidence and detail file — including
+    partial atomic-rename temporaries. Every consumed scope is cross-checked
+    against its terminal evidence/detail; an atomic rename alone is never
+    proof of completion. Returns the validated state summary; any missing
+    attempt, unrecognized file, partial write or unresolved child raises —
+    the caller must block startup mutation, never clean up silently.
+
+    ``wall``/``mono`` default to the real clocks; tests inject frozen ones.
+    """
+    import time as _time
+    wall = _time.time() if wall is None else wall
+    mono = _time.monotonic() if mono is None else mono
+    root = Path(state)/"canary"
+    if not root.exists():
+        return {"armed": None, "scopes": {}}
+    root = private_dir(root)
+    recognized = {"intent.json"}
+    consumed = {}
+    entries = sorted(root.iterdir())
+    if len(entries) > _BOUND_POPULATION:
+        raise Fault("recovery_invalid")
+    for entry in entries:
+        name = entry.name
+        if entry.is_symlink():
+            raise Fault("recovery_invalid")
+        if name.startswith(".intent.json."):
+            # A partial atomic-rename temporary from a crashed write is
+            # unresolved intent uncertainty: it blocks, never deletes.
+            raise Fault("recovery_invalid")
+        if name == "intent.json":
+            recognized.add(name)
+            continue
+        if _NONCE.fullmatch(name or ""):
+            scope = private_dir(entry)
+            recognized.add(name)
+            consumed[name] = _scan_scope(scope, root)
+            continue
+        # evidence/ and detail/ directories are part of the fixed namespace.
+        if name in ("evidence", "detail"):
+            private_dir(entry)
+            recognized.add(name)
+            continue
+        raise Fault("recovery_invalid")
+    arm = None
+    if (root/"intent.json").exists():
+        arm = _read_json(root/"intent.json")
+        validate_arm(arm, operator_uid=os.getuid())
+        # A live arm must still be fresh: dual-clock expiry, both windows.
+        if not arm_is_fresh(arm, wall, mono):
+            raise Fault("recovery_invalid")
+    # The fixed evidence/detail directories are keyed by content digest; a
+    # consumed nonce scope must be cross-checked against its terminal
+    # evidence/detail by nonce binding, never by trusting a rename.
+    evidence_by_nonce = {}
+    if (root/"evidence").exists():
+        for digest in _bounded_names(root/"evidence"):
+            record = _read_json(root/"evidence"/(digest+".json"))
+            validate_evidence(record, operator_uid=os.getuid())
+            evidence_by_nonce.setdefault(record["nonce"], digest)
+    if (root/"detail").exists():
+        for digest in _bounded_names(root/"detail"):
+            validate_detail(_read_json(root/"detail"/(digest+".json")))
+    for nonce, scope in consumed.items():
+        if arm is not None and arm["nonce"] == nonce:
+            # The pending arm's scope exists already: consumed uncertainty.
+            raise Fault("recovery_invalid")
+        if nonce not in evidence_by_nonce:
+            # A consumed scope without terminal evidence is an incomplete
+            # attempt: block mutation, keep the records.
+            raise Fault("recovery_invalid")
+    return {"armed": arm, "scopes": consumed}
+
+
+def _bounded_names(directory):
+    """Bounded sorted file names (without suffix) inside a fixed directory."""
+    entries = sorted(directory.iterdir())
+    if len(entries) > _BOUND_POPULATION:
+        raise Fault("recovery_invalid")
+    names = []
+    for entry in entries:
+        if (entry.is_symlink() or not _DIGEST.fullmatch(entry.stem or "")
+                or entry.suffix != ".json" or not entry.is_file()):
+            raise Fault("recovery_invalid")
+        names.append(entry.stem)
+    return names
+
+
+def _scan_scope(scope, root):
+    """Cross-check one consumed nonce scope against its terminal records."""
+    files = sorted(scope.iterdir())
+    if len(files) > _BOUND_POPULATION:
+        raise Fault("recovery_invalid")
+    summary = {"files": [f.name for f in files], "evidence": None, "detail": None}
+    for entry in files:
+        name = entry.name
+        if entry.is_symlink():
+            raise Fault("recovery_invalid")
+        if name.startswith("."):
+            raise Fault("recovery_invalid")
+        info = entry.lstat()
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                or stat.S_IMODE(info.st_mode) != 0o600):
+            raise Fault("recovery_invalid")
+        if name == "incarnation-1.json" or name == "incarnation-2.json":
+            continue
+        if name == "worker.json":
+            continue
+        if name == "exit.marker":
+            summary["exit_marker"] = True
+            continue
+        raise Fault("recovery_invalid")
+    return summary

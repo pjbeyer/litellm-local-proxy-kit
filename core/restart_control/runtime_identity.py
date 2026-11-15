@@ -41,6 +41,7 @@ KIT_INPUTS = (
     'launchd/proxy.rotate.plist.tmpl', 'core/restart_controller.py',
     'core/install_restart_controller.py', 'core/restart_control/__init__.py',
     'core/restart_control/engine.py', 'core/restart_control/wire.py',
+    'core/restart_control/canary.py',
     'core/restart_control/runtime.py', 'core/restart_control/runtime_identity.py',
     'core/restart_control/process_identity.py', 'core/restart_control/proof_worker.py',
     'core/restart_control/shutdown.py', 'core/restart_control/recovery.py',
