@@ -427,3 +427,51 @@ def test_pending_bootstrap_then_first_incarnation_is_accepted(runtime, http_chil
     accepted = runtime.accept_started()
     assert accepted['identity'] == identity
     assert json.loads((runtime.state/'bootstrap.json').read_text())['identity'] == identity
+
+
+def test_not_found_signature_on_stderr_classifies_absence(runtime):
+    """launchctl's not-found text is on stderr; absence must classify.
+
+    Live gate-4 finding: launchctl print writes 'Could not find
+    service ...' to STDERR (with a leading 'Bad request.' line), while
+    _observe returned only stdout — so every real 113 carried an empty
+    payload, the signature check missed, and the lane recorded
+    unmanaged_listener instead of proven absence. The print
+    observation must include stderr in the returned bytes.
+    """
+    def pipe_with(blob):
+        read_end, write_end = os.pipe()
+        os.write(write_end, blob)
+        os.close(write_end)
+        return read_end
+
+    class FakeChild:
+        def __init__(self):
+            self.stdout = os.fdopen(pipe_with(b''), 'rb')
+            self.stderr = os.fdopen(pipe_with(
+                b'Bad request.\nCould not find service '
+                b'"fixture.local.proxy" in domain for '
+                b'user gui: %d\n' % os.getuid()), 'rb')
+            self.returncode = 113
+        def poll(self):
+            return 0
+        def wait(self, timeout=None):
+            return 0
+
+    created = []
+
+    def fake_popen(argv, **kwargs):
+        created.append(list(argv))
+        return FakeChild()
+
+    with mock.patch('restart_control.runtime.subprocess.Popen',
+                    side_effect=fake_popen):
+        state = runtime._job_state(runtime.label,
+                                   expected=mock.Mock(
+                                       ProgramArguments=['/bin/x'],
+                                       EnvironmentVariables={},
+                                       ThrottleInterval=30),
+                                   expected_path=runtime.plist)
+    assert created and created[0][:3] == ['/bin/launchctl', 'print',
+                                          'gui/%d/' % os.getuid() + runtime.label]
+    assert state is None  # classified absence, not unmanaged_listener

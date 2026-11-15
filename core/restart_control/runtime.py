@@ -803,6 +803,8 @@ class Runtime:
             raise Fault('gate_failed')
         return bytes(out)
 
+    _observe_stderr = False
+
     def _observe(self, argv, timeout, env=None, control=False):
         """Run one read-only observation child (lsof, launchctl print).
 
@@ -860,6 +862,14 @@ class Runtime:
                     if len(out) > HELPER_OUTPUT_LIMIT or len(err) > HELPER_OUTPUT_LIMIT:
                         raise ValueError('observation_overflow')
             child.wait(timeout=max(.001, deadline-time.monotonic()))
+            if self._observe_stderr:
+                # The not-found signature launchctl prints for a missing
+                # service ("Could not find service ...") goes to STDERR;
+                # callers classify absence on the returned bytes, so both
+                # streams must be present in the observation result. On
+                # a successful print stderr is empty, so field parsing
+                # sees the same payload as before.
+                return child.returncode, bytes(out) + bytes(err)
             return child.returncode, bytes(out)
         except subprocess.TimeoutExpired:
             raise Fault('service_control_timeout' if control else 'gate_failed') from None
@@ -1012,8 +1022,15 @@ class Runtime:
         expected_path = self.auto_plist if expected_path is None else expected_path
         status = None
         try:
-            status, raw = self._observe(['/bin/launchctl', 'print', f'gui/{os.getuid()}/'+label],
-                                        timeout=timeout)
+            # launchctl's not-found signature is written to stderr;
+            # include it in this observation's returned bytes so the
+            # absence classification can match it.
+            self._observe_stderr = True
+            try:
+                status, raw = self._observe(['/bin/launchctl', 'print', f'gui/{os.getuid()}/'+label],
+                                            timeout=timeout)
+            finally:
+                self._observe_stderr = False
             if status:
                 # launchctl print's documented not-found signature (exit
                 # 113 with the fixed "Could not find service" text) is
