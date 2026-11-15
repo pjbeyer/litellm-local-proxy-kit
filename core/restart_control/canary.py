@@ -16,13 +16,18 @@ refuses rather than probing further.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import re
+import secrets
 import stat
+import sys
+import time
 
 from pathlib import Path
 
-from .engine import Fault, _read_json, canonical_digest, private_dir
+from .engine import Fault, _read_json, _sync_fd, canonical_digest, private_dir
 
 __all__ = ["ARM_KEYS", "EVIDENCE_KEYS", "CHECK_KEYS", "EVIDENCE_SCOPES",
            "DETAIL_KEYS", "STEP_ORDER", "STEP_APPLICABILITY",
@@ -157,6 +162,127 @@ def arm_is_fresh(record, wall, mono):
     """Dual-clock freshness check: valid only inside BOTH expiry windows."""
     return (record["issued_at"] <= wall < record["expires_at"]
             and record["issued_monotonic"] <= mono < record["expires_monotonic"])
+
+
+# -- arm lifecycle (T017): private exclusive creation and one-time use ------
+
+_ARM_LIFETIME = 300.0
+
+
+def arm_bindings(policy_path):
+    """The exact generation hashes an arm binds, computed without Runtime.
+
+    Equals Runtime.binding_facts() for the same policy and controller
+    sources: canonical policy digest, canonical digest of the closed
+    controller source registry facts, and the generated controller plist
+    bytes. Reads only public source files — no credentials, no spawn.
+    """
+    import plistlib
+
+    from .engine import _read_json, canonical_digest
+    from .runtime_identity import CONTROLLER_INPUTS, file_fact
+    from .runtime import controller_job
+
+    policy_path = Path(policy_path)
+    policy = _read_json(policy_path)
+    kit = Path(policy["kit_root"])
+    controller = {name: file_fact(kit/name) for name in CONTROLLER_INPUTS}
+    proxy = plistlib.loads(Path(policy["plist"]).read_bytes())
+    python = proxy["EnvironmentVariables"]["LITELLM_PROXY_PYTHON"]
+    job = controller_job(policy, policy_path, python)
+    return {"policy_digest": canonical_digest(policy),
+            "controller_digest": canonical_digest(controller),
+            "controller_plist_digest": hashlib.sha256(
+                plistlib.dumps(job, sort_keys=True)).hexdigest()}
+
+
+def arm_canary(state, bindings):
+    """Create one arm envelope; exclusive, private, never overwritten.
+
+    ``bindings`` carries the exact generation hashes from the CURRENT
+    policy/controller sources (policy_digest, controller_digest,
+    controller_plist_digest) and the current boot identity is read from the
+    bounded kernel primitive — never an ambient environment value. Refuses
+    when any pending or consumed canary uncertainty exists: an existing
+    intent.json, any consumed nonce scope, partial temporaries or an
+    unrecognized entry. Emits no service control and resolves no
+    credentials.
+    """
+    from .runtime_identity import kernel_boot_identity
+    keys = {"policy_digest", "controller_digest", "controller_plist_digest"}
+    if (not isinstance(bindings, dict) or set(bindings) != keys
+            or any(not _DIGEST.fullmatch(bindings[k] or "") for k in keys)):
+        raise Fault("invalid_request")
+    # Refuse any pending/consumed canary uncertainty BEFORE writing.
+    scan_canary_namespace(state)
+    root = Path(state)/"canary"
+    if not root.exists():
+        private_dir(root)
+    nonce = secrets.token_hex(16)
+    # Capture both clocks ONCE: the expiry windows must be exactly the
+    # arm lifetime, immune to clock reads straddling a boundary.
+    now, mono = time.time(), time.monotonic()
+    record = {"version": 1, "operator_uid": os.getuid(), "nonce": nonce,
+              "policy_digest": bindings["policy_digest"],
+              "controller_digest": bindings["controller_digest"],
+              "controller_plist_digest": bindings["controller_plist_digest"],
+              "boot_identity": kernel_boot_identity(),
+              "issued_at": now,
+              "expires_at": now + _ARM_LIFETIME,
+              "issued_monotonic": mono,
+              "expires_monotonic": mono + _ARM_LIFETIME}
+    validate_arm(record, operator_uid=os.getuid())
+    # Exclusive creation: O_EXCL, private mode, no overwrite, synced.
+    destination = root/"intent.json"
+    blob = json.dumps(record, sort_keys=True, allow_nan=False).encode()
+    try:
+        fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                     | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    except FileExistsError:
+        raise Fault("state_io") from None
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(blob)
+            stream.flush()
+            _sync_fd(stream.fileno())
+    finally:
+        _sync_fd(os.open(root, os.O_RDONLY))
+    return record
+
+
+def consume_arm(state, *, operator_uid):
+    """Atomically consume the one valid arm into its private nonce scope.
+
+    A synced rename moves the arm into the nonce-specific private canary
+    scope where the startup orchestration (T019) carries it through. The
+    rename is synced on both the destination directory and the source
+    root; the consumed arm is never deleted, so an uncertain outcome is
+    always reconstructable. Refuses when the arm is absent, invalid,
+    expired, replayed, or its scope already exists.
+    """
+    root = Path(state)/"canary"
+    if not root.exists():
+        raise Fault("recovery_invalid")
+    arm_path = root/"intent.json"
+    try:
+        record = _read_json(arm_path)
+    except FileNotFoundError:
+        raise Fault("recovery_invalid") from None
+    validate_arm(record, operator_uid=operator_uid)
+    if not arm_is_fresh(record, time.time(), time.monotonic()):
+        raise Fault("recovery_invalid")
+    scope = canary_scope(state, record["nonce"])
+    if any(scope.iterdir()):
+        # A scope with content for this nonce means replay or an earlier
+        # partially-consumed attempt: refuse, never merge or overwrite.
+        raise Fault("recovery_invalid")
+    try:
+        os.replace(arm_path, scope/"intent.json")
+    except OSError:
+        raise Fault("state_io") from None
+    _sync_fd(os.open(scope, os.O_RDONLY))
+    _sync_fd(os.open(root, os.O_RDONLY))
+    return record
 
 
 def validate_evidence(record, *, operator_uid, expected=None):
@@ -337,26 +463,56 @@ def scan_canary_namespace(state, *, wall=None, mono=None):
         raise Fault("recovery_invalid")
     arm = None
     if (root/"intent.json").exists():
-        arm = _read_json(root/"intent.json")
-        validate_arm(arm, operator_uid=os.getuid())
-        # A live arm must still be fresh: dual-clock expiry, both windows.
-        if not arm_is_fresh(arm, wall, mono):
-            raise Fault("recovery_invalid")
+        try:
+            arm = _read_json(root/"intent.json")
+            validate_arm(arm, operator_uid=os.getuid())
+            # A live arm must still be fresh: dual-clock expiry, both windows.
+            if not arm_is_fresh(arm, wall, mono):
+                raise ValueError("canary_arm_stale")
+        except Fault:
+            raise
+        except Exception:
+            raise Fault("recovery_invalid") from None
     # The fixed evidence/detail directories are keyed by content digest; a
     # consumed nonce scope must be cross-checked against its terminal
     # evidence/detail by nonce binding, never by trusting a rename.
     evidence_by_nonce = {}
     if (root/"evidence").exists():
         for digest in _bounded_names(root/"evidence"):
-            record = _read_json(root/"evidence"/(digest+".json"))
-            validate_evidence(record, operator_uid=os.getuid())
-            evidence_by_nonce.setdefault(record["nonce"], digest)
+            try:
+                record = _read_json(root/"evidence"/(digest+".json"))
+                validate_evidence(record, operator_uid=os.getuid())
+            except Fault:
+                raise
+            except Exception:
+                raise Fault("recovery_invalid") from None
+            if record["nonce"] not in evidence_by_nonce:
+                evidence_by_nonce[record["nonce"]] = digest
+            else:
+                # Two evidence records claiming one nonce is ambiguous.
+                raise Fault("recovery_invalid")
     if (root/"detail").exists():
         for digest in _bounded_names(root/"detail"):
-            validate_detail(_read_json(root/"detail"/(digest+".json")))
+            try:
+                validate_detail(_read_json(root/"detail"/(digest+".json")))
+            except Fault:
+                raise
+            except Exception:
+                raise Fault("recovery_invalid") from None
     for nonce, scope in consumed.items():
         if arm is not None and arm["nonce"] == nonce:
             # The pending arm's scope exists already: consumed uncertainty.
+            raise Fault("recovery_invalid")
+        scope_arm = scope.get("arm")
+        if scope_arm is None:
+            raise Fault("recovery_invalid")
+        try:
+            validate_arm(scope_arm, operator_uid=os.getuid())
+        except Fault:
+            raise
+        except Exception:
+            raise Fault("recovery_invalid") from None
+        if scope_arm["nonce"] != nonce:
             raise Fault("recovery_invalid")
         if nonce not in evidence_by_nonce:
             # A consumed scope without terminal evidence is an incomplete
@@ -395,6 +551,11 @@ def _scan_scope(scope, root):
         if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
                 or stat.S_IMODE(info.st_mode) != 0o600):
             raise Fault("recovery_invalid")
+        if name == "intent.json":
+            # The consumed arm itself, moved here by the one-time
+            # consumption; validated with the scope by nonce binding.
+            summary["arm"] = _read_json(entry)
+            continue
         if name == "incarnation-1.json" or name == "incarnation-2.json":
             continue
         if name == "worker.json":

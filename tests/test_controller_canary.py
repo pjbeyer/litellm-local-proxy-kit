@@ -18,8 +18,10 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'core'))
+sys.path.insert(0, str(ROOT/'tests'))
 from restart_control.engine import Fault, atomic_json, private_dir
 from restart_control import canary
+from test_restart_runtime import runtime, private_root  # noqa: F401
 
 
 UUID = "12345678-1234-1234-1234-123456789abc"
@@ -300,8 +302,12 @@ def test_scan_arm_nonce_with_existing_scope_blocks(tmp_path):
 
 
 def test_scan_consumed_scope_with_terminal_evidence_passes(tmp_path):
+    # A consumed scope always carries the consumed arm (the one-time
+    # consumption renames it into the scope) plus terminal evidence.
     place_state(tmp_path, scopes=[NONCE], evidence_records=[evidence()],
                 detail_records=[detail()])
+    root = tmp_path/"canary"/NONCE
+    atomic_json(root/"intent.json", arm())
     summary = canary.scan_canary_namespace(tmp_path)
     assert list(summary["scopes"]) == [NONCE]
 
@@ -333,3 +339,90 @@ def test_scan_partial_scope_write_blocks(tmp_path):
                 extra=lambda root: (root/NONCE/".partial").write_text("x\n"))
     with pytest.raises(Fault):
         canary.scan_canary_namespace(tmp_path)
+
+
+# -- T017: arm command and one-time consumption -------------------------------
+
+ARM_BINDINGS = {"policy_digest": DIGEST, "controller_digest": DIGEST,
+                "controller_plist_digest": DIGEST}
+
+
+def test_arm_canary_creates_exclusive_private_envelope(tmp_path):
+    record = canary.arm_canary(tmp_path, ARM_BINDINGS)
+    root = tmp_path/"canary"
+    assert (root/"intent.json").exists()
+    assert (root/"intent.json").stat().st_mode & 0o777 == 0o600
+    assert len(record["nonce"]) == 32
+    assert json.loads((root/"intent.json").read_text()) == record
+    canary.validate_arm(record, operator_uid=os.getuid())
+    # Second arm refuses: exclusive, never overwritten.
+    with pytest.raises(Fault):
+        canary.arm_canary(tmp_path, ARM_BINDINGS)
+
+
+def test_arm_refuses_existing_uncertainty(tmp_path):
+    canary.arm_canary(tmp_path, ARM_BINDINGS)
+    # Any consumed scope present (even without evidence) blocks a new arm.
+    scope = tmp_path/"canary"/NONCE
+    scope.mkdir(mode=0o700)
+    (scope/"intent.json").write_text("{}")
+    with pytest.raises(Fault):
+        canary.arm_canary(tmp_path, ARM_BINDINGS)
+
+
+def test_arm_rejects_incomplete_bindings(tmp_path):
+    for bad in ({}, {**ARM_BINDINGS, "policy_digest": "z"*64},
+                {**ARM_BINDINGS, "extra": 1},
+                {k: v for k, v in ARM_BINDINGS.items() if k != "controller_digest"}):
+        with pytest.raises(Fault):
+            canary.arm_canary(tmp_path, bad)
+
+
+def test_consume_arm_moves_envelope_into_scope_once(tmp_path):
+    record = canary.arm_canary(tmp_path, ARM_BINDINGS)
+    consumed = canary.consume_arm(tmp_path, operator_uid=os.getuid())
+    assert consumed["nonce"] == record["nonce"]
+    scope = tmp_path/"canary"/record["nonce"]
+    assert (scope/"intent.json").exists()
+    assert not (tmp_path/"canary"/"intent.json").exists()
+    # Replay: the arm is gone; a second consumption refuses.
+    with pytest.raises(Fault):
+        canary.consume_arm(tmp_path, operator_uid=os.getuid())
+
+
+def test_consume_arm_refuses_when_scope_is_dirty(tmp_path):
+    record = canary.arm_canary(tmp_path, ARM_BINDINGS)
+    scope = tmp_path/"canary"/record["nonce"]
+    scope.mkdir(mode=0o700)
+    (scope/"worker.json").write_text("{}")
+    with pytest.raises(Fault):
+        canary.consume_arm(tmp_path, operator_uid=os.getuid())
+
+
+def test_arm_bindings_equal_runtime_binding_facts(runtime, private_root):
+    """The arm's generation hashes equal Runtime.binding_facts()."""
+    from restart_control.canary import arm_bindings
+    assert arm_bindings(runtime.policy_path) == runtime.binding_facts()
+
+
+def test_cli_arm_canary_against_installed_layout(runtime, private_root):
+    """The real entrypoint arms once and refuses pending uncertainty."""
+    import subprocess
+    import sys as _sys
+    entrypoint = ROOT/'core'/'restart_controller.py'
+    home = private_root/'cli-home'
+    home.mkdir(mode=0o700)
+    env = {'HOME': str(home), 'PATH': os.defpath,
+           'TMPDIR': os.environ['TMPDIR']}
+    argv = [_sys.executable, '-I', str(entrypoint),
+            '--policy', str(runtime.policy_path), 'arm-canary']
+    result = subprocess.run(argv, env=env, capture_output=True, timeout=60)
+    assert result.returncode == 0, result.stderr
+    response = json.loads(result.stdout.decode())
+    assert response['status'] == 'armed'
+    assert canary._NONCE.fullmatch(response['nonce'])
+    assert response['label'] == canary.canary_label(response['nonce'])
+    # Pending arm: a second arm refuses.
+    result = subprocess.run(argv, env=env, capture_output=True, timeout=60)
+    assert result.returncode == 78
+    assert json.loads(result.stdout.decode())['code'] != 'ok'

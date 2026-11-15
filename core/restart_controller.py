@@ -100,6 +100,7 @@ def main(argv=None):
         parser.add_argument('--policy', required=True)
         commands = parser.add_subparsers(dest='command', required=True)
         commands.add_parser('serve')
+        commands.add_parser('arm-canary')
         for op in ('status', 'prepare'):
             commands.add_parser(op)
         restart = commands.add_parser('restart')
@@ -114,6 +115,16 @@ def main(argv=None):
             shutdown.checkpoint()
         policy = _read_json(Path(args.policy))
         endpoint = Path(policy['state_dir'])/'controller.sock'
+        if args.command == 'arm-canary':
+            # Operator arm command: no service control, no credentials, no
+            # runtime construction — only generation bindings and the
+            # exclusive private envelope under the fixed state root.
+            from restart_control.canary import arm_bindings, arm_canary
+            record = arm_canary(policy['state_dir'], arm_bindings(args.policy))
+            print(json.dumps({'status': 'armed', 'nonce': record['nonce'],
+                              'label': 'local.restart-canary.' + record['nonce']},
+                             sort_keys=True))
+            return 0
         if args.command == 'serve':
             shutdown.checkpoint()
             from restart_control.runtime import Runtime
