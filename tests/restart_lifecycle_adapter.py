@@ -61,8 +61,9 @@ class FixtureLifecycleAdapter(CorePort, DirectPort):
 
     # -- T005/T006 operation/fence surface (engine drives these in T012) --
     def begin(self, binding, scope):
+        canary = binding.get('kind') == 'platform-canary'
         if (self.uncertain or self.active is not None
-                or binding.get('kind') != 'proxy'
+                or binding.get('kind') not in ('proxy', 'platform-canary')
                 or binding.get('asset_digest') is not None
                 or binding.get('runtime_digest') is not None
                 or not isinstance(binding.get('request_id'), str)
@@ -78,10 +79,39 @@ class FixtureLifecycleAdapter(CorePort, DirectPort):
         ticket = _OperationTicket(binding['request_id'],
                                   tuple(sorted(binding.items())))
         self.operations[binding['request_id']] = {
-            'binding': dict(binding), 'scope': scope, 'phase': 'preparing',
+            'binding': dict(binding), 'scope': scope,
+            'phase': 'canary_pending' if canary else 'preparing',
             'outcome': None, 'primary_control_committed': False}
         self.active = ticket
         self.transitions.append('begin')
+        return ticket
+
+    # -- T019 canary lifecycle surface (startup orchestration drives it) --
+    def canary_phase(self, ticket, phase):
+        row = self._active_row(ticket)
+        if (row['binding'].get('kind') != 'platform-canary'
+                or phase != 'canary_running'
+                or row['phase'] != 'canary_pending'
+                or row['outcome'] is not None):
+            raise RuntimeError('fixture_store_invalid')
+        row['phase'] = phase
+        self.transitions.append('canary_running')
+        return ticket
+
+    def canary_terminal(self, ticket, outcome):
+        row = self._active_row(ticket)
+        if (row['binding'].get('kind') != 'platform-canary'
+                or outcome not in ('canary_passed', 'canary_blocked')
+                or row['phase'] not in ('canary_pending', 'canary_running')
+                or row['outcome'] is not None):
+            raise RuntimeError('fixture_store_invalid')
+        for child in self.spawns.values():
+            if (child['binding'].get('request_id') == ticket.request_id
+                    and child['state'] != 'closed'):
+                raise RuntimeError('fixture_store_invalid')
+        row['phase'], row['outcome'] = outcome, outcome
+        self.active = None
+        self.transitions.append(outcome)
         return ticket
 
     def bind_frozen(self, ticket, asset_digest, runtime_digest):

@@ -129,6 +129,14 @@ class RecoveryInventory:
     approvals: dict
     entry_count: int
     canary_uncertain: bool
+    # T019: a validated pending arm's nonce (admissible only to the exact
+    # startup-canary operation for that nonce), the nonces of consumed
+    # scopes still awaiting their terminal attempt (owned by the active
+    # canary operation for that nonce), and the nonces of consumed scopes
+    # with terminal evidence. Never clearance decisions.
+    canary_armed: object = None
+    canary_incomplete: frozenset = frozenset()
+    canary_terminal: frozenset = frozenset()
 
 
 @dataclass(frozen=True, eq=False)
@@ -338,11 +346,28 @@ class RecoveryStore:
             _require(child["state"] in ("closed", "owned") or
                      (child["state"] == "intent" and child["spawn_id"] == owning_intent))
             _require(child["state"] == "closed" or request_id == active_id)
+        # T019: a terminal platform-canary operation (canary_passed or
+        # canary_blocked) with all children closed is a settled fact that
+        # never blocks later proxy work; an unsettled canary operation is
+        # admissible only as the exact active ticket's own row.
         for request_id, row in view.operations.items():
-            _require(row["binding"]["kind"] == "proxy")
             approval = view.approvals.get(request_id)
             fence = view.fence if (view.fence is not None and
                                    view.fence["binding"]["request_id"] == request_id) else None
+            if row["binding"]["kind"] == "platform-canary":
+                _require(request_id not in view.requests
+                         and approval is None and fence is None
+                         and row["primary_control_committed"] is False
+                         and row["outcome"] in (None, "canary_passed", "canary_blocked")
+                         and all(child["state"] == "closed"
+                                 for child in children.get(request_id, ())))
+                if row["phase"] in _CANARY_PHASES and row["outcome"] is None:
+                    # An unsettled canary attempt must be exactly the
+                    # active operation for its own nonce.
+                    _require(request_id == active_id
+                             and row["phase"] in ("canary_pending", "canary_running"))
+                continue
+            _require(row["binding"]["kind"] == "proxy")
             if row["phase"] == "preparing" and row["outcome"] is None:
                 _require(request_id == active_id and fence is None
                          and row["primary_control_committed"] is False)
@@ -471,8 +496,19 @@ class RecoveryStore:
                    "phase": "preparing", "outcome": None,
                    "primary_control_committed": False}
             self.validate_operation(row)
-            _require(binding["kind"] == "proxy" and binding["asset_digest"] is None
-                     and binding["runtime_digest"] is None)
+            kind = binding["kind"]
+            if kind == "proxy":
+                _require(binding["asset_digest"] is None
+                         and binding["runtime_digest"] is None)
+            else:
+                # T019: the synthetic platform-canary operation starts
+                # pending with paired null proxy digests; its request_id
+                # is the canary nonce and it admits no request record.
+                _require(binding["asset_digest"] is None
+                         and binding["runtime_digest"] is None
+                         and row["phase"] == "preparing")
+                row = {**row, "phase": "canary_pending"}
+                self.validate_operation(row)
             request_id = binding["request_id"]
             _require(request_id not in view.operations and request_id not in view.requests
                      and request_id not in view.approvals)
@@ -480,6 +516,53 @@ class RecoveryStore:
             self._write_operation(row)
             self._active_ticket = self._refreshed_ticket(row)
             return self._active_ticket
+
+    def canary_phase(self, ticket, phase):
+        """Move the active canary operation through its frozen phases.
+
+        Only canary_pending → canary_running is admitted; terminal
+        transitions use canary_terminal. Requires the exact active
+        ticket, a clear view and no uncertainty.
+        """
+        with self._spawn_transition_lock():
+            _require(not self._uncertain)
+            row = self._check_active(ticket)
+            _require(row["binding"]["kind"] == "platform-canary"
+                     and phase == "canary_running"
+                     and row["phase"] == "canary_pending"
+                     and row["outcome"] is None)
+            view = self.inventory()
+            self._require_clear_view(view, ticket)
+            updated = {**row, "phase": phase}
+            self._write_operation(updated)
+            self._active_ticket = self._refreshed_ticket(updated)
+            return self._active_ticket
+
+    def canary_terminal(self, ticket, outcome):
+        """Close the active canary operation as passed or blocked.
+
+        Requires every child spawn of the attempt closed and the exact
+        active ticket. The terminal row persists as a settled fact; it
+        never clears canary namespace uncertainty (the consumed scope
+        files stay for operator review).
+        """
+        with self._spawn_transition_lock():
+            _require(not self._uncertain)
+            row = self._check_active(ticket)
+            _require(row["binding"]["kind"] == "platform-canary"
+                     and outcome in ("canary_passed", "canary_blocked")
+                     and row["phase"] in ("canary_pending", "canary_running")
+                     and row["outcome"] is None)
+            view = self.inventory()
+            self._require_clear_view(view, ticket)
+            updated = {**row, "phase": outcome, "outcome": outcome}
+            self.validate_operation(updated)
+            self._require_clear_view(replace(view,
+                operations={**view.operations, ticket.request_id: updated}),
+                None, projected_row=updated)
+            self._write_operation(updated)
+            self._active_ticket = None
+            return self._refreshed_ticket(updated)
 
     def end_operation(self, active):
         """Drop only the in-memory active context; retained records still bar work."""
@@ -1112,22 +1195,51 @@ class RecoveryStore:
                               self._checked_file(self.approvals_dir / name))
         canary = self.state_dir / "canary"
         canary_uncertain = False
+        canary_armed = None
+        canary_incomplete = set()
+        canary_terminal = set()
         for name in entries(canary, optional=True):
-            canary_uncertain = True
             path = canary / name
             if name == "intent.json":
-                self._checked_file(path)
+                # T019: a pending arm is uncertainty for proxy work, but
+                # is classified — validated by the canary scan at
+                # admission, not here.
+                canary_uncertain = True
+                record = self._checked_file(path)
+                if (type(record) is dict and record.get("version") == 1
+                        and _token(record.get("nonce") or "", _ID)):
+                    canary_armed = record["nonce"]
             elif name in ("detail", "evidence"):
                 for child in entries(path):
                     _require(child.endswith(".json") and
                              _token(child[:-5], _DIGEST))
                     self._checked_file(path / child)
             elif _token(name, _ID):
+                # T019: a consumed scope owned by an active canary
+                # operation is settled-lane state, not refusal. A scope
+                # with a diagnostic is a blocked attempt: hard refusal
+                # for mutation admission until operator reconciliation.
                 for child in entries(path):
-                    # T016 has not frozen receipt names or their schemas.
-                    # A scope entry is uncertainty, never clearance.
+                    if child == "diagnostic.json":
+                        self._checked_file(path / child)
+                        canary_uncertain = True
+                        continue
+                    if child in ("intent.json", "incarnation-1.json",
+                                 "incarnation-2.json", "latch.json",
+                                 "exit.marker") or child.endswith(".plist"):
+                        continue
                     raise RecoveryError()
+                canary_incomplete.add(name)
+                # Terminal evidence for this nonce settles the attempt.
+                evidence_dir = path.parent / "evidence"
+                if evidence_dir.is_dir() and any(evidence_dir.iterdir()):
+                    canary_terminal.add(name)
+            elif name == "diagnostic.json":
+                self._checked_file(path)
+                canary_uncertain = True
             else:
                 raise RecoveryError()
         return RecoveryInventory(operations, spawns, fence, requests, approvals,
-                                 count, canary_uncertain)
+                                 count, canary_uncertain, canary_armed,
+                                 frozenset(canary_incomplete),
+                                 frozenset(canary_terminal))

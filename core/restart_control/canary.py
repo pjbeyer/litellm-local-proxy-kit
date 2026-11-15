@@ -297,8 +297,11 @@ def run_canary_worker(state, nonce, *, stdout=None):
     and start time, cooperatively obeys the one-time private exit
     marker, and handles SIGTERM/SIGINT through the shared shutdown
     latch with the fixed 50-second budget — never a signal escalation.
-    Emits only the bounded status JSON on stdout; no raw subprocess
-    output.
+    At most two incarnations exist per scope (launchd KeepAlive's second
+    distinct birth): the first consumes the one-time exit marker and
+    exits cooperatively; the second stays until SIGTERM and records the
+    durable first-latch receipt. Emits only the bounded status JSON on
+    stdout; no raw subprocess output.
     """
     import signal
 
@@ -309,11 +312,13 @@ def run_canary_worker(state, nonce, *, stdout=None):
     if stdout is None:
         stdout = sys.stdout
     scope = canary_scope(state, nonce)
-    worker = scope/"worker.json"
-    if worker.exists():
-        # One worker record per scope: a stale record is uncertain
+    first = scope/"incarnation-1.json"
+    second = scope/"incarnation-2.json"
+    if second.exists():
+        # At most two incarnations per scope: a third is uncertain
         # state, never silently overwritten.
         raise Fault("recovery_invalid")
+    worker = first if not first.exists() else second
     identity = process_identity(os.getpid())
     if identity["uid"] != os.getuid():
         raise Fault("recovery_invalid")
@@ -322,8 +327,25 @@ def run_canary_worker(state, nonce, *, stdout=None):
                                       ("pid", "uid", "ppid", "pgid", "birth")},
                          "started_monotonic": time.monotonic()})
     shutdown = Shutdown()
-    signal.signal(signal.SIGTERM, lambda *_: shutdown.request())
-    signal.signal(signal.SIGINT, lambda *_: shutdown.request())
+    # First-SIGTERM latch receipt (plan: shutdown detail): the private
+    # monotonic observation at the first request, recorded durably in
+    # the scope by the signal handler itself — the deadline is derived,
+    # the receipt is observed. One-time exclusive creation.
+    latched = {}
+    def _latch(*_):
+        if "requested_monotonic" not in latched:
+            latched["requested_monotonic"] = time.monotonic()
+            receipt = scope/"latch.json"
+            if not receipt.exists():
+                try:
+                    atomic_json(receipt, {"version": 1, "nonce": nonce,
+                                           "requested_monotonic":
+                                               latched["requested_monotonic"]})
+                except Exception:
+                    pass
+        shutdown.request()
+    signal.signal(signal.SIGTERM, _latch)
+    signal.signal(signal.SIGINT, _latch)
     marker = scope/"exit.marker"
     try:
         while True:
@@ -337,13 +359,20 @@ def run_canary_worker(state, nonce, *, stdout=None):
             break
     except ShutdownRequested:
         outcome = "shutdown_requested"
-    # Bounded status record: outcome, latch state and the fixed shared
-    # deadline; nothing else is emitted.
+    if outcome == "exit_marker":
+        # One-time consumption: the marker is unlinked so KeepAlive's
+        # second incarnation stays alive until the bounded bootout.
+        try:
+            marker.unlink()
+            _sync_fd(os.open(scope, os.O_RDONLY))
+        except OSError:
+            pass
     record = {"version": 1, "nonce": nonce,
               "outcome": outcome,
               "requested": shutdown.requested,
               "deadline": shutdown.deadline,
-              "completed_monotonic": time.monotonic()}
+              "completed_monotonic": time.monotonic(),
+              "requested_monotonic": latched.get("requested_monotonic")}
     print(json.dumps(record, sort_keys=True, allow_nan=False), file=stdout)
     return record
 
@@ -619,7 +648,7 @@ def _scan_scope(scope, root):
             continue
         if name == "incarnation-1.json" or name == "incarnation-2.json":
             continue
-        if name == "worker.json":
+        if name == "latch.json":
             continue
         if name == "exit.marker":
             summary["exit_marker"] = True

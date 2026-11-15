@@ -140,6 +140,12 @@ def main(argv=None):
             shutdown.checkpoint()
             controller = Controller(runtime.state, runtime, shutdown=shutdown)
             shutdown.checkpoint()
+            # T019: the armed startup canary runs inside the exact serve
+            # context — after identity/supervision verification, before
+            # RPC admission. No arm: zero canary activity. A blocked or
+            # refused canary blocks production mutation admission.
+            from restart_control.startup import run_startup_canary
+            canary = run_startup_canary(runtime, controller, shutdown)
             serve(endpoint, controller, ShutdownView(shutdown))
             return 0
         request = {'op': args.command}

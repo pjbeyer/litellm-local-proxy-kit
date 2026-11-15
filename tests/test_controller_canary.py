@@ -457,7 +457,7 @@ def test_worker_records_identity_and_exits_on_marker(tmp_path):
                             env={'HOME': str(tmp_path), 'PATH': os.defpath,
                                  'TMPDIR': os.environ['TMPDIR']})
     try:
-        worker = scope/'worker.json'
+        worker = scope/'incarnation-1.json'
         deadline = time.monotonic() + 15
         while not worker.exists() and proc.poll() is None and time.monotonic() < deadline:
             time.sleep(0.05)
@@ -478,11 +478,11 @@ def test_worker_records_identity_and_exits_on_marker(tmp_path):
         proc.wait(timeout=10)
 
 
-def test_worker_second_incarnation_refuses(tmp_path):
-    """A second worker record in the same scope is uncertain state."""
+def test_worker_third_incarnation_refuses(tmp_path):
+    """A third worker incarnation in the same scope is uncertain state."""
     scope = canary.canary_scope(tmp_path, NONCE)
-    canary.canary_scope  # scope exists already (fixture-private root)
-    (scope/'worker.json').write_text('{}')
+    (scope/'incarnation-1.json').write_text('{}')
+    (scope/'incarnation-2.json').write_text('{}')
     with pytest.raises(Fault):
         canary.run_canary_worker(tmp_path, NONCE)
 
@@ -501,7 +501,7 @@ def test_canary_worker_shutdown_deadline(tmp_path):
                             env={'HOME': str(tmp_path), 'PATH': os.defpath,
                                  'TMPDIR': os.environ['TMPDIR']})
     try:
-        worker = scope/'worker.json'
+        worker = scope/'incarnation-1.json'
         deadline = time.monotonic() + 15
         while not worker.exists() and proc.poll() is None and time.monotonic() < deadline:
             time.sleep(0.05)

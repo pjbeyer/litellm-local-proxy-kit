@@ -247,6 +247,8 @@ Kit source paths:
 - `core/restart_control/runtime.py`
 - `core/restart_control/runtime_identity.py`
 - `core/restart_control/process_identity.py`
+- `core/restart_control/canary.py`
+- `core/restart_control/startup.py`
 - `core/restart_control/shutdown.py`
 - `core/restart_control/recovery.py`
 
