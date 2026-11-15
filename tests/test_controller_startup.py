@@ -384,3 +384,91 @@ def test_shutdown_latch_blocks_lane(runtime, private_root):
     scope = canary.canary_scope(runtime.state, arm['nonce'])
     diagnostic = json.loads((scope/'diagnostic.json').read_text())
     assert diagnostic['code'] == 'controller_stopping'
+
+
+def test_registration_latency_polls_not_blocks(runtime, private_root):
+    """Transient print absences before first sighting poll, not block.
+
+    Live gate-4 finding: launchctl bootstrap returns before launchd
+    makes the job queryable, so the first print after bootstrap can
+    carry the real not-found signature (exit 113) while the worker is
+    already starting. The lane must poll to the step deadline instead
+    of recording canary_job_absent against a job that is coming up.
+    Absence stays PROOF in _cleanup (the job must be gone there).
+    """
+    arm = _arm(runtime)
+    fake = FakePlatform(runtime, runtime.policy_path, runtime.state)
+    canary.consume_arm(runtime.state, operator_uid=os.getuid())
+    lane = _make_lane(runtime, fake, arm)
+
+    # The real _job_state raise path (fixture's fake_job_state returns
+    # None instead) with a transient-absence window over the first
+    # sighting: 113 signature only until the first successful print.
+    import re as _re
+    from restart_control.process_identity import process_identity
+    real_job_state = _Lane._job_state
+    printed = {'n': 0}
+
+    def flaky_job_state(label, expected=None, expected_path=None, timeout=10):
+        status, raw = fake.execute(['/bin/launchctl', 'print',
+                                    f'gui/{os.getuid()}/' + label], 10)
+        if status:
+            # Mirror the runtime's real classification: the 113
+            # not-found signature raises the explicit absence fault
+            # (so _cleanup can prove absence); anything else refuses.
+            if status == 113 and b'Could not find service' in raw:
+                raise Fault('canary_job_absent')
+            raise Fault('unmanaged_listener')
+        printed['n'] += 1
+        if printed['n'] <= 2:
+            # Registration latency: pretend launchd has not exposed the
+            # job yet (same shape the live 113 produced through the
+            # runtime's real classification).
+            raise Fault('canary_job_absent')
+        text = raw.decode('utf-8', 'replace')
+
+        def field(key):
+            match = _re.search(r'(?m)^\s*' + _re.escape(key) + r' = (.+)$',
+                               text)
+            return match.group(1).strip() if match else None
+        pid, runs = field('pid'), field('runs')
+        identity = None
+        if pid and pid.isdigit():
+            try:
+                full = process_identity(int(pid))
+                identity = {k: full[k] for k in ('pid', 'uid', 'birth')}
+            except Exception:
+                identity = None
+        argmatch = _re.search(
+            r'(?ms)^\targuments = \{\n(.*?)^\t\}', text)
+        args = ([s.strip() for s in argmatch.group(1).splitlines()
+                 if s.strip()] if argmatch else None)
+        envmatch = _re.search(r'(?ms)^\tenvironment = \{\n(.*?)^\t\}', text)
+        actual_env = {}
+        for line in envmatch.group(1).splitlines():
+            if ' => ' in line:
+                key, value = line.strip().split(' => ', 1)
+                actual_env[key] = value
+        parity = (args == expected['ProgramArguments']
+                  and all(actual_env.get(k) == v
+                          for k, v in expected['EnvironmentVariables'].items())
+                  and field('minimum runtime') ==
+                      str(expected['ThrottleInterval']))
+        return {'identity': identity,
+                'runs': int(runs) if runs and runs.isdigit() else None,
+                'parity': parity}
+
+    lane._job_state = lambda job: flaky_job_state(
+        lane.label, expected=lane.canary_job(),
+        expected_path=lane._plist_path)
+    original_keepalive = lane._keepalive
+
+    def keepalive_step():
+        fake.worker_exited(1)
+        return original_keepalive()
+    lane._keepalive = keepalive_step
+    result = lane.run()
+    assert result['outcome'] == 'canary_passed', result
+    assert printed['n'] >= 3
+    assert lane.controller.recovery.transitions == [
+        'begin', 'canary_running', 'canary_passed']

@@ -214,7 +214,19 @@ class _Lane:
         job = self.canary_job()
         while True:
             self.shutdown.checkpoint()
-            state = self._job_state(job)
+            try:
+                state = self._job_state(job)
+            except Fault as error:
+                # Registration latency: launchctl bootstrap returns before
+                # launchd makes the job queryable, so the first prints can
+                # carry the not-found signature while the worker is already
+                # starting (observed live: receipt written 77 ms after the
+                # 113). Before the first sighting, absence is "not yet" —
+                # poll to the step deadline; it is never proof of a job
+                # that must be present.
+                if error.code != "canary_job_absent":
+                    raise
+                state = None
             if (state is not None and state.get("parity")
                     and state.get("runs") == 1 and state.get("identity")):
                 observed = state["identity"]
@@ -280,7 +292,15 @@ class _Lane:
         first_birth = (self._first_identity or {}).get("birth")
         while True:
             self.shutdown.checkpoint()
-            state = self._job_state(job)
+            try:
+                state = self._job_state(job)
+            except Fault as error:
+                # Same registration-latency window as _first_loaded: a
+                # not-found between incarnations is KeepAlive mid-respawn,
+                # never proof of a gone job (cleanup owns absence proof).
+                if error.code != "canary_job_absent":
+                    raise
+                state = None
             if (state is not None and state.get("parity")
                     and state.get("runs") == 2 and state.get("identity")):
                 observed = state["identity"]
