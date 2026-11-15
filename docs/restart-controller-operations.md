@@ -177,13 +177,14 @@ and verified build inputs before installation or live qualification.
   consumed canary scope lacks coherent terminal evidence. Preserve everything;
   reconcile per "Recovery reconciliation" below. Never delete state to clear it.
 - `canary_*` (`canary_binding_mismatch`, `canary_arm_expired`,
-  `canary_first_load_failed`, `canary_exit_failed`, `canary_keepalive_failed`,
-  `canary_cleanup_failed`, `canary_shutdown_receipt_missing`,
-  `canary_shutdown_unresolved`, `canary_diagnostic_present`): the startup
-  canary lane refused; the scope retains its arm, receipts and a durable
-  `diagnostic.json`. Read the diagnostic, reconcile the scope (any live canary
-  worker is `local.restart-canary.<nonce>` under launchd, never the proxy),
-  then re-arm once the cause is fixed. A refused lane never emits evidence.
+  `canary_identity_invalid`, `canary_first_load_failed`,
+  `canary_exit_failed`, `canary_keepalive_failed`, `canary_cleanup_failed`,
+  `canary_shutdown_receipt_missing`, `canary_shutdown_unresolved`,
+  `canary_job_absent`): the startup canary lane refused; the scope retains
+  its arm, receipts and a durable `diagnostic.json`. Read the diagnostic,
+  reconcile the scope (any live canary worker is
+  `local.restart-canary.<nonce>` under launchd, never the proxy), then
+  re-arm once the cause is fixed. A refused lane never emits evidence.
 
 ## Startup canary: arm and worker boundaries
 
