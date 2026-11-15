@@ -330,13 +330,34 @@ class RecoveryStore:
                  and accepted["identity"] != plan["original_identity"])
 
     def _require_clear_view(self, view, active, *, owning_intent=None,
-                            projected_row=None):
-        _require(not self._uncertain and not view.canary_uncertain)
+                            projected_row=None, own_canary_nonce=None):
+        # T019: the canary lane's OWN pending arm and its own empty
+        # pre-consumption scope are not foreign uncertainty — begin()
+        # journals the platform-canary operation while its arm is still
+        # pending, and the lane's later steps (canary_phase, terminal,
+        # spawn admission) run against the active canary ticket whose
+        # request_id IS that nonce. A pending arm for any OTHER nonce,
+        # or any uncertainty visible to proxy-kind admission, still
+        # blocks: only the exact nonce's own state is exempted here.
+        active_row = self._check_active(active) if active is not None else None
+        own_nonce = (own_canary_nonce
+                     if own_canary_nonce is not None
+                     else (active_row["binding"]["request_id"]
+                           if active_row is not None
+                           and active_row["binding"]["kind"] == "platform-canary"
+                           else None))
+        _require(not self._uncertain
+                 and (not view.canary_uncertain
+                      or (own_nonce is not None
+                          and view.canary_armed == own_nonce)))
         # SC-005/T019: a consumed canary scope without coherent terminal
         # evidence is an unresolved attempt that blocks every mutation
         # admission — the startup diagnostic alone is not a barrier.
-        _require(not (view.canary_incomplete - view.canary_terminal))
-        active_row = self._check_active(active) if active is not None else None
+        # The active canary attempt's own nonce scope is its lane state,
+        # never foreign uncertainty.
+        own_scope = {own_nonce} if own_nonce is not None else set()
+        _require(not (view.canary_incomplete - view.canary_terminal
+                      - own_scope))
         active_id = active.request_id if active is not None else None
         _require(set(view.requests) <= set(view.operations)
                  and set(view.approvals) <= set(view.operations))
@@ -362,8 +383,13 @@ class RecoveryStore:
                 _require(request_id not in view.requests
                          and approval is None and fence is None
                          and row["primary_control_committed"] is False
-                         and row["outcome"] in (None, "canary_passed", "canary_blocked")
-                         and all(child["state"] == "closed"
+                         and row["outcome"] in (None, "canary_passed", "canary_blocked"))
+                if request_id != active_id:
+                    # A settled canary attempt must have every child
+                    # closed; the ACTIVE attempt's own children may be
+                    # in flight (intent -> owned -> closed during the
+                    # lane), matching the proxy-row treatment above.
+                    _require(all(child["state"] == "closed"
                                  for child in children.get(request_id, ())))
                 if row["phase"] in _CANARY_PHASES and row["outcome"] is None:
                     # An unsettled canary attempt must be exactly the
@@ -494,7 +520,12 @@ class RecoveryStore:
         with self._spawn_transition_lock():
             _require(self._active_ticket is None)
             view = self.inventory()
-            self._require_clear_view(view, None)
+            # The canary's own begin runs while its arm is still pending
+            # and its scope may already exist (created by the lane before
+            # consumption); admit exactly that nonce's own state.
+            own = (binding["request_id"]
+                   if binding.get("kind") == "platform-canary" else None)
+            self._require_clear_view(view, None, own_canary_nonce=own)
             self.validate_binding(binding)
             row = {"version": 1, "binding": binding.copy(), "scope": scope,
                    "phase": "preparing", "outcome": None,

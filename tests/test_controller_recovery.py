@@ -3061,3 +3061,85 @@ def test_consumed_intent_fault_marks_fence_uncertain_without_control(tmp_path, p
     assert load(state).inventory().operations[RID]["phase"] == "restart_pending"
     with pytest.raises(RecoveryError):
         journal.phase(ticket, "stopping")
+
+
+# -- T019 real-store canary lane journaling (gate-4 live defect regression) --
+
+def _canary_binding(nonce):
+    return {"request_id": nonce, "kind": "platform-canary",
+            "controller_epoch": SID, "policy_digest": DIGEST,
+            "controller_digest": DIGEST, "controller_plist_digest": DIGEST,
+            "asset_digest": None, "runtime_digest": None}
+
+
+def _arm_state(tmp_path):
+    """Journal-first, then arm: mirrors the live sequence (serve #1
+    initializes the journal; arm-canary runs afterwards)."""
+    from core.restart_control import canary
+    state = tmp_path / "state"
+    engine.private_dir(state)
+    load(state, initialize=True)
+    arm = canary.arm_canary(state, {"policy_digest": DIGEST,
+                                    "controller_digest": DIGEST,
+                                    "controller_plist_digest": DIGEST})
+    assert canary.canary_label(arm["nonce"]) == "local.restart-canary." + arm["nonce"]
+    return state, arm
+
+
+def test_pending_arm_admits_only_its_own_canary_begin(tmp_path):
+    """A pending arm must not block begin() of ITS OWN platform-canary
+    operation (real store, no fixture port) — the lane journals the
+    operation before consuming the arm. Proxy-kind begin stays blocked."""
+    from core.restart_control import canary
+    from core.restart_control.recovery import RecoveryError
+
+    state, arm = _arm_state(tmp_path)
+    journal = load(state)
+    # Proxy-kind begin is still blocked while ANY arm is pending.
+    with pytest.raises(RecoveryError):
+        journal.begin(binding(frozen=False), "fixture")
+    # The canary's own begin succeeds with the arm pending.
+    ticket = journal.begin(_canary_binding(arm["nonce"]), "fixture")
+    assert ticket.request_id == arm["nonce"]
+    # A SECOND canary begin for a different nonce is refused (one active).
+    other = dict(_canary_binding("f" * 32))
+    with pytest.raises(RecoveryError):
+        journal.begin(other, "fixture")
+
+
+def test_canary_lane_journal_phases_over_real_store(tmp_path):
+    """begin → canary_phase → (arm consumed) → spawn admission all run on
+    the real store while the lane owns the namespace; a foreign proxy
+    admission remains blocked until the lane reaches a terminal outcome."""
+    from core.restart_control import canary
+
+    state, arm = _arm_state(tmp_path)
+    journal = load(state)
+    ticket = journal.begin(_canary_binding(arm["nonce"]), "fixture")
+    running = journal.canary_phase(ticket, "canary_running")
+    # The lane consumes the arm mid-lane (run_startup_canary order).
+    canary.consume_arm(state, operator_uid=os.getuid())
+    # Scope exists now (empty pre-attempt); spawn admission for the
+    # canary's own control children proceeds.
+    handle = journal.spawn_intent(running, "d" * 32, "canary-bootstrap")
+    journal.spawn_owned(handle, {"pid": 12, "uid": os.getuid(),
+                                 "pgid": 12, "birth": [1, 0]})
+    journal.spawn_closed(handle, {"pid": 12, "uid": os.getuid(),
+                                  "pgid": 12, "birth": [1, 0]},
+                         cleanup_proven=True)
+    # Foreign proxy work stays blocked: the unsettled lane scope blocks
+    # a fresh proxy operation.
+    from core.restart_control.recovery import RecoveryError
+    with pytest.raises(RecoveryError):
+        journal.begin(binding(frozen=False), "fixture")
+    # Terminal outcome settles the attempt and re-admits proxy work.
+    evidence_dir = state / "canary" / "evidence"
+    engine.private_dir(evidence_dir)
+    digest = "e" * 64
+    evidence_path = evidence_dir / (digest + ".json")
+    fd = os.open(evidence_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as stream:
+        json.dump({"stub": True}, stream)
+    terminal = journal.canary_terminal(running, "canary_passed")
+    assert terminal.request_id == arm["nonce"]
+
