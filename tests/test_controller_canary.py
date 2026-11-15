@@ -303,9 +303,18 @@ def test_scan_arm_nonce_with_existing_scope_blocks(tmp_path):
 
 def test_scan_consumed_scope_with_terminal_evidence_passes(tmp_path):
     # A consumed scope always carries the consumed arm (the one-time
-    # consumption renames it into the scope) plus terminal evidence.
-    place_state(tmp_path, scopes=[NONCE], evidence_records=[evidence()],
-                detail_records=[detail()])
+    # consumption renames it into the scope) plus terminal evidence whose
+    # detail_digest names its own validated detail record.
+    record_evidence = evidence()
+    record_detail = detail()
+    place_state(tmp_path, scopes=[NONCE], evidence_records=[record_evidence],
+                detail_records=[record_detail])
+    # The detail file must live under the digest the evidence names.
+    detail_dir = tmp_path/"canary"/"detail"/(record_evidence["detail_digest"]+".json")
+    if not detail_dir.exists():
+        blob = json.dumps(record_detail, sort_keys=True).encode()
+        detail_dir.write_bytes(blob)
+        detail_dir.chmod(0o600)
     root = tmp_path/"canary"/NONCE
     atomic_json(root/"intent.json", arm())
     summary = canary.scan_canary_namespace(tmp_path)

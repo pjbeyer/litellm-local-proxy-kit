@@ -581,14 +581,16 @@ def scan_canary_namespace(state, *, wall=None, mono=None):
             except Exception:
                 raise Fault("recovery_invalid") from None
             if record["nonce"] not in evidence_by_nonce:
-                evidence_by_nonce[record["nonce"]] = digest
+                evidence_by_nonce[record["nonce"]] = record
             else:
                 # Two evidence records claiming one nonce is ambiguous.
                 raise Fault("recovery_invalid")
+    details = {}
     if (root/"detail").exists():
         for digest in _bounded_names(root/"detail"):
             try:
-                validate_detail(_read_json(root/"detail"/(digest+".json")))
+                details[digest] = validate_detail(
+                    _read_json(root/"detail"/(digest+".json")))
             except Fault:
                 raise
             except Exception:
@@ -612,6 +614,25 @@ def scan_canary_namespace(state, *, wall=None, mono=None):
             # A consumed scope without terminal evidence is an incomplete
             # attempt: block mutation, keep the records.
             raise Fault("recovery_invalid")
+        evidence = evidence_by_nonce[nonce]
+        # The scope's terminal evidence must bind the consumed arm's own
+        # boot and generation: evidence produced against another boot or
+        # changed policy/controller/plist sources never settles this
+        # scope (clock/boot and source/plist mismatch refuse).
+        for key in ("boot_identity", "policy_digest",
+                    "controller_digest", "controller_plist_digest"):
+            if evidence[key] != scope_arm[key]:
+                raise Fault("recovery_invalid")
+        # The referenced detail record must exist under its own digest and
+        # bind the evidence: an omitted detail file, or a digest naming
+        # another attempt's detail, never completes the scope.
+        detail = details.get(evidence["detail_digest"])
+        if detail is None:
+            raise Fault("recovery_invalid")
+        for key in ("nonce", "boot_identity", "controller_identity",
+                    "controller_epoch"):
+            if detail[key] != evidence[key]:
+                raise Fault("recovery_invalid")
     return {"armed": arm, "scopes": consumed}
 
 
@@ -656,6 +677,19 @@ def _scan_scope(scope, root):
             continue
         if name == "exit.marker":
             summary["exit_marker"] = True
+            continue
+        if name == "diagnostic.json":
+            # A blocked attempt's durable refusal diagnostic. It is not
+            # terminal evidence: its presence means the scope is an
+            # incomplete attempt, and the missing-evidence check below
+            # refuses the scope (block, never clean up).
+            summary["diagnostic"] = _read_json(entry)
+            continue
+        if name.startswith("local.restart-canary.") and name.endswith(".plist"):
+            # The derived canary job's own generated plist, written by
+            # the lane (T019) inside its scope. Its digest is bound in
+            # the terminal evidence envelope (canary_plist_digest).
+            summary["canary_plist"] = True
             continue
         raise Fault("recovery_invalid")
     return summary
