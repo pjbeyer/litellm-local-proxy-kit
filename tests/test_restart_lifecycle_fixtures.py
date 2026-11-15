@@ -28,6 +28,7 @@ import urllib.error
 import urllib.request
 import uuid
 from pathlib import Path
+from typing import Optional
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -35,6 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from core.restart_control import engine as engine_module
 from core.restart_control import process_identity
 from core.restart_control.engine import Controller, Fault, approval_binding, atomic_json
+from core.restart_control.shutdown import Shutdown
 from core.restart_control.wire import client, serve
 from restart_lifecycle_adapter import FixtureLifecycleAdapter
 
@@ -101,6 +103,11 @@ def main():
         while True:
             line = sys.stdin.readline()
             if not line or line.strip() == "shutdown":
+                if MODE == "dirty-exit":
+                    # Fixture-only unknown-outcome simulation: the child
+                    # dies with a nonzero code instead of a graceful stop.
+                    import os as _os
+                    _os._exit(1)
                 threading.Thread(target=server.shutdown).start()
                 return
 
@@ -214,8 +221,30 @@ class FakeLaunchctlBackend:
         self.qualify_hooks = {}        # qualify ordinal -> callable
         self.restored = None
         self.approval_root = Path()   # set by FixtureRig to the state root's approvals dir
+        self.shutdown: Optional[Shutdown] = None  # set by FixtureRig: shared latch
+        self.latch_at = {}             # verb -> 1-based ordinal at which to latch
+
+    def _checkpoint(self):
+        """Latch admission mirroring production _capture before control.
+
+        Production routes every launchctl control through the tracked
+        runner, which admits against the shared shutdown latch before
+        the child exists; a latched controller refuses further service
+        control. The fake backend owns only fixture children but must
+        honor the same boundary so interruption tests observe the real
+        engine semantics.
+        """
+        if self.shutdown is not None and self.shutdown.requested:
+            raise Fault("controller_stopping")
 
     def _note(self, name):
+        # Interruption injection: latch the shared shutdown when the
+        # configured verb occurrence arrives, after this verb's own
+        # admission already passed — mirroring a signal landing mid-flight.
+        when = self.latch_at.get(name)
+        if (when is not None and self.shutdown is not None
+                and self.calls.count(name) + 1 == when):
+            self.shutdown.request()
         self.calls.append(name)
 
     def _refused(self, name):
@@ -286,6 +315,7 @@ class FakeLaunchctlBackend:
             raise Fault("lkg_invalid")
 
     def restore_lkg(self, path, binding):
+        self._checkpoint()
         self._note("restore_lkg")
         if self._refused("restore_lkg"):
             raise Fault("service_control_denied")
@@ -300,6 +330,7 @@ class FakeLaunchctlBackend:
             hook()
 
     def stop(self):
+        self._checkpoint()
         self._note("stop")
         if self._refused("stop"):
             raise Fault("service_control_denied")
@@ -312,6 +343,7 @@ class FakeLaunchctlBackend:
         self.service_child = None
 
     def start(self):
+        self._checkpoint()
         self._note("start")
         if self._refused("start"):
             raise Fault("service_control_denied")
@@ -392,6 +424,8 @@ class FixtureRig:
                                      clock=lambda: self.wall[0],
                                      monotonic=lambda: self.mono[0],
                                      test_lifecycle=FixtureLifecycleAdapter(namespace='core'))
+        self.shutdown = self.controller.shutdown   # shared latch for injection
+        self.backend.shutdown = self.shutdown
         self.primary = _spawn(self.root, self.script, "ok")
         self.backend.children.append(self.primary)
         self.backend.service_child = self.primary
