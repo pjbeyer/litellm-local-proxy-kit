@@ -1,0 +1,19 @@
+docs/handoffs/2026-11-15-gate4-owner-landing.md
+  s_fa8397285f8e39::t_5cbe78e5d5cde5 1-97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "49105d0e2ddc91e58744c6393e4ce9b9ae159579",
+  "prompts": {},
+  "sessions": {
+    "s_fa8397285f8e39": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261115_071947_efc532",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
