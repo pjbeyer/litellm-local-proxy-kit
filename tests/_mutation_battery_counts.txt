@@ -1,0 +1,7 @@
+cases=5
+killed=5
+shutdown_latch_checkpoint=killed
+engine_replay_refusal=killed
+recovery_spawn_intent_durable_write=killed
+recovery_fence_sync_write=killed
+engine_plan_expiry_check=killed
