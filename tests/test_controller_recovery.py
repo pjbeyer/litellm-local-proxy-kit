@@ -437,6 +437,12 @@ def test_barrier_engine_prepared_write_failure_publishes_full_blocked_stage(tmp_
         def bind_lifecycle(self, shutdown, recovery):
             pass  # bare barrier-engine fixture; journal path is exercised below
 
+        def binding_facts(self):
+            # The journal lane is genuine: the store's frozen-binding
+            # contract requires bind_frozen before the prepared record.
+            return {"policy_digest": DIGEST, "controller_digest": DIGEST,
+                    "controller_plist_digest": DIGEST}
+
         def inspect(self):
             return {"identity": {"pid": 12, "uid": os.getuid(), "birth": [1, 0]},
                     "managed": True}

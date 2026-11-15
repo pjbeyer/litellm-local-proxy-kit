@@ -322,10 +322,6 @@ def run_canary_worker(state, nonce, *, stdout=None):
     identity = process_identity(os.getpid())
     if identity["uid"] != os.getuid():
         raise Fault("recovery_invalid")
-    atomic_json(worker, {"version": 1, "nonce": nonce,
-                         "identity": {k: identity[k] for k in
-                                      ("pid", "uid", "ppid", "pgid", "birth")},
-                         "started_monotonic": time.monotonic()})
     shutdown = Shutdown()
     # First-SIGTERM latch receipt (plan: shutdown detail): the private
     # monotonic observation at the first request, recorded durably in
@@ -344,8 +340,16 @@ def run_canary_worker(state, nonce, *, stdout=None):
                 except Exception:
                     pass
         shutdown.request()
+    # Register the latch BEFORE recording the incarnation receipt: a
+    # SIGTERM arriving after the receipt exists must meet the handler,
+    # never the default disposition (a pre-handler death would lose the
+    # durable latch receipt the lane proves worker disappearance with).
     signal.signal(signal.SIGTERM, _latch)
     signal.signal(signal.SIGINT, _latch)
+    atomic_json(worker, {"version": 1, "nonce": nonce,
+                         "identity": {k: identity[k] for k in
+                                      ("pid", "uid", "ppid", "pgid", "birth")},
+                         "started_monotonic": time.monotonic()})
     marker = scope/"exit.marker"
     try:
         while True:

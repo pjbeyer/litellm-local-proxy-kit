@@ -418,5 +418,184 @@ class InterruptionMatrixTest(unittest.TestCase):
         self.assertNotIn(record["phase"], ("restarted", "rolled_back"))
 
 
+# -- T021: forced-death recovery in new processes -------------------------
+# SC-004, SC-005, SC-008. Real crash children, real production-path
+# RecoveryStore over retained private disk state, hard driver death at
+# instrumented checkpoints, fresh controller instances over the
+# retained state.
+
+import json
+import os
+import signal
+import subprocess
+import tempfile
+import time
+import uuid
+from pathlib import Path as _P
+
+DRIVER = _P(__file__).resolve().parent / "crash_driver.py"
+
+
+class CrashRecoveryTest(unittest.TestCase):
+    """Fresh controllers must refuse globally over crashed journal state."""
+
+    def setUp(self):
+        base = _P(os.environ.get("TMPDIR") or tempfile.gettempdir())
+        self.root = base / ("rc-crash-%s" % uuid.uuid4().hex)
+        self.root.mkdir(parents=True)
+
+    def _crash(self, checkpoint):
+        """Run the driver to its forced death; return the retained state."""
+        state = self.root / ("state-%s" % checkpoint)
+        proc = subprocess.run(
+            [sys.executable, "-B", str(DRIVER), checkpoint, str(state)],
+            capture_output=True, timeout=120)
+        self.assertEqual(proc.returncode, 72,
+                         "driver did not hard-die at %s: %s" %
+                         (checkpoint, proc.stderr.decode()[-400:]))
+        return state
+
+    def _fresh_controller(self, state):
+        """A fresh controller instance over the retained disk state."""
+        core = _P(__file__).resolve().parents[1] / "core"
+        if str(core) not in sys.path:
+            sys.path.insert(0, str(core))
+        import crash_driver
+        return crash_driver.Controller(state, crash_driver.CrashBackend(),
+                                       shutdown=crash_driver.Shutdown())
+
+    def _journal_children(self, state):
+        spawns = state / "recovery" / "spawns"
+        return [json.loads(path.read_text())
+                for path in sorted(spawns.glob("*.json"))]
+
+    def _cleanup_children(self, state):
+        """Kill only journal-identified crash children, by exact identity.
+
+        A crash child is cleaned only via its retained journal identity
+        (pid + birth + uid): never by port, name, or discovery. An
+        uncertain cleanup fails the test and retains the evidence.
+        """
+        from core.restart_control import process_identity
+        for row in self._journal_children(state):
+            identity = row.get("identity")
+            if identity is None or row["state"] not in ("intent", "owned"):
+                continue
+            pid = identity["pid"]
+            try:
+                observed = process_identity.process_identity(pid)
+            except Exception:
+                continue  # already dead: nothing to clean
+            if not (observed["pid"] == pid
+                    and list(observed["birth"]) == list(identity["birth"])
+                    and observed["uid"] == identity["uid"]):
+                self.fail("journal identity no longer matches its live "
+                          "process; refusing to signal: %r" % identity)
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except OSError:
+                continue
+            deadline = time.time() + 5
+            while time.time() < deadline:
+                try:
+                    os.kill(pid, 0)
+                    time.sleep(0.05)
+                except OSError:
+                    break
+            else:
+                self.fail("crash child %d ignored SIGTERM: uncertain "
+                          "cleanup, evidence retained at %s" % (pid, state))
+
+    # -- cases ---------------------------------------------------------------
+
+    def test_crash_spawn_intent_only_blocks_fresh_prepare(self):
+        state = self._crash("mid_prepare_intent")
+        controller = self._fresh_controller(state)
+        result = controller.handle({"op": "prepare"})
+        self.assertEqual(result["status"], "blocked", result)
+        self.assertEqual(result["code"], "recovery_invalid", result)
+        # No control verbs ever ran on the fresh instance.
+        self.assertEqual(controller.backend.calls, [])
+        # The intent row is retained verbatim: never auto-repaired.
+        children = self._journal_children(state)
+        self.assertEqual(len(children), 1)
+        self.assertEqual(children[0]["state"], "intent")
+        self.assertIsNone(children[0]["identity"])
+
+    def test_crash_owned_child_blocks_fresh_prepare_and_signals_nothing(self):
+        state = self._crash("owned_child_mid_prepare")
+        try:
+            controller = self._fresh_controller(state)
+            result = controller.handle({"op": "prepare"})
+            self.assertEqual(result["status"], "blocked", result)
+            self.assertEqual(result["code"], "recovery_invalid", result)
+            # The fresh controller issued zero verbs and never signaled
+            # the orphaned crash child: no auto child signal anywhere.
+            self.assertEqual(controller.backend.calls, [])
+            children = self._journal_children(state)
+            self.assertEqual(len(children), 1)
+            self.assertEqual(children[0]["state"], "owned")
+            identity = children[0]["identity"]
+            self.assertTrue(identity["pid"] > 0)
+            # The crash child is genuinely alive and PID-1-reparented.
+            from core.restart_control import process_identity
+            observed = process_identity.process_identity(identity["pid"])
+            self.assertEqual(list(observed["birth"]), list(identity["birth"]))
+            self.assertEqual(observed["ppid"], 1)
+        finally:
+            self._cleanup_children(state)
+
+    def test_crash_armed_fence_blocks_fresh_prepare(self):
+        state = self._crash("armed_fence")
+        controller = self._fresh_controller(state)
+        result = controller.handle({"op": "prepare"})
+        self.assertEqual(result["status"], "blocked", result)
+        self.assertEqual(result["code"], "recovery_invalid", result)
+        self.assertEqual(controller.backend.calls, [])
+        fence = json.loads((state / "recovery" / "mutation.json").read_text())
+        self.assertEqual(fence["state"], "armed")
+        self.assertEqual(fence["phase"], "restart_pending")
+
+    def test_crash_committed_stopping_blocks_fresh_prepare(self):
+        state = self._crash("committed_stopping")
+        controller = self._fresh_controller(state)
+        result = controller.handle({"op": "prepare"})
+        self.assertEqual(result["status"], "blocked", result)
+        self.assertEqual(result["code"], "recovery_invalid", result)
+        self.assertEqual(controller.backend.calls, [])
+
+    def test_crash_terminal_before_fence_clear_blocks_fresh_prepare(self):
+        state = self._crash("terminal_before_fence_clear")
+        controller = self._fresh_controller(state)
+        result = controller.handle({"op": "prepare"})
+        self.assertEqual(result["status"], "blocked", result)
+        self.assertEqual(result["code"], "recovery_invalid", result)
+        self.assertEqual(controller.backend.calls, [])
+        # The durable terminal operation row plus the retained fence are
+        # both present: a crash around the fence clear is conservative.
+        operations = list((state / "recovery" / "operations").glob("*.json"))
+        row = json.loads(operations[0].read_text())
+        self.assertEqual(row["phase"], "restarted")
+        self.assertEqual(row["outcome"], "restarted")
+        fence = json.loads((state / "recovery" / "mutation.json").read_text())
+        self.assertEqual(fence["phase"], "postchecking")
+        self.assertEqual(fence["state"], "armed")
+
+    def test_crash_states_report_recovery_facts_via_status(self):
+        for checkpoint in ("mid_prepare_intent", "armed_fence",
+                           "committed_stopping"):
+            state = self._crash(checkpoint)
+            try:
+                controller = self._fresh_controller(state)
+                status = controller.handle({"op": "status"})
+                # Status stays read-only and never auto-repairs anything.
+                self.assertEqual(status["status"], "blocked", status)
+                self.assertEqual(status["code"], "recovery_invalid", status)
+                self.assertEqual(controller.backend.calls, [])
+            finally:
+                self._cleanup_children(state)
+
+
 if __name__ == "__main__":
     unittest.main()
+

@@ -422,10 +422,14 @@ class Controller:
                          "primary_checks": primary_checks, "candidate_checks": candidate_checks,
                          "prepared_at": wall, "prepared_monotonic": mono,
                          "expires_at": wall + 300, "expires_monotonic": mono + 300})
-            self._record(plan)
-            # Fill both frozen digests once and close the preparation stage.
+            # Freeze both digests once while the on-disk request is still
+            # the minimal preparing record, then land the prepared record
+            # against the frozen row: the production store admits a
+            # prepared request only after the binding freeze, and
+            # bind_frozen itself validates the minimal preparing record.
             ticket = self._journal("bind_frozen", ticket,
                                    frozen["asset_digest"], frozen["runtime_digest"])
+            self._record(plan)
             self._journal("finish", ticket)
             return _result("prepared", **plan)
         except Fault as exc:
