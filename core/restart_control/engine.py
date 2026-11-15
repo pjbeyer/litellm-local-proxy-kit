@@ -14,7 +14,7 @@ import uuid
 from pathlib import Path
 
 
-CODES = frozenset("invalid_request busy state_io approval_missing approval_invalid approval_stale plan_stale unknown_request replayed interrupted clock_invalid unmanaged_listener primary_changed gate_failed candidate_failed candidate_cleanup_failed lkg_invalid runtime_invalid qualification_missing qualification_invalid service_control_denied service_control_timeout postcheck_failed rollback_failed internal_error controller_unavailable foreign_peer socket_exists controller_stopping recovery_invalid canary_binding_mismatch canary_arm_expired canary_first_load_failed canary_exit_failed canary_keepalive_failed canary_cleanup_failed canary_shutdown_receipt_missing canary_shutdown_unresolved canary_diagnostic_present".split())
+CODES = frozenset("invalid_request busy state_io approval_missing approval_invalid approval_stale plan_stale unknown_request replayed interrupted clock_invalid unmanaged_listener primary_changed gate_failed candidate_failed candidate_cleanup_failed lkg_invalid runtime_invalid qualification_missing qualification_invalid service_control_denied service_control_timeout postcheck_failed rollback_failed internal_error controller_unavailable foreign_peer socket_exists controller_stopping recovery_invalid canary_binding_mismatch canary_arm_expired canary_identity_invalid canary_first_load_failed canary_exit_failed canary_keepalive_failed canary_cleanup_failed canary_shutdown_receipt_missing canary_shutdown_unresolved canary_job_absent".split())
 _ID = re.compile(r"[0-9a-f]{32}\Z")
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _APPROVAL_TIME = {"issued_at", "expires_at", "issued_monotonic", "expires_monotonic"}
@@ -46,13 +46,21 @@ def strict_json(raw):
         raise Fault("invalid_request") from None
 
 
-def canonical_digest(obj):
+def canonical_bytes(obj):
+    """The one canonical serialization: compact, sorted, no NaN, UTF-8.
+
+    Producer filenames, file bytes, qualification hash checks and scan
+    recomputation all use these exact bytes, so the on-disk hash equals
+    the canonical digest by construction.
+    """
     try:
-        data = json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                          allow_nan=False).encode("utf-8")
+        return json.dumps(obj, sort_keys=True, separators=(",", ":"),
+                          ensure_ascii=False, allow_nan=False).encode("utf-8")
     except (TypeError, ValueError, OverflowError):
         raise Fault("invalid_request") from None
-    return hashlib.sha256(data).hexdigest()
+
+def canonical_digest(obj):
+    return hashlib.sha256(canonical_bytes(obj)).hexdigest()
 
 
 def _sync_fd(fd):
@@ -60,6 +68,14 @@ def _sync_fd(fd):
         fcntl.fcntl(fd, _SYNC)
     else:
         os.fsync(fd)
+
+def _sync_dir(path):
+    """Sync one directory and always close its descriptor (no leaks)."""
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        _sync_fd(fd)
+    finally:
+        os.close(fd)
 
 
 def _private_path(path, directory):
@@ -439,8 +455,14 @@ class Controller:
                 except Fault:
                     plan["original_preserved"] = False
             plan.update(phase="blocked", code=exc.code)
-            self._record(plan)
             if ticket is not None:
+                # Only a journaled request may carry a durable blocked
+                # record: the store requires every request to be covered
+                # by an operation row, so recording a request that never
+                # reached `begin` would leave an orphan that permanently
+                # blocks recovery. The refusal result still carries the
+                # code to the caller.
+                self._record(plan)
                 # Zero-control interruption: close the preparing stage against
                 # the durable blocked request; a failed close leaves the row
                 # pending for operator reconciliation, never a silent retry.

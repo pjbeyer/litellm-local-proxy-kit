@@ -58,9 +58,11 @@ def controller_supervision(job):
 
 
 # Qualification v2 canary-evidence schema (plan §9): the closed envelope key
-# set and derived-check key set qualification revalidates. The producer
-# arrives in later tasks; fixture records carry scope 'fixture' only and can
-# never be accepted as real production qualifications.
+# set and derived-check key set qualification revalidates. A fixture
+# runtime (fixture=True subclass) accepts fixture/isolated-launchd
+# evidence classes only; a production runtime accepts exclusively
+# intended-controller evidence — the operator-qualified class — and a
+# fixture record can never masquerade as production qualification.
 CANARY_EVIDENCE_KEYS = {'version', 'scope', 'nonce', 'boot_identity', 'operator_uid',
                         'controller_identity', 'controller_epoch', 'controller_digest',
                         'policy_digest', 'controller_plist_digest', 'controller_supervision',
@@ -68,7 +70,8 @@ CANARY_EVIDENCE_KEYS = {'version', 'scope', 'nonce', 'boot_identity', 'operator_
                         'incarnations', 'checks', 'detail_digest', 'issued_at', 'issued_monotonic'}
 CANARY_CHECK_KEYS = {'loaded_definition', 'bootstrap', 'keepalive', 'bootout',
                      'cleanup', 'shutdown_budget'}
-CANARY_EVIDENCE_SCOPES = {'fixture'}
+FIXTURE_EVIDENCE_SCOPES = {'fixture', 'isolated-launchd'}
+PRODUCTION_EVIDENCE_SCOPE = 'intended-controller'
 
 
 REQUEST_TIMEOUT = 15.0
@@ -270,6 +273,27 @@ class Runtime:
         from .shutdown import ShutdownRequested
         if (handle is None or not getattr(self, '_lifecycle_bound', False)
                 or self._active_operation is not None):
+            raise Fault('recovery_invalid')
+        try:
+            self.shutdown.checkpoint()
+            self.recovery.require_clear(handle)
+        except ShutdownRequested:
+            raise Fault('controller_stopping') from None
+        except Exception:
+            raise Fault('recovery_invalid') from None
+        self._active_operation = handle
+
+    def refresh_operation(self, handle):
+        """Re-bind the exact refreshed journal ticket after a phase change.
+
+        The store issues a new immutable ticket when an operation row is
+        rewritten (e.g. canary_phase); the in-memory operation context
+        must carry the refreshed handle, and the replaced one is no
+        longer admissible anywhere.
+        """
+        from .shutdown import ShutdownRequested
+        if (handle is None or not getattr(self, '_lifecycle_bound', False)
+                or self._active_operation is None):
             raise Fault('recovery_invalid')
         try:
             self.shutdown.checkpoint()
@@ -980,16 +1004,28 @@ class Runtime:
             raise Fault('ambiguous_listener')
         return _identity(pids.pop())
 
-    def _job_state(self, label=None, expected=None, expected_path=None):
+    def _job_state(self, label=None, expected=None, expected_path=None,
+                   timeout=10):
         label = label or self.label
         controller_check = expected is not None
         expected = self.job if expected is None else expected
         expected_path = self.auto_plist if expected_path is None else expected_path
+        status = None
         try:
             status, raw = self._observe(['/bin/launchctl', 'print', f'gui/{os.getuid()}/'+label],
-                                        timeout=10)
+                                        timeout=timeout)
             if status:
-                return None
+                # launchctl print's documented not-found signature (exit
+                # 113 with the fixed "Could not find service" text) is
+                # the ONLY nonzero result classified as absence; any
+                # other nonzero status or an observation exception is an
+                # indeterminate observation, never proof the job is
+                # gone (plan §4: classify permission/unsupported-query
+                # failures as refusal, not job absence).
+                if (status == 113
+                        and b"Could not find service" in raw):
+                    return None
+                raise Fault('unmanaged_listener')
             text = raw.decode('utf-8', 'replace')
             def field(key):
                 match = re.search(r'(?m)^\s*'+re.escape(key)+r' = (.+)$', text)
@@ -1028,6 +1064,11 @@ class Runtime:
                           and explicit == expected['EnvironmentVariables'])
             return {'identity': identity, 'runs': int(runs) if runs and runs.isdigit() else None,
                     'parity': parity}
+        except Fault:
+            # The explicit refusal above (indeterminate observation) must
+            # propagate, never be flattened to a None "absence" that
+            # cleanup would misread as proven removal.
+            raise
         except Exception:
             return None
 
@@ -1489,8 +1530,15 @@ class Runtime:
                     json.loads(json.dumps(dict(SHUTDOWN_CONTRACT)))):
                 raise ValueError('qualification_invalid')
             identity = {k: own[k] for k in ('pid', 'uid', 'birth')}
+            # The record's controller identity is the same FULL process
+            # identity the producer's evidence/detail carry (pid, uid,
+            # ppid, pgid, birth); the live-controller check compares the
+            # kernel-observed pid/uid/birth projection against it.
             if (own['ppid'] != 1 or record['operator_uid'] != os.getuid() or not job or not job.get('parity') or job['identity'] != identity
-                    or canonical_digest(record['controller_identity']) != canonical_digest(identity)
+                    or not isinstance(record['controller_identity'], dict)
+                    or set(record['controller_identity']) != {'pid', 'uid', 'ppid', 'pgid', 'birth'}
+                    or any(record['controller_identity'][k] != identity[k]
+                           for k in ('pid', 'uid', 'birth'))
                     or record['controller_label'] != self.policy['controller_label']
                     or record['controller_digest'] != plan['controller_digest']
                     or record['policy_digest'] != plan['policy_digest']
@@ -1511,11 +1559,18 @@ class Runtime:
                 raise ValueError('qualification_invalid')
             evidence = _read_json(evidence_path)
             # Evidence alone cannot create qualification: validate the closed
-            # v1 evidence structure and require a fixture scope label so a
-            # fixture record can never masquerade as production qualification.
+            # v1 evidence structure and require the evidence scope exactly
+            # matching this runtime's class — a fixture runtime accepts only
+            # fixture/isolated-launchd records, and a production runtime
+            # accepts exclusively intended-controller evidence (plan §8/§9),
+            # so a fixture record can never masquerade as production
+            # qualification and intended-controller evidence never
+            # qualifies a fixture-scope runtime either.
+            accepted_scopes = (FIXTURE_EVIDENCE_SCOPES if self.fixture
+                               else {PRODUCTION_EVIDENCE_SCOPE})
             if (not isinstance(evidence, dict) or set(evidence) != CANARY_EVIDENCE_KEYS
                     or type(evidence['version']) is not int or evidence['version'] != 1
-                    or evidence['scope'] not in CANARY_EVIDENCE_SCOPES
+                    or evidence['scope'] not in accepted_scopes
                     or evidence['operator_uid'] != os.getuid()
                     or not isinstance(evidence.get('checks'), dict)
                     or set(evidence['checks']) != CANARY_CHECK_KEYS
@@ -1536,6 +1591,23 @@ class Runtime:
                     or not re.fullmatch('[0-9a-f]{64}', evidence['detail_digest'])
                     or not re.fullmatch('[0-9a-f]{32}', evidence['nonce'])):
                 raise ValueError('qualification_invalid')
+            # The referenced detail is a validated fixed-path file, not a
+            # digest string: same ownership/mode/hash discipline as the
+            # evidence file, and its nonce/boot/identity/epoch bindings
+            # must equal the evidence envelope's (plan: closed detail).
+            detail_path = (self.state/'canary'/'detail'
+                           /(evidence['detail_digest']+'.json'))
+            detail_fact = _regular(detail_path)
+            if (detail_fact['mode'] != 0o600 or detail_path.stat().st_uid != os.getuid()
+                    or detail_fact['sha256'] != evidence['detail_digest']):
+                raise ValueError('qualification_invalid')
+            detail = _read_json(detail_path)
+            from .canary import validate_detail
+            validate_detail(detail, expected={
+                'nonce': evidence['nonce'],
+                'boot_identity': evidence['boot_identity'],
+                'controller_identity': evidence['controller_identity'],
+                'controller_epoch': evidence['controller_epoch']})
             for first, last, now in (('issued_at', 'expires_at', time.time()),
                                      ('issued_monotonic', 'expires_monotonic', time.monotonic())):
                 if not _finite(record[first]) or not _finite(record[last]) or not (

@@ -16,6 +16,7 @@ real worker children; responses there are fake by construction.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import os
 import plistlib
@@ -25,8 +26,10 @@ from pathlib import Path
 from .canary import (canary_label, canary_scope, consume_arm,
                      scan_canary_namespace, validate_detail,
                      validate_evidence)
-from .engine import Fault, _read_json, _sync_fd, canonical_digest
+from .engine import (Fault, _read_json, _sync_fd, _sync_dir, canonical_bytes,
+                     canonical_digest, private_dir)
 from .process_identity import process_identity
+from .runtime_identity import kernel_process_absent
 from .shutdown import SHUTDOWN_CONTRACT, ShutdownRequested
 
 # Per-step caps (plan §7). Caps, not a summed promise: every wait also
@@ -39,7 +42,14 @@ OBSERVE_POLL = 0.25
 
 
 def _write_blob(path, blob):
-    """Exclusive, private, synced creation of one file; never overwrite."""
+    """Exclusive, private, synced creation of one file; never overwrite.
+
+    The parent directory is verified private and symlink-free before
+    the exclusive open, so the write cannot be redirected outside the
+    state tree by a symlinked parent (the O_EXCL check on the final
+    component alone does not protect the containing directory).
+    """
+    private_dir(path.parent)
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL
                  | getattr(os, "O_NOFOLLOW", 0), 0o600)
     try:
@@ -48,7 +58,7 @@ def _write_blob(path, blob):
             stream.flush()
             os.fsync(stream.fileno())
     finally:
-        _sync_fd(os.open(path.parent, os.O_RDONLY))
+        _sync_dir(path.parent)
 
 
 def startup_scan(state, *, wall=None, mono=None):
@@ -151,12 +161,30 @@ class _Lane:
         return started, time.monotonic()
 
     def _job_state(self, job):
-        """Observe the canary job through the bounded launchctl print."""
+        """Observe the canary job through the bounded launchctl print.
+
+        A nonzero print status or an observation exception is a REFUSAL,
+        never proof of absence: permission failures and indeterminate
+        observations must fail the lane rather than pass its cleanup
+        (plan §4/§6). Only a zero-status parsed payload may prove a
+        present job; absence is proven solely by the caller's explicit
+        ``absent_ok`` check against the not-found signature.
+        """
         self.shutdown.checkpoint()
-        if self._remaining() <= 0:
+        remaining = self._remaining()
+        if remaining <= 0:
             raise Fault("canary_arm_expired")
-        return self.runtime._job_state(self.label, expected=job,
-                                       expected_path=self._plist_path)
+        # The query cap is also bounded by the arm's remaining lifetime:
+        # the lane never spends wall time past the arm envelope.
+        state = self.runtime._job_state(self.label, expected=job,
+                                        expected_path=self._plist_path,
+                                        timeout=min(QUERY_CAP, remaining))
+        if state is None:
+            # The runtime's not-found signature (launchctl exit 113)
+            # arrives here as None; the lane's contract raises the
+            # explicit absence code so _cleanup can prove it.
+            raise Fault("canary_job_absent")
+        return state
 
     def _live_identity(self, pid, birth):
         """Kernel-observed worker identity: uid, launchd parentage, birth."""
@@ -226,12 +254,10 @@ class _Lane:
         deadline = started + min(QUERY_CAP, self._remaining())
         while True:
             self.shutdown.checkpoint()
-            try:
-                process_identity(first_identity["pid"])
-                alive = True
-            except Exception:
-                alive = False
-            if not alive:
+            # Death is proven ONLY by the kernel's ESRCH absence signal;
+            # an identity read failure is an observation failure that
+            # keeps waiting (and eventually times out), never death.
+            if kernel_process_absent(first_identity["pid"]):
                 # The first incarnation exited; the worker consumed the
                 # one-time marker itself (cooperative, exit 0).
                 return {"name": "exit_once",
@@ -305,12 +331,10 @@ class _Lane:
         deadline = time.monotonic() + min(QUERY_CAP, self._remaining())
         while True:
             self.shutdown.checkpoint()
-            try:
-                process_identity(second_identity["pid"])
-                alive = True
-            except Exception:
-                alive = False
-            if not alive:
+            # Genuinely gone, proven only by the kernel's ESRCH absence
+            # signal — never inferred from bootout returning zero or an
+            # identity read failure (plan: shutdown detail).
+            if kernel_process_absent(second_identity["pid"]):
                 return {"identity": second_identity,
                         "requested_monotonic": receipt["requested_monotonic"],
                         "exit_observed_monotonic": time.monotonic(),
@@ -322,20 +346,30 @@ class _Lane:
             time.sleep(OBSERVE_POLL)
 
     def _cleanup(self):
-        """Step: prove the canary job absent after bootout."""
+        """Step: prove the canary job absent after bootout.
+
+        Absence is proven ONLY by the documented not-found observation
+        (canary_job_absent from _job_state); an indeterminate observation
+        is a refusal that fails cleanup, never a pass. The completion
+        time is recorded only after the successful observation.
+        """
         started = time.monotonic()
         deadline = started + min(QUERY_CAP, self._remaining())
         job = self.canary_job()
         while True:
             self.shutdown.checkpoint()
-            if self._job_state(job) is None:
-                return {"name": "cleanup",
-                        "started_monotonic": started,
-                        "completed_monotonic": time.monotonic(),
-                        "outcome": "passed", "identity": None, "runs": 0,
-                        "loaded_exit_seconds": None,
-                        "loaded_environment_digest": None,
-                        "exit_code": None}
+            try:
+                self._job_state(job)
+            except Fault as error:
+                if error.code == "canary_job_absent":
+                    return {"name": "cleanup",
+                            "started_monotonic": started,
+                            "completed_monotonic": time.monotonic(),
+                            "outcome": "passed", "identity": None, "runs": 0,
+                            "loaded_exit_seconds": None,
+                            "loaded_environment_digest": None,
+                            "exit_code": None}
+                raise
             if time.monotonic() >= deadline:
                 raise Fault("canary_cleanup_failed")
             time.sleep(OBSERVE_POLL)
@@ -354,8 +388,20 @@ class _Lane:
                   "steps": self.steps,
                   "shutdown": shutdown_detail}
         validate_detail(detail)
-        blob = json.dumps(detail, sort_keys=True, allow_nan=False).encode()
-        detail_digest = canonical_digest(detail)
+        # The loaded observations' environment digests must equal the
+        # derived canary job's expected environment — never an ambient
+        # or unrelated environment the worker happened to inherit.
+        expected_digest = self._env_digest(self.canary_job())
+        for step in self.steps:
+            if step["loaded_environment_digest"] is not None and \
+                    step["loaded_environment_digest"] != expected_digest:
+                raise Fault("canary_identity_invalid")
+        # The file bytes ARE the canonical serialization: the filename
+        # digest and the qualification/scan hash checks both hash these
+        # exact bytes (plan: detail at canary/detail/<detail_digest>.json,
+        # digest of canonical bytes).
+        blob = canonical_bytes(detail)
+        detail_digest = hashlib.sha256(blob).hexdigest()
         detail_path = (Path(self.runtime.state) / "canary" / "detail"
                        / (detail_digest + ".json"))
         detail_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -392,16 +438,37 @@ class _Lane:
                     "issued_at": time.time(),
                     "issued_monotonic": time.monotonic()}
         # The evidence envelope is validated by the frozen schema before
-        # it is ever written or trusted (plan §9).
+        # it is ever written or trusted (plan §9). The file bytes ARE the
+        # canonical serialization, so the filename digest and every later
+        # hash check agree (plan: digest of canonical bytes).
         validate_evidence(evidence, operator_uid=os.getuid())
-        blob = json.dumps(evidence, sort_keys=True, allow_nan=False).encode()
+        blob = canonical_bytes(evidence)
         evidence_path = (Path(self.runtime.state) / "canary" / "evidence"
-                         / (canonical_digest(evidence) + ".json"))
+                         / (hashlib.sha256(blob).hexdigest() + ".json"))
         evidence_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         _write_blob(evidence_path, blob)
         return evidence
 
     # -- orchestration -------------------------------------------------------
+
+    def prepare(self):
+        """Journal the synthetic operation durably before consumption.
+
+        Plan §3: the durable platform-canary operation (begin → pending,
+        then pending → running) exists BEFORE the arm is consumed, so
+        the retained scope and its journal row appear together. Any
+        failure here leaves the arm untouched — never a half-consumed
+        attempt.
+        """
+        self.shutdown.checkpoint()
+        self.ticket = self._journal("begin", self._binding(), "fixture")
+        self.runtime.begin_operation(self.ticket)
+        # canary_phase replaces the active ticket: keep the exact
+        # refreshed handle for the runtime context and every later
+        # journal call.
+        self.ticket = self._journal("canary_phase", self.ticket,
+                                    "canary_running")
+        self.runtime.refresh_operation(self.ticket)
 
     def run(self):
         """Carry the consumed arm through the full bounded lane.
@@ -411,11 +478,11 @@ class _Lane:
         its own lane and never retries a refused step.
         """
         try:
+            if self.ticket is None:
+                # Direct lane construction (test path): mirror the serve
+                # order by preparing the journal here.
+                self.prepare()
             self.shutdown.checkpoint()
-            # Durably pending before any live call (plan §3).
-            self.ticket = self._journal("begin", self._binding(), "fixture")
-            self.runtime.begin_operation(self.ticket)
-            self._journal("canary_phase", self.ticket, "canary_running")
             # bootstrap (plan §6): fixed argv against the derived plist.
             self._write_plist()
             started = time.monotonic()
@@ -484,6 +551,11 @@ def run_startup_canary(runtime, controller, shutdown, *, wall=None, mono=None):
     blocked record; mutations stay blocked through the journal and the
     retained scope files — the serve process itself keeps running with
     status RPC available.
+
+    Plan §3 ordering: the exact-context verification and the durable
+    platform-canary operation exist BEFORE the arm is consumed, so a
+    crash between consumption and the live attempt never leaves an
+    orphan consumed scope without its synthetic operation row.
     """
     state = Path(runtime.state)
     try:
@@ -499,12 +571,26 @@ def run_startup_canary(runtime, controller, shutdown, *, wall=None, mono=None):
            ("policy_digest", "controller_digest",
             "controller_plist_digest")):
         return _diagnostic_only(state, arm, "canary_binding_mismatch")
+    # Exact controller context (plan §3): a serve process that is not
+    # the actual managed launchd child — PPID 1 with the loaded
+    # controller definition — cannot run or qualify the canary lane.
+    from .runtime_identity import kernel_boot_identity
+    from .process_identity import process_identity as _own_identity
+    own = _own_identity(os.getpid())
+    if own["ppid"] != 1 or own["uid"] != os.getuid():
+        return _diagnostic_only(state, arm, "canary_identity_invalid")
+    if arm["boot_identity"] != kernel_boot_identity():
+        return _diagnostic_only(state, arm, "canary_binding_mismatch")
+    # The durable platform-canary operation is pending BEFORE the arm
+    # is consumed (plan §3): a crash after consumption leaves both the
+    # retained scope and its journal row for operator reconciliation.
+    scope = canary_scope(state, arm["nonce"])
+    lane = _Lane(runtime, controller, shutdown, arm, scope)
+    lane.prepare()
     try:
         consumed = consume_arm(state, operator_uid=os.getuid())
     except Fault as error:
         return _diagnostic_only(state, arm, error.code)
-    scope = canary_scope(state, consumed["nonce"])
-    lane = _Lane(runtime, controller, shutdown, consumed, scope)
     return lane.run()
 
 

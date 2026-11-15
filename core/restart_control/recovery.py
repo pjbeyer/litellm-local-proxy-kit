@@ -332,6 +332,10 @@ class RecoveryStore:
     def _require_clear_view(self, view, active, *, owning_intent=None,
                             projected_row=None):
         _require(not self._uncertain and not view.canary_uncertain)
+        # SC-005/T019: a consumed canary scope without coherent terminal
+        # evidence is an unresolved attempt that blocks every mutation
+        # admission — the startup diagnostic alone is not a barrier.
+        _require(not (view.canary_incomplete - view.canary_terminal))
         active_row = self._check_active(active) if active is not None else None
         active_id = active.request_id if active is not None else None
         _require(set(view.requests) <= set(view.operations)
@@ -495,20 +499,20 @@ class RecoveryStore:
             row = {"version": 1, "binding": binding.copy(), "scope": scope,
                    "phase": "preparing", "outcome": None,
                    "primary_control_committed": False}
-            self.validate_operation(row)
             kind = binding["kind"]
             if kind == "proxy":
                 _require(binding["asset_digest"] is None
                          and binding["runtime_digest"] is None)
             else:
-                # T019: the synthetic platform-canary operation starts
+                # T019: the synthetic platform-canary operation is BORN
                 # pending with paired null proxy digests; its request_id
                 # is the canary nonce and it admits no request record.
+                # A preparing platform-canary row is not a schema state,
+                # so the phase is rewritten before the first validation.
                 _require(binding["asset_digest"] is None
-                         and binding["runtime_digest"] is None
-                         and row["phase"] == "preparing")
+                         and binding["runtime_digest"] is None)
                 row = {**row, "phase": "canary_pending"}
-                self.validate_operation(row)
+            self.validate_operation(row)
             request_id = binding["request_id"]
             _require(request_id not in view.operations and request_id not in view.requests
                      and request_id not in view.approvals)
@@ -960,7 +964,14 @@ class RecoveryStore:
             self._require_clear_view(view, ticket)
             request_phase = view.requests.get(ticket.request_id, {}).get("phase")
             operation_phase = operation["phase"]
-            if operation_phase == "preparing":
+            if operation["binding"]["kind"] == "platform-canary":
+                # T019: a canary control child is journaled against the
+                # synthetic operation alone; its request_id is the nonce
+                # and no request/approval record exists to pair with.
+                _require(operation_phase in ("canary_pending", "canary_running")
+                         and operation["outcome"] is None
+                         and purpose in _CANARY_ONLY_PURPOSES)
+            elif operation_phase == "preparing":
                 self._validate_minimal_request(view.requests.get(ticket.request_id),
                                                operation)
             elif operation_phase == "restart_pending":

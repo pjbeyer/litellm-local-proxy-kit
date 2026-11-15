@@ -71,6 +71,36 @@ def digest(value):
 _KERNEL_ABI_VERSION = 1
 
 
+def kernel_process_absent(pid):
+    """True only when the kernel reports no such process (ESRCH).
+
+    A dead pid makes proc_pidinfo return 0 with errno ESRCH; this is
+    the kernel's own absence signal, distinct from an unavailable ABI
+    (library load failure raises, never reads as absence). Callers that
+    must prove disappearance use this primitive so an observation
+    failure can never be misread as death.
+    """
+    import ctypes
+    import ctypes.util
+    if sys.platform != 'darwin' or type(pid) is not int or pid <= 0:
+        raise RuntimeError('identity_unavailable')
+    library = ctypes.CDLL(ctypes.util.find_library('proc'), use_errno=True)
+    call = library.proc_pidinfo
+    call.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_uint64,
+                     ctypes.c_void_p, ctypes.c_int]
+    call.restype = ctypes.c_int
+    # proc_bsdinfo is 136 bytes (xnu bsd/sys/proc_info.h); a short buffer
+    # makes the call fail with ENOMEM instead of reporting the process.
+    result = call(pid, 3, 0, ctypes.create_string_buffer(136), 136)
+    if result == 0 and ctypes.get_errno() == 3:  # ESRCH: no such process
+        return True
+    if result < 0:
+        raise RuntimeError('identity_unavailable')
+    # A positive (or zero-but-not-ESRCH) result means the process exists;
+    # a full identity read may still fail for other reasons, which is an
+    # observation failure, never absence.
+    return False
+
 def kernel_process_identity(pid):
     """Read-only process identity via the Apple public proc_bsdinfo ABI.
 
