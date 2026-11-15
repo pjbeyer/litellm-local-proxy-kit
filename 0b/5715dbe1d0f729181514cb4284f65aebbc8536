@@ -1,0 +1,20 @@
+tests/test_controller_qualification.py
+  s_fa8397285f8e39::t_122822d72e11e0 263,277-278,284-295
+  s_fa8397285f8e39::t_1f8e0e807aca61 296-297
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "0b5715dbe1d0f729181514cb4284f65aebbc8536",
+  "prompts": {},
+  "sessions": {
+    "s_fa8397285f8e39": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261115_071947_efc532",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
