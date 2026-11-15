@@ -426,3 +426,96 @@ def test_cli_arm_canary_against_installed_layout(runtime, private_root):
     result = subprocess.run(argv, env=env, capture_output=True, timeout=60)
     assert result.returncode == 78
     assert json.loads(result.stdout.decode())['code'] != 'ok'
+
+def _fake_policy(tmp_path):
+    """Minimal valid policy with a private state dir for worker CLI tests."""
+    policy = {"version": 1, "kit_root": str(ROOT),
+              "deployment_root": str(tmp_path/'deployment'),
+              "plist": str(tmp_path/'plist'), "auto_plist": str(tmp_path/'auto'),
+              "state_dir": str(tmp_path), "scratch_dir": str(tmp_path/'scratch'),
+              "candidate_port": 49132, "models": ['fixture-direct', 'fixture-router'],
+              "controller_root": str(tmp_path/'controller'),
+              "controller_label": 'fixture.controller'}
+    policy_path = tmp_path/'policy.json'
+    atomic_json(policy_path, policy)
+    return policy_path
+
+
+# -- T018: disposable worker mode --------------------------------------------
+
+def test_worker_records_identity_and_exits_on_marker(tmp_path):
+    """A real retained child records its true kernel identity and obeys
+    the one-time cooperative exit marker."""
+    import subprocess
+    import sys as _sys
+    scope = canary.canary_scope(tmp_path, NONCE)
+    entrypoint = ROOT/'core'/'restart_controller.py'
+    argv = [_sys.executable, '-I', str(entrypoint), '--policy',
+            str(_fake_policy(tmp_path)), 'canary-worker', NONCE]
+    proc = subprocess.Popen(argv, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            env={'HOME': str(tmp_path), 'PATH': os.defpath,
+                                 'TMPDIR': os.environ['TMPDIR']})
+    try:
+        worker = scope/'worker.json'
+        deadline = time.monotonic() + 15
+        while not worker.exists() and proc.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert worker.exists()
+        record = canary._read_json(worker)
+        assert record['identity']['pid'] == proc.pid
+        assert record['identity']['uid'] == os.getuid()
+        # One-time cooperative exit marker: exit 0, bounded status JSON.
+        (scope/'exit.marker').touch()
+        out, _ = proc.communicate(timeout=15)
+        assert proc.returncode == 0
+        payload = json.loads(out.decode())
+        assert payload['outcome'] == 'exit_marker'
+        assert payload['requested'] is False
+    finally:
+        if proc.poll() is None:
+            proc.terminate()
+        proc.wait(timeout=10)
+
+
+def test_worker_second_incarnation_refuses(tmp_path):
+    """A second worker record in the same scope is uncertain state."""
+    scope = canary.canary_scope(tmp_path, NONCE)
+    canary.canary_scope  # scope exists already (fixture-private root)
+    (scope/'worker.json').write_text('{}')
+    with pytest.raises(Fault):
+        canary.run_canary_worker(tmp_path, NONCE)
+
+
+def test_canary_worker_shutdown_deadline(tmp_path):
+    """SIGTERM latches the shared 50s budget; the worker exits cooperatively."""
+    import signal
+    import subprocess
+    import sys as _sys
+    scope = canary.canary_scope(tmp_path, NONCE)
+    entrypoint = ROOT/'core'/'restart_controller.py'
+    argv = [_sys.executable, '-I', str(entrypoint), '--policy',
+            str(_fake_policy(tmp_path)), 'canary-worker', NONCE]
+    proc = subprocess.Popen(argv, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            env={'HOME': str(tmp_path), 'PATH': os.defpath,
+                                 'TMPDIR': os.environ['TMPDIR']})
+    try:
+        worker = scope/'worker.json'
+        deadline = time.monotonic() + 15
+        while not worker.exists() and proc.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert worker.exists()
+        # One real SIGTERM to the retained child: cooperative shutdown via
+        # the shared latch, no escalation, prompt bounded exit.
+        proc.send_signal(signal.SIGTERM)
+        out, _ = proc.communicate(timeout=15)
+        assert proc.returncode == 0
+        payload = json.loads(out.decode())
+        assert payload['outcome'] == 'shutdown_requested'
+        assert payload['requested'] is True
+        assert payload['deadline'] is not None
+    finally:
+        if proc.poll() is None:
+            proc.terminate()
+        proc.wait(timeout=10)

@@ -285,10 +285,71 @@ def consume_arm(state, *, operator_uid):
     return record
 
 
+# -- disposable worker mode (T018) -------------------------------------------
+
+_WORKER_POLL = 0.25
+
+
+def run_canary_worker(state, nonce, *, stdout=None):
+    """Disposable canary worker: no Runtime, no HTTP, no credentials.
+
+    Validates its fixed private scope, records its own bounded identity
+    and start time, cooperatively obeys the one-time private exit
+    marker, and handles SIGTERM/SIGINT through the shared shutdown
+    latch with the fixed 50-second budget — never a signal escalation.
+    Emits only the bounded status JSON on stdout; no raw subprocess
+    output.
+    """
+    import signal
+
+    from .engine import atomic_json
+    from .process_identity import process_identity
+    from .shutdown import Shutdown, ShutdownRequested
+
+    if stdout is None:
+        stdout = sys.stdout
+    scope = canary_scope(state, nonce)
+    worker = scope/"worker.json"
+    if worker.exists():
+        # One worker record per scope: a stale record is uncertain
+        # state, never silently overwritten.
+        raise Fault("recovery_invalid")
+    identity = process_identity(os.getpid())
+    if identity["uid"] != os.getuid():
+        raise Fault("recovery_invalid")
+    atomic_json(worker, {"version": 1, "nonce": nonce,
+                         "identity": {k: identity[k] for k in
+                                      ("pid", "uid", "ppid", "pgid", "birth")},
+                         "started_monotonic": time.monotonic()})
+    shutdown = Shutdown()
+    signal.signal(signal.SIGTERM, lambda *_: shutdown.request())
+    signal.signal(signal.SIGINT, lambda *_: shutdown.request())
+    marker = scope/"exit.marker"
+    try:
+        while True:
+            shutdown.checkpoint()
+            if marker.exists():
+                outcome = "exit_marker"
+                break
+            if shutdown.wait(_WORKER_POLL, cleanup=False) is False:
+                continue
+            outcome = "shutdown_requested"
+            break
+    except ShutdownRequested:
+        outcome = "shutdown_requested"
+    # Bounded status record: outcome, latch state and the fixed shared
+    # deadline; nothing else is emitted.
+    record = {"version": 1, "nonce": nonce,
+              "outcome": outcome,
+              "requested": shutdown.requested,
+              "deadline": shutdown.deadline,
+              "completed_monotonic": time.monotonic()}
+    print(json.dumps(record, sort_keys=True, allow_nan=False), file=stdout)
+    return record
+
+
 def validate_evidence(record, *, operator_uid, expected=None):
     """Validate one evidence envelope and derive its checks independently.
-
-    ``operator_uid`` is the current uid the envelope must be owned by;
     ``expected`` carries the cross-bound bindings (identity, epoch, source/
     policy/plist digests, supervision, shutdown contract) the envelope must
     equal. The producer booleans are never trusted — every check is derived

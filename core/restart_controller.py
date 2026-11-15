@@ -101,6 +101,7 @@ def main(argv=None):
         commands = parser.add_subparsers(dest='command', required=True)
         commands.add_parser('serve')
         commands.add_parser('arm-canary')
+        commands.add_parser('canary-worker').add_argument('nonce')
         for op in ('status', 'prepare'):
             commands.add_parser(op)
         restart = commands.add_parser('restart')
@@ -124,6 +125,13 @@ def main(argv=None):
             print(json.dumps({'status': 'armed', 'nonce': record['nonce'],
                               'label': 'local.restart-canary.' + record['nonce']},
                              sort_keys=True))
+            return 0
+        if args.command == 'canary-worker':
+            # Disposable worker mode: handled before any Runtime
+            # construction — no HTTP, no credentials, no launchctl; the
+            # scope is derived from the nonce alone.
+            from restart_control.canary import run_canary_worker
+            run_canary_worker(policy['state_dir'], args.nonce)
             return 0
         if args.command == 'serve':
             shutdown.checkpoint()
