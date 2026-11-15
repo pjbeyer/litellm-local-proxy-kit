@@ -1,0 +1,30 @@
+tests/test_controller_shutdown_mutations.py
+  s_ae146e96df3530::t_67f89a13e9bb02 91
+  s_ae146e96df3530::t_c6c64356128d34 54
+  s_ae146e96df3530::t_90ad0a6af738b6 68-69,72-74
+  s_ae146e96df3530::t_38e940ebd098f3 16-18
+  s_ae146e96df3530::t_01302c225a14c0 56-58,63
+  s_ae146e96df3530::t_30909f73bc7261 97
+  s_ae146e96df3530::t_585b2ee05c82fe 37,39,45-49,53
+  s_ae146e96df3530::t_fb5717f3035f16 92-96,98-101
+  s_ae146e96df3530::t_267ada9bc58f03 107-109
+  s_ae146e96df3530::t_b59d9e6ba7c7bc 156,160-166
+  s_ae146e96df3530::t_cf351cbe3065f3 1-15,19-36,38,40-44,50-52,55,59-62,64,66-67,70-71,75-90,102-106,110-155,157-159,167-193
+  s_ae146e96df3530::t_eea6eb8e158d2d 65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "ed8d06cd8f79e69e60acdaac6cba0734e9699988",
+  "prompts": {},
+  "sessions": {
+    "s_ae146e96df3530": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261114_215341_baa459",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
