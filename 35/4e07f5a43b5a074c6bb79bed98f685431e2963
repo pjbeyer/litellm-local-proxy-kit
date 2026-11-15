@@ -1,0 +1,21 @@
+docs/evidence/2026-11-15-t026-activation-packet.md
+  s_fa8397285f8e39::t_3677dc90b7df82 1-145
+docs/evidence/2026-11-15-t025-remediation-closeout.md
+  s_fa8397285f8e39::t_8962f78c2618ba 1-87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "354e07f5a43b5a074c6bb79bed98f685431e2963",
+  "prompts": {},
+  "sessions": {
+    "s_fa8397285f8e39": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261115_071947_efc532",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
