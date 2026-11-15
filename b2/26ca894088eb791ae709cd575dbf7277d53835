@@ -1,0 +1,23 @@
+core/restart_control/startup.py
+  s_fa8397285f8e39::t_af07bd2fade780 295-303
+  s_fa8397285f8e39::t_dddbde741cc5d1 217-229
+tests/test_controller_startup.py
+  s_fa8397285f8e39::t_792c7d783cc80e 386-415,422-474
+  s_fa8397285f8e39::t_4a44617ff14417 416-421
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "b226ca894088eb791ae709cd575dbf7277d53835",
+  "prompts": {},
+  "sessions": {
+    "s_fa8397285f8e39": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261115_071947_efc532",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
