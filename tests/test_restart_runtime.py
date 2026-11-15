@@ -182,7 +182,12 @@ def runtime(private_root):
     atomic_json(policy_path, policy)
     with mock.patch.dict(os.environ, {'OP_SERVICE_ACCOUNT_TOKEN': 'fixture-only',
                                      'PYTHONPATH': 'fixture-only', 'PYTHONHOME': 'fixture-only'}):
-        obj = Runtime(policy_path, test_lifecycle=FixtureLifecycleAdapter(namespace='restart_control'))
+        class FixtureRuntime(Runtime):
+            # The offline fixture runtime class: qualification accepts
+            # only fixture/isolated-launchd evidence scopes here, never
+            # intended-controller (production) evidence.
+            fixture = True
+        obj = FixtureRuntime(policy_path, test_lifecycle=FixtureLifecycleAdapter(namespace='restart_control'))
     obj.run_proof_worker = mock.Mock(return_value=json.dumps({'runtime_digest': 'a'*64}).encode())
     return obj
 

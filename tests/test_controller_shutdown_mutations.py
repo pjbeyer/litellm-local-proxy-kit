@@ -99,6 +99,30 @@ CASES = [
      '        if plan.get("controller_epoch") != self.epoch:\n'
      '            raise Fault("plan_stale")\n',
      "tests/test_restart_controller.py::ControllerTest::test_epoch_expiry_and_unmanaged"),
+
+    # recovery.py: _check_active — admission must bind the EXACT active
+    # journal ticket by identity; accepting any ticket object lets a
+    # refreshed or replaced ticket pass and the exact-active pinning
+    # test survives.
+    ("recovery_exact_active_ticket",
+     "core/restart_control/recovery.py",
+     '    def _check_active(self, ticket):\n'
+     '        _require(ticket is self._active_ticket)\n'
+     '        return self._check_ticket(ticket)\n',
+     '    def _check_active(self, ticket):\n'
+     '        _require(ticket is not None)\n'
+     '        return self._check_ticket(ticket)\n',
+     "tests/test_controller_recovery.py::test_refreshed_ticket_for_unrelated_owned_row_preserves_exact_active"),
+
+    # runtime.py: qualification — the evidence scope must bind the
+    # runtime's exact class (fixture vs intended-controller); accepting
+    # every scope lets fixture evidence masquerade as production.
+    ("runtime_qualification_scope_binding",
+     "core/restart_control/runtime.py",
+     "            accepted_scopes = (FIXTURE_EVIDENCE_SCOPES if self.fixture\n"
+     "                               else {PRODUCTION_EVIDENCE_SCOPE})\n",
+     "            from .canary import EVIDENCE_SCOPES as accepted_scopes\n",
+     "tests/test_controller_qualification.py::test_canary_evidence_file_bindings_fail_closed"),
 ]
 
 
@@ -164,8 +188,16 @@ def one_case(case, verbose=False):
             return False, f"{name}: non-behavioral kill (error, not failure)"
         if "failed" not in out:
             return False, f"{name}: non-behavioral kill (no test failure)"
-        # 4. Restored green: the clean tree still passes.
-        return True, f"{name}: killed (behavioral assertion failure)"
+        # 4. Restored green: the paired test passes on a FRESH clean
+        # clone after the kill — the gate lives only in the mutation.
+        fresh = _clone_tree()
+        try:
+            code, _out = _run(fresh, test)
+            if code != 0:
+                return False, f"{name}: restored-green rerun failed (exit {code})"
+        finally:
+            shutil.rmtree(fresh.parent, ignore_errors=True)
+        return True, f"{name}: killed (behavioral assertion failure; restored green verified)"
     finally:
         shutil.rmtree(clone.parent, ignore_errors=True)
 

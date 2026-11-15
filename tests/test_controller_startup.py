@@ -130,7 +130,10 @@ class FakePlatform:
             label = argv[2].split('/', 2)[2]
             runs = self._label_runs.get(label)
             if label not in self.jobs or runs is None:
-                return 1, b'print: could not find service'
+                # launchctl's real not-found signature: exit 113 with the
+                # fixed "Could not find service" text — the only nonzero
+                # observation the runtime classifies as proven absence.
+                return 113, b'Could not find service'
             job = self.jobs[label]
             live = self._live_pid(label)
             env = '\n'.join('\t\t' + k + ' => ' + v for k, v in
@@ -185,7 +188,13 @@ def _arm(runtime_fixture):
 
 
 def _make_lane(runtime_fixture, fake, arm, shutdown=None):
-    """Build a _Lane with the runtime's helpers routed to the fake."""
+    """Build a _Lane with the runtime's helpers routed to the fake.
+
+    Callers mirror the serve order themselves: the arm is one-time
+    consumed into its private scope BEFORE the lane runs (the real
+    worker validates the consumed scope — its own ``intent.json`` and
+    the derived canary plist — before recording anything).
+    """
     shutdown = shutdown or Shutdown()
     scope = canary.canary_scope(runtime_fixture.state, arm['nonce'])
     controller = _FakeController()
@@ -199,7 +208,7 @@ def _make_lane(runtime_fixture, fake, arm, shutdown=None):
     def fake_observe(argv, timeout, env=None, control=False):
         return fake.execute(argv, timeout)
 
-    def fake_job_state(label, expected=None, expected_path=None):
+    def fake_job_state(label, expected=None, expected_path=None, timeout=10):
         status, raw = fake.execute(['/bin/launchctl', 'print',
                                     f'gui/{os.getuid()}/' + label], 10)
         if status:
@@ -284,6 +293,10 @@ def test_full_pass_lane_with_real_worker_children(runtime, private_root):
     """
     arm = _arm(runtime)
     fake = FakePlatform(runtime, runtime.policy_path, runtime.state)
+    # Mirror the serve order: consume the arm into its private scope
+    # before the lane runs (the real worker validates the consumed
+    # scope before recording its identity).
+    canary.consume_arm(runtime.state, operator_uid=os.getuid())
     lane = _make_lane(runtime, fake, arm)
     # KeepAlive: when the runs=1 worker has exited (marker consumed),
     # the fake spawns the second distinct incarnation before the lane

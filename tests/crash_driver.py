@@ -171,6 +171,28 @@ def main():
         store.spawn_intent(ticket, uuid.uuid4().hex, "diagnostic")
         os._exit(72)
 
+    if checkpoint == "spawn_before_identity":
+        # Forced death AFTER the real child is spawned but BEFORE its
+        # identity is persisted (spawn-before-identity persistence, plan
+        # T021): the retained live child is owned by no journal row.
+        request_id = uuid.uuid4().hex
+        binding = {"request_id": request_id, "kind": "proxy",
+                   "controller_epoch": controller.epoch,
+                   "policy_digest": "7" * 64, "controller_digest": "8" * 64,
+                   "controller_plist_digest": "9" * 64,
+                   "asset_digest": None, "runtime_digest": None}
+        ticket = store.begin(binding, "production")
+        backend.begin_operation(ticket)
+        plan = {"request_id": request_id, "phase": "preparing",
+                "controller_epoch": controller.epoch, "scope": "production",
+                "shared_state_side_effects": True}
+        atomic_json(Path(str(controller.requests)) / (request_id + ".json"), plan)
+        handle = store.spawn_intent(ticket, uuid.uuid4().hex, "diagnostic")
+        proc, info = _spawn_sleep_child()
+        assert proc.poll() is None, "child must be alive at the crash point"
+        # Death lands between the live spawn and the owned write.
+        os._exit(72)
+
     if checkpoint == "owned_child_mid_prepare":
         # Forced death inside the prepare helper lane with a REAL owned
         # crash child journaled: intent written, identity owned, child

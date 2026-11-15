@@ -281,8 +281,10 @@ def test_lane_rejects_incomplete_cleanup(runtime, private_root):
     _wrap(fake, bootout_but_job_stays)
     original_job_state = runtime._job_state
 
-    def lingering_job_state(label=None, expected=None, expected_path=None):
-        state = original_job_state(label, expected, expected_path)
+    def lingering_job_state(label=None, expected=None, expected_path=None,
+                            timeout=10):
+        state = original_job_state(label, expected, expected_path,
+                                   timeout=timeout)
         if state is None and lingering["active"]:
             # launchd still shows the service after bootout: the job
             # was never genuinely removed.

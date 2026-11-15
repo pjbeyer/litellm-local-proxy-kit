@@ -53,7 +53,8 @@ def shutdown_contract():
             "logging_environment": {"OSLogRateLimit": "64"}}
 
 
-def evidence(now=0.0, mono=0.0, scope="fixture", nonce=NONCE):
+def evidence(now=0.0, mono=0.0, scope="fixture", nonce=NONCE,
+             detail_digest="e" * 64):
     return {"version": 1, "scope": scope, "nonce": nonce,
             "boot_identity": UUID, "operator_uid": os.getuid(),
             "controller_identity": identity(200),
@@ -68,7 +69,7 @@ def evidence(now=0.0, mono=0.0, scope="fixture", nonce=NONCE):
                 {**identity(300), "birth": [3, 0], "runs": 1},
                 {**identity(301), "birth": [4, 0], "runs": 2}],
             "checks": {k: True for k in canary.CHECK_KEYS},
-            "detail_digest": "e" * 64,
+            "detail_digest": detail_digest,
             "issued_at": now, "issued_monotonic": mono}
 
 
@@ -283,10 +284,18 @@ def test_scan_without_namespace_is_clean(tmp_path):
 
 def test_scan_fresh_pending_arm_is_admissible(tmp_path):
     place_state(tmp_path, arm_record=arm(now=time.time(), mono=time.monotonic()))
-    summary = canary.scan_canary_namespace(tmp_path)
+    summary = canary.scan_canary_namespace(tmp_path, boot=UUID)
     assert summary["armed"]["nonce"] == NONCE
     assert summary["scopes"] == {}
 
+
+def test_scan_arm_from_foreign_kernel_boot_is_stale(tmp_path):
+    # An arm still inside its wall-clock window but from a previous
+    # kernel boot must be treated as stale, never consumed.
+    place_state(tmp_path, arm_record=arm(now=time.time(), mono=time.monotonic()))
+    with pytest.raises(Fault):
+        canary.scan_canary_namespace(
+            tmp_path, boot="00000000-0000-0000-0000-000000000000")
 
 def test_scan_expired_arm_blocks(tmp_path):
     place_state(tmp_path, arm_record=arm(now=0.0, mono=0.0))
@@ -298,23 +307,20 @@ def test_scan_arm_nonce_with_existing_scope_blocks(tmp_path):
     place_state(tmp_path, arm_record=arm(now=time.time(), mono=time.monotonic()),
                 scopes=[NONCE])
     with pytest.raises(Fault):
-        canary.scan_canary_namespace(tmp_path)
+        canary.scan_canary_namespace(tmp_path, boot=UUID)
 
 
 def test_scan_consumed_scope_with_terminal_evidence_passes(tmp_path):
     # A consumed scope always carries the consumed arm (the one-time
     # consumption renames it into the scope) plus terminal evidence whose
-    # detail_digest names its own validated detail record.
-    record_evidence = evidence()
+    # detail_digest names its own validated detail record, at the
+    # detail's true content digest.
     record_detail = detail()
+    blob = json.dumps(record_detail, sort_keys=True).encode()
+    detail_digest = hashlib.sha256(blob).hexdigest()
+    record_evidence = evidence(detail_digest=detail_digest)
     place_state(tmp_path, scopes=[NONCE], evidence_records=[record_evidence],
                 detail_records=[record_detail])
-    # The detail file must live under the digest the evidence names.
-    detail_dir = tmp_path/"canary"/"detail"/(record_evidence["detail_digest"]+".json")
-    if not detail_dir.exists():
-        blob = json.dumps(record_detail, sort_keys=True).encode()
-        detail_dir.write_bytes(blob)
-        detail_dir.chmod(0o600)
     root = tmp_path/"canary"/NONCE
     atomic_json(root/"intent.json", arm())
     summary = canary.scan_canary_namespace(tmp_path)
@@ -452,12 +458,34 @@ def _fake_policy(tmp_path):
 
 # -- T018: disposable worker mode --------------------------------------------
 
+def _consumed_scope(tmp_path, nonce=NONCE):
+    """A genuinely consumed scope: consumed arm + the lane's generated plist.
+
+    The worker refuses any scope lacking these (plan §5): an arbitrary
+    worker invocation must not populate an empty scope.
+    """
+    import plistlib
+    scope = canary.canary_scope(tmp_path, nonce)
+    arm = {'version': 1, 'operator_uid': os.getuid(), 'nonce': nonce,
+           'policy_digest': '0'*64, 'controller_digest': '0'*64,
+           'controller_plist_digest': '0'*64, 'boot_identity': UUID,
+           'issued_at': time.time(), 'expires_at': time.time()+300,
+           'issued_monotonic': time.monotonic(),
+           'expires_monotonic': time.monotonic()+300}
+    from restart_control.engine import atomic_json
+    atomic_json(scope/'intent.json', arm)
+    label = canary.canary_label(nonce)
+    (scope/(label+'.plist')).write_bytes(plistlib.dumps({'Label': label}))
+    (scope/(label+'.plist')).chmod(0o600)
+    return scope
+
+
 def test_worker_records_identity_and_exits_on_marker(tmp_path):
     """A real retained child records its true kernel identity and obeys
     the one-time cooperative exit marker."""
     import subprocess
     import sys as _sys
-    scope = canary.canary_scope(tmp_path, NONCE)
+    scope = _consumed_scope(tmp_path)
     entrypoint = ROOT/'core'/'restart_controller.py'
     argv = [_sys.executable, '-I', str(entrypoint), '--policy',
             str(_fake_policy(tmp_path)), 'canary-worker', NONCE]
@@ -496,12 +524,21 @@ def test_worker_third_incarnation_refuses(tmp_path):
         canary.run_canary_worker(tmp_path, NONCE)
 
 
+def test_worker_refuses_unconsumed_scope(tmp_path):
+    """An arbitrary worker invocation cannot populate an empty scope."""
+    canary.canary_scope(tmp_path, NONCE)  # exists but empty: no arm, no plist
+    with pytest.raises(Fault):
+        canary.run_canary_worker(tmp_path, NONCE)
+    scope = canary.canary_scope(tmp_path, NONCE)
+    assert not (scope/'incarnation-1.json').exists()
+
+
 def test_canary_worker_shutdown_deadline(tmp_path):
     """SIGTERM latches the shared 50s budget; the worker exits cooperatively."""
     import signal
     import subprocess
     import sys as _sys
-    scope = canary.canary_scope(tmp_path, NONCE)
+    scope = _consumed_scope(tmp_path)
     entrypoint = ROOT/'core'/'restart_controller.py'
     argv = [_sys.executable, '-I', str(entrypoint), '--policy',
             str(_fake_policy(tmp_path)), 'canary-worker', NONCE]

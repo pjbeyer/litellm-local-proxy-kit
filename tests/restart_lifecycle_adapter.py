@@ -95,8 +95,11 @@ class FixtureLifecycleAdapter(CorePort, DirectPort):
                 or row['outcome'] is not None):
             raise RuntimeError('fixture_store_invalid')
         row['phase'] = phase
+        self.active = _OperationTicket(
+            row['binding']['request_id'],
+            tuple(sorted(row['binding'].items())))
         self.transitions.append('canary_running')
-        return ticket
+        return self.active
 
     def canary_terminal(self, ticket, outcome):
         row = self._active_row(ticket)

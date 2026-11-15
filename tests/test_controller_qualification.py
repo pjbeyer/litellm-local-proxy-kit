@@ -37,13 +37,14 @@ def context(runtime, private_root):
     supervisor.write_bytes(plistlib.dumps(expected, sort_keys=True))
     supervisor.chmod(0o600)
     plan = dict(runtime.freeze(), controller_epoch='a'*32)
-    identity = {'pid': os.getpid(), 'uid': os.getuid(), 'birth': [1, 1]}
+    identity = {'pid': os.getpid(), 'uid': os.getuid(), 'ppid': os.getppid(),
+                'pgid': os.getpgid(0), 'birth': [1, 1]}
     now, mono = time.time(), time.monotonic()
     # Fixture canary evidence: scope 'fixture' only; the real producer
     # arrives in later tasks and fixture records never become accepted
     # production qualifications.
     evidence = {'version': 1, 'scope': 'fixture', 'nonce': '0'*32,
-        'boot_identity': 'fixture-boot-identity', 'operator_uid': os.getuid(),
+        'boot_identity': '12345678-1234-1234-1234-123456789abc', 'operator_uid': os.getuid(),
         'controller_identity': identity, 'controller_epoch': plan['controller_epoch'],
         'controller_digest': plan['controller_digest'], 'policy_digest': plan['policy_digest'],
         'controller_plist_digest': hashlib.sha256(supervisor.read_bytes()).hexdigest(),
@@ -59,6 +60,48 @@ def context(runtime, private_root):
     assert set(evidence) == CANARY_EVIDENCE_KEYS
     evidence_dir = runtime.state/'canary'/'evidence'
     evidence_dir.mkdir(parents=True, exist_ok=True)
+    # Closed detail: the evidence's detail_digest names a real validated
+    # detail file at its true content digest, cross-bound to the same
+    # nonce/boot/identity/epoch as the evidence envelope. The detail
+    # carries the full ordered step record with the SECOND incarnation's
+    # identity in the shutdown block, exactly as a real lane would write.
+    detail_dir = runtime.state/'canary'/'detail'
+    detail_dir.mkdir(parents=True, exist_ok=True)
+    from restart_control.canary import STEP_ORDER, STEP_APPLICABILITY, validate_detail
+    second = {'pid': 41002, 'uid': os.getuid(), 'ppid': 1,
+              'pgid': 41002, 'birth': [3, 0]}
+    first = {'pid': 41001, 'uid': os.getuid(), 'ppid': 1,
+             'pgid': 41001, 'birth': [2, 0]}
+    steps = []
+    for index, name in enumerate(STEP_ORDER):
+        rule = STEP_APPLICABILITY[name]
+        which = first if rule['identity'] == 'first' else second
+        steps.append({'name': name, 'started_monotonic': mono+index,
+                      'completed_monotonic': mono+index+0.5,
+                      'outcome': 'passed',
+                      'identity': dict(which) if rule['identity'] else None,
+                      'runs': rule['runs'],
+                      'loaded_exit_seconds': 60 if rule['loaded'] else None,
+                      'loaded_environment_digest': 'f'*64 if rule['loaded'] else None,
+                      'exit_code': rule['exit_code']})
+    detail = {'version': 1, 'nonce': evidence['nonce'],
+              'boot_identity': evidence['boot_identity'],
+              'controller_identity': evidence['controller_identity'],
+              'controller_epoch': evidence['controller_epoch'],
+              'steps': steps, 'shutdown': {
+                  'identity': second,
+                  'requested_monotonic': mono-2, 'exit_observed_monotonic': mono-1,
+                  'cleanup_completed_monotonic': mono-0.5,
+                  'deadline_seconds': SHUTDOWN_CONTRACT['shutdown_deadline_seconds']}}
+    validate_detail(detail, expected={'nonce': evidence['nonce'],
+                                      'boot_identity': evidence['boot_identity'],
+                                      'controller_identity': evidence['controller_identity'],
+                                      'controller_epoch': evidence['controller_epoch']})
+    detail_blob = json.dumps(detail, sort_keys=True).encode()
+    detail_path = detail_dir/(hashlib.sha256(detail_blob).hexdigest()+'.json')
+    detail_path.write_bytes(detail_blob)
+    detail_path.chmod(0o600)
+    evidence['detail_digest'] = hashlib.sha256(detail_blob).hexdigest()
     blob = json.dumps(evidence, sort_keys=True).encode()
     evidence_path = evidence_dir/(hashlib.sha256(blob).hexdigest()+'.json')
     evidence_path.write_bytes(blob)
@@ -107,7 +150,7 @@ def qualify(context, text=None):
         return 0, payload.encode()
     with mock.patch('restart_control.runtime.Path.home', return_value=context.home), \
          mock.patch('restart_control.runtime.process_identity', return_value={**context.identity, 'ppid': 1}), \
-         mock.patch('restart_control.runtime._identity', side_effect=lambda pid: dict(context.identity, pid=pid)), \
+         mock.patch('restart_control.runtime._identity', side_effect=lambda pid: {k: v for k, v in dict(context.identity, pid=pid).items() if k in ('pid', 'uid', 'birth')}), \
          mock.patch.object(type(context.runtime), '_observe', autospec=True, side_effect=observe_only):
         context.runtime.qualify(context.plan)
 

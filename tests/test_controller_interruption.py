@@ -522,6 +522,25 @@ class CrashRecoveryTest(unittest.TestCase):
         self.assertEqual(children[0]["state"], "intent")
         self.assertIsNone(children[0]["identity"])
 
+    def test_crash_spawn_before_identity_persistence_blocks_fresh_prepare(self):
+        """Death after the live spawn but before identity persistence.
+
+        Plan T021: the retained live child is owned by no journal row;
+        the fresh instance must refuse globally and never signal the
+        orphan by name/port — the retained sleep child must still be
+        alive after the refusal (no auto child cleanup).
+        """
+        state = self._crash("spawn_before_identity")
+        controller = self._fresh_controller(state)
+        result = controller.handle({"op": "prepare"})
+        self.assertEqual(result["status"], "blocked", result)
+        self.assertEqual(result["code"], "recovery_invalid", result)
+        self.assertEqual(controller.backend.calls, [])
+        children = self._journal_children(state)
+        self.assertEqual(len(children), 1)
+        self.assertEqual(children[0]["state"], "intent")
+        self.assertIsNone(children[0]["identity"])
+
     def test_crash_owned_child_blocks_fresh_prepare_and_signals_nothing(self):
         state = self._crash("owned_child_mid_prepare")
         try:
