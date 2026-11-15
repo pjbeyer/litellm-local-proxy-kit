@@ -1,0 +1,22 @@
+docs/restart-controller-shutdown-contract.md
+  s_ae146e96df3530::t_bb2a6ce326c5b7 3
+docs/restart-controller-operations.md
+  s_ae146e96df3530::t_13fe303b817eae 174-267
+  s_ae146e96df3530::t_9d915f5659f242 13-19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "de4d943cd53d3cefc4a80938101f25c1e5ed05fb",
+  "prompts": {},
+  "sessions": {
+    "s_ae146e96df3530": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261114_215341_baa459",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
