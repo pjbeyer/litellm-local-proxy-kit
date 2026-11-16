@@ -1,0 +1,32 @@
+docs/evidence/2026-11-16-g6-verification-record.md
+  s_c057dc2e80bf3c::t_785fbb704ea79d 1-31
+docs/evidence/2026-11-16-restart-enablement-owner-package.md
+  s_9e4265bd7a8616::t_8f6faa5d384240 1-46
+  s_9e4265bd7a8616::t_80fe5667eb1ad3 47-49
+docs/evidence/2026-11-16-lpkit-fhz-verification-record.md
+  s_c057dc2e80bf3c::t_2e66a912dc4d5a 1-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "116aaba62ffcad4b30cda19dbc0b811cba7fb9c5",
+  "prompts": {},
+  "sessions": {
+    "s_9e4265bd7a8616": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261025_190959_3828d0",
+        "model": "glm-5.3-flash"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_c057dc2e80bf3c": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261116_084056_7456d1",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
