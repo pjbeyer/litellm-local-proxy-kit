@@ -41,3 +41,9 @@ reviews/*.transcript.md
 .beads-credential-key
 .beads/proxieddb/
 *.gate.lock*
+
+# Operator-identity deployment files (spec 015: repo = template source,
+# live = apply target). deploy.conf.sh and per-deployment credentials.toml
+# carry machine-specific paths and 1Password vault references — never track.
+deploy.conf.sh
+deployments/*/credentials.toml
