@@ -1,0 +1,33 @@
+tests/test_guard_substitution_nesting.py
+  s_c3bcb9d054962a::t_e6f64a9fc77ff7 83-84
+  s_c3bcb9d054962a::t_fe3a3604247ccb 1-82,85-136
+integrations/hermes/proxy-lifecycle-guard/guard.py
+  s_c3bcb9d054962a::t_07c78d1247c453 1228-1241,1244-1245,1251-1282,1288-1299,1306-1309,1345-1352,1354
+  s_c3bcb9d054962a::t_edee46b8ccea20 1311-1324
+  s_c3bcb9d054962a::t_8ff8dd37331261 2522-2531
+  s_c3bcb9d054962a::t_6b0408b5e732ab 1353
+  s_c3bcb9d054962a::t_7cdb98bec24394 1300-1305
+  s_c3bcb9d054962a::t_400dd0b8e07583 1382-1389,1393
+  s_c3bcb9d054962a::t_bee4cc121daf6e 1246
+  s_c3bcb9d054962a::t_9e0b8bc0042d40 1283-1287
+tests/test_guard_prose_and_vars.py
+  s_c3bcb9d054962a::t_b77d6458446e15 46-49
+tests/test_guard_heredoc_composition.py
+  s_c3bcb9d054962a::t_96b8b212795e2c 110-112
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "c3557245a2b4447a0985dc3dc76b125f338d9ff8",
+  "prompts": {},
+  "sessions": {
+    "s_c3bcb9d054962a": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261114_154648_59b3af",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
