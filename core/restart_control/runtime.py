@@ -1519,6 +1519,30 @@ class Runtime:
             raise Fault('lkg_invalid')
 
     def qualify(self, plan):
+        # lpkit-fhz (A1): qualification validates the canary lane but
+        # restart admission also requires freeze()/check_gates() against
+        # the policy's deployment root. A policy whose deployment root
+        # lacks the fact closure freeze() reads (deploy.conf.sh,
+        # deployments/<name>/{overlay.yaml, credentials.toml, pin.lock},
+        # native receipts) can never prepare, so qualifying it produces
+        # a "qualified" controller that structurally cannot restart —
+        # exactly the gate-5 regression (deployment_root=~/.config/litellm
+        # qualified 2026-11-16, then all five prepares refused
+        # runtime_invalid/gate_failed). Probe the same fact sources
+        # freeze() reads BEFORE accepting the record: any miss refuses
+        # qualification_invalid, fail-closed. Read-only; no gate
+        # subprocesses (installer --verify, drift_check, preflight) run
+        # here — prepare/check_gates still owns those.
+        try:
+            _regular(self.deployment/'deploy.conf.sh')
+            deployment_dir = self.deployment/'deployments'/self.name
+            for closure in ('overlay.yaml', 'credentials.toml', 'pin.lock'):
+                _regular(deployment_dir/closure)
+            deployment_pin = deployment_dir/'pin.lock'
+            for name in PROXY_OPTIONAL_INPUTS:
+                _native_receipt(deployment_pin, name)
+        except Exception:
+            raise Fault('qualification_invalid') from None
         try:
             record = _read_json(self.state/'qualification.json')
         except FileNotFoundError:

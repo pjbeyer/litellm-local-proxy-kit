@@ -297,6 +297,62 @@ def test_identical_repeated_environment_value_is_not_ambiguous(context):
 
 # -- T015: qualification v2 shutdown-contract and evidence bindings -----------
 
+# -- lpkit-fhz (A1): qualification structurally refuses a deployment root
+# freeze() cannot close against ------------------------------------------------
+
+def test_qualify_refuses_deployment_root_without_freeze_closure(context):
+    """Live gate-5 regression (lpkit-fhz): the 2026-11-16 policy pointed
+    deployment_root at ~/.config/litellm, which lacks deploy.conf.sh and the
+    deployments/<name>/ fact closure freeze() reads. qualify() accepted the
+    record anyway (canary lane only), then every prepare refused
+    runtime_invalid/gate_failed. qualify() now probes the same fact sources
+    freeze() reads and refuses qualification_invalid, fail-closed, BEFORE
+    accepting any record.
+    """
+    deploy_conf = context.runtime.deployment/'deploy.conf.sh'
+    saved = None
+    if deploy_conf.exists():
+        saved = deploy_conf.read_bytes()
+        deploy_conf.unlink()
+    try:
+        with pytest.raises(Fault, match='qualification_invalid'):
+            qualify(context)
+    finally:
+        if saved is not None:
+            deploy_conf.write_bytes(saved)
+
+
+@pytest.mark.parametrize('variant', ['deploy_conf', 'overlay', 'credentials',
+                                     'pin_lock', 'deployment_dir'])
+def test_qualify_refuses_each_missing_freeze_closure_member(context, variant):
+    """Each closure member's absence refuses independently (fail-closed on
+    any single miss, not just the first probe)."""
+    deployment_dir = context.runtime.deployment/'deployments'/context.runtime.name
+    target = {
+        'deploy_conf': context.runtime.deployment/'deploy.conf.sh',
+        'overlay': deployment_dir/'overlay.yaml',
+        'credentials': deployment_dir/'credentials.toml',
+        'pin_lock': deployment_dir/'pin.lock',
+        'deployment_dir': deployment_dir,
+    }[variant]
+    saved_dir = None
+    saved_bytes = None
+    if target.is_dir():
+        saved_dir = target.with_name(target.name + '.qualification-fixture-saved')
+        target.rename(saved_dir)
+    else:
+        saved_bytes = target.read_bytes()
+        target.unlink()
+    try:
+        with pytest.raises(Fault, match='qualification_invalid'):
+            qualify(context)
+    finally:
+        if saved_dir is not None:
+            saved_dir.rename(target)
+        else:
+            target.write_bytes(saved_bytes)
+
+
 @pytest.mark.parametrize('variant', ['missing', 'extra_field', 'legacy_version', 'boolean_version',
                                    'wrong_deadline', 'wrong_logging', 'extra_contract_key'])
 def test_shutdown_contract_binding_downgrades_in_turn(context, variant):
