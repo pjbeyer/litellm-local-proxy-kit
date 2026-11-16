@@ -48,6 +48,9 @@ Intentional limitations (documented, not hidden):
 - kill targets that cannot be resolved deterministically (shell variables,
   unbound command substitutions, failed process discovery) are refused
   conservatively; read-only probes (kill -0, ps, lsof, health checks) pass.
+- Credential exfiltration via read-only diagnostics (ps eww-style
+  environment dumps of the proxy) is OUT OF SCOPE — an availability
+  control, not secrets-DLP (README "Honest boundaries").
 - Broad interpreter selectors (python, uvicorn, ...) in pkill/killall are
   blocked because they could match the live proxy interpreter.
 - No auto-approve tokens, no bypass, and no restart-controller surface.
@@ -2617,7 +2620,11 @@ def _analyze_shell_text(text, policy, get_snapshot, depth=0):
     # DATA and is excised after inspection of the composition.
     # Misclassification fails toward inspection, never excision.
     heredoc_cuts = []
-    for m in re.finditer(r"<<-?\s*(['\"]?)([A-Za-z_]\w*)\1", text):
+    # lpkit-7kb: (?<!<) excludes bash HERE-STRINGS (<<<): `tee f <<< x`
+    # is not a heredoc — previously the regex matched `<< x` inside
+    # `<<<` and treated it as an unterminated heredoc, misrouting a
+    # genuine plugin-directory write away from the write analysis.
+    for m in re.finditer(r"(?<!<)<<-?\s*(['\"]?)([A-Za-z_]\w*)\1", text):
         quote_delim = m.group(1) != ""
         delim = m.group(2)
         head = text[:m.start()].strip()
@@ -2629,7 +2636,12 @@ def _analyze_shell_text(text, policy, get_snapshot, depth=0):
             r"^[ \t]*" + re.escape(delim) + r"\b.*$",
             text[m.end():], re.MULTILINE)
         if body_m is None:
-            raise _Block()  # unterminated heredoc: unprovable
+            # lpkit-7kb: an unterminated heredoc is a parse/shape failure
+            # of the payload (the shell itself would refuse it), not a
+            # lifecycle threat — refuse SHAPE_ENVELOPE so the operator
+            # gets corrective guidance, never the kill-workflow VETO
+            # wording. Fail-closed holds: the payload is still refused.
+            raise _BoundRefuse("SHAPE_ENVELOPE")  # unterminated heredoc: unprovable
         body = text[m.end():m.end() + body_m.start()]
         # The head line may carry a pipeline tail after the heredoc
         # operator (cat << 'EOF' | sh): the tail is part of the

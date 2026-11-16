@@ -134,3 +134,33 @@ def test_shape_message_is_corrective_not_kill_workflow(scope):
     # the misleading kill-workflow wording must NOT appear on shape refusals
     assert "kill command" not in d["message"]
     assert "controlled restart" not in d["message"]
+
+
+# --- lpkit-7kb: no benign parse failure surfaces kill-workflow wording ---
+# The last remaining leak site: an unterminated heredoc raised a plain
+# _Block() (LGV-001 kill-workflow message) for a benign incomplete
+# command. It is a shape failure — refused SHAPE_ENVELOPE/LGV-020 now.
+def test_unterminated_heredoc_refuses_shape(scope):
+    evaluate, _, _ = scope
+    d = evaluate('cat <<EOF')
+    assert d is not None
+    assert d["category"] == "SHAPE_ENVELOPE"
+    assert d["log_code"] == "LGV-020"
+
+
+def test_unterminated_heredoc_message_is_corrective(scope):
+    evaluate, _, _ = scope
+    d = evaluate('cat <<EOF')
+    assert d is not None
+    assert "kill command" not in d["message"]
+    assert "controlled restart" not in d["message"]
+
+
+def test_heredoc_with_terminator_still_vetoes_kill_body(scope):
+    # the SHAPE routing must not weaken real heredoc composition gates:
+    # a terminated heredoc feeding a kill pipeline still vetoes
+    evaluate, _, _ = scope
+    d = evaluate("cat <<'EOF' | sh\npkill -f litellm\nEOF")
+    assert d is not None
+    assert d["category"] == "VETO"
+    assert d["log_code"] == "LGV-001"

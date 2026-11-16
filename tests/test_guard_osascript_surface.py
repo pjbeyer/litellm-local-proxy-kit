@@ -71,6 +71,75 @@ def test_benign_applescripts_pass(scope, command):
     assert evaluate(command) is None
 
 
+# --- lpkit-paw: quote-style consistency gates (both operand forms) ---
+# Adjudication (2026-11-16): the FN claim is falsified on HEAD — through
+# the dq form the guard vetoes every genuine threat (protected numeric
+# PID via discovery, pkill/pattern verbs, $(pgrep) substitutions,
+# port-sentinel xargs pipelines, launchctl bootout, killall). The
+# original battery's "numeric PID" row used a PID that was never in
+# the protected set (live discovery), so its dq-form ALLOW was the
+# documented by-target scope, not a leak. These rows pin the two
+# styles AGREEING, by operand class:
+#   - protected numeric operand: both styles VETO (target analysis)
+#   - non-protected numeric operand: both styles ALLOW (by-target scope
+#     parity with the direct surface)
+#   - real pattern verbs: both styles VETO regardless of operand
+#   - by-name no-op kill (<kill -9 litellm>, a POSIX no-op): both
+#     styles ALLOW, matching the direct surface
+@pytest.mark.parametrize("command", [
+    # protected numeric PID, dq and sq inner operand
+    "osascript -e 'do shell script \"kill -9 " + str(FIXTURE_PID) + "\"'",
+    'osascript -e "do shell script \'kill -9 ' + str(FIXTURE_PID) + '\'"',
+])
+def test_osascript_protected_numeric_pid_vetoes_both_styles(scope, command):
+    evaluate, _, _ = scope
+    decision = evaluate(command)
+    assert decision is not None
+    assert decision["category"] == "VETO"
+    assert decision["log_code"] == "LGV-001"
+
+
+@pytest.mark.parametrize("command", [
+    "osascript -e 'do shell script \"kill -9 1234\"'",
+    "kill -9 1234",
+])
+def test_osascript_nonprotected_numeric_allows_valid_forms(scope, command):
+    # 1234 is not in the fixture's protected set; the direct surface
+    # allows it, so the valid dq osascript form must too (consistency)
+    evaluate, _, _ = scope
+    assert evaluate(command) is None
+
+
+def test_osascript_sq_form_invalid_applescript_refuses(scope):
+    # `do shell script '...'` is INVALID AppleScript (strings are
+    # double-quoted only), so the operand is unextractable — FR-006
+    # fail-closed refusal regardless of operand content. This is the
+    # original battery's sq-vs-dq "asymmetry": not a leak — one form
+    # is valid (analyzable, target-scoped) and one is malformed
+    # (unprovable, refused). Pinned so the asymmetry question stays
+    # settled: malformed always refuses, valid follows target scope.
+    evaluate, _, _ = scope
+    decision = evaluate('osascript -e "do shell script \'kill -9 1234\'"')
+    assert decision is not None
+    assert decision["category"] == "VETO"
+    assert decision["log_code"] == "LGV-001"
+
+
+@pytest.mark.parametrize("command", [
+    # real pattern verbs through the dq form (the original FN concern)
+    "osascript -e 'do shell script \"pkill -f litellm\"'",
+    "osascript -e 'do shell script \"killall litellm\"'",
+    "osascript -e 'do shell script \"kill -9 $(pgrep litellm)\"'",
+    "osascript -e 'do shell script \"lsof -t -iTCP:4000 | xargs kill -9\"'",
+])
+def test_osascript_real_verbs_dq_vetoes(scope, command):
+    evaluate, _, _ = scope
+    decision = evaluate(command)
+    assert decision is not None
+    assert decision["category"] == "VETO"
+    assert decision["log_code"] == "LGV-001"
+
+
 @pytest.mark.parametrize("code", [
     'import subprocess\n'
     'subprocess.run(["osascript", "-e", '

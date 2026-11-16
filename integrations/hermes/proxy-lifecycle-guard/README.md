@@ -73,6 +73,16 @@ authorization boundary. Bypass classes, by design:
 - **Restart-transition gap**: protection exists only while the configured
   listener is bound; while a restart unbinds the listener, discovery answers
   empty and port-targeted protection lapses.
+- **Credential exfiltration via read-only diagnostics is OUT OF SCOPE
+  (explicit boundary, Principle II)**: `ps eww`/`ps -E`-style environment
+  dumps of the protected proxy (e.g. redirected to a file) are read-only
+  process diagnostics — the documented pass row — and their confidentiality
+  risk (the proxy process environment may hold provider keys) is a
+  secrets-hygiene concern, not a lifecycle signal. This guard is an
+  availability control; extending it to secrets-DLP is an owner scope
+  decision, not a defect. Adjudicated in V&V: the shape passes on every
+  generation by design, and earlier live vetoes of similar text were
+  attributed to kill-family content in the composition, not the `ps` read.
 
 ## Profile-local installation
 
