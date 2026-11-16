@@ -1,0 +1,16 @@
+.gitignore
+  h_c5be3b3dad7ca8 44-49
+deployments/personal/overlay.yaml
+  h_c5be3b3dad7ca8 1-205
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "a8eea89a9301001b94ab41f7581a1a48de9f0cca",
+  "prompts": {},
+  "humans": {
+    "h_c5be3b3dad7ca8": {
+      "author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
