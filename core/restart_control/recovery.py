@@ -602,6 +602,14 @@ class RecoveryStore:
     def end_operation(self, active):
         """Drop only the in-memory active context; retained records still bar work."""
         with self._spawn_transition_lock():
+            if self._active_ticket is None:
+                # Nothing is held: the terminal journal write already
+                # cleared the context (canary_terminal drops it), or it
+                # was never begun. A no-op is correct — the handle
+                # identifies nothing to release, and refusing here would
+                # make the success-path release_credentials (after
+                # canary_terminal) fault spuriously.
+                return
             self._check_active(active)
             self._active_ticket = None
 

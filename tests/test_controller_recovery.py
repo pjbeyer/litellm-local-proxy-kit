@@ -3143,3 +3143,49 @@ def test_canary_lane_journal_phases_over_real_store(tmp_path):
     terminal = journal.canary_terminal(running, "canary_passed")
     assert terminal.request_id == arm["nonce"]
 
+
+def test_terminal_write_survives_runtime_context_release(tmp_path):
+    """Live gate-4 finding: run() releases the runtime operation context
+    (real end_operation clears the store's active ticket) BEFORE the
+    terminal journal write — canary_terminal then refused recovery_invalid
+    after a fully passed lane. The write must come first, and a later
+    end_operation for the already-cleared context is a no-op, not a fault.
+    """
+    from core.restart_control import canary
+    from core.restart_control.recovery import RecoveryError
+
+    state, arm = _arm_state(tmp_path)
+    journal = load(state)
+    ticket = journal.begin(_canary_binding(arm["nonce"]), "fixture")
+    running = journal.canary_phase(ticket, "canary_running")
+    canary.consume_arm(state, operator_uid=os.getuid())
+    evidence_dir = state / "canary" / "evidence"
+    engine.private_dir(evidence_dir)
+    fd = os.open(evidence_dir / ("e" * 64 + ".json"),
+                 os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as stream:
+        json.dump({"stub": True}, stream)
+    # The old buggy order: end_operation first, terminal write second —
+    # this REFUSED recovery_invalid and left an unsettled canary_running
+    # row (the live attempt-6 defect). It must still be detectable:
+    journal.end_operation(running)
+    with pytest.raises(RecoveryError):
+        journal.canary_terminal(running, "canary_passed")
+    row = json.load(open(state / "recovery" / "operations" /
+                         (arm["nonce"] + ".json")))
+    assert row["phase"] == "canary_running" and row["outcome"] is None
+    # The fixed live order: a reloaded store can still settle the row —
+    # the terminal write itself clears the active context, and a second
+    # end_operation for the cleared context is a no-op.
+    reloaded = load(state)
+    ticket2 = reloaded.operation_ticket(arm["nonce"])
+    reloaded._active_ticket = ticket2
+    reloaded.canary_terminal(ticket2, "canary_passed")
+    reloaded.end_operation(ticket2)
+    row = json.load(open(state / "recovery" / "operations" /
+                         (arm["nonce"] + ".json")))
+    assert row["phase"] == "canary_passed" and row["outcome"] == "canary_passed"
+    # And the settled attempt no longer blocks proxy work.
+    reloaded.require_clear()
+
+

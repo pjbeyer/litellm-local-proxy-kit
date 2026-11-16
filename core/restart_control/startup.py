@@ -528,11 +528,15 @@ class _Lane:
             # Evidence only after successful cleanup (plan §9).
             detail, detail_digest = self._detail(shutdown_detail)
             evidence = self._evidence(first, second, detail_digest)
-            # Release the runtime operation context before the terminal
-            # journal write clears the active ticket.
+            # Terminal journal write first (canary_terminal clears the
+            # recovery store's active context), then release the runtime
+            # operation context — end_operation tolerates the already
+            # cleared store. Releasing first would clear _active_ticket
+            # and make canary_terminal refuse with recovery_invalid
+            # after a fully passed lane (live gate-4 finding).
+            self._journal("canary_terminal", self.ticket, "canary_passed")
             with contextlib.suppress(Exception):
                 self.runtime.release_credentials()
-            self._journal("canary_terminal", self.ticket, "canary_passed")
             return {"outcome": "canary_passed", "nonce": self.nonce,
                     "label": self.label, "evidence": evidence,
                     "detail": detail}
@@ -545,12 +549,16 @@ class _Lane:
 
     def _blocked(self, code):
         """Mark the attempt blocked durably, with a status diagnostic."""
-        with contextlib.suppress(Exception):
-            self.runtime.release_credentials()
+        # Terminal journal write first (same ordering as the success
+        # path): releasing the runtime context first would clear the
+        # recovery store's active ticket and make the blocked terminal
+        # write refuse — leaving an unsettled canary_running row.
         if self.ticket is not None:
             with contextlib.suppress(Exception):
                 self._journal("canary_terminal", self.ticket,
                               "canary_blocked")
+        with contextlib.suppress(Exception):
+            self.runtime.release_credentials()
         diagnostic = {"version": 1, "nonce": self.nonce, "code": code,
                       "recorded_monotonic": time.monotonic()}
         try:
