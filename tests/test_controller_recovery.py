@@ -3189,3 +3189,51 @@ def test_terminal_write_survives_runtime_context_release(tmp_path):
     reloaded.require_clear()
 
 
+def test_inventory_waits_out_worker_latch_staging_temp(tmp_path):
+    """Live gate-4 finding (attempt 7): spawn_closed's clear-view scan
+    raced the worker's SIGTERM latch write — atomic_json's staging temp
+    appeared in the shared scope mid-scan and inventory refused on the
+    unrecognized dot-name. A LIVE temp is "not yet" (bounded re-scan);
+    a persisted temp still fails closed.
+    """
+    import threading
+    from core.restart_control import canary
+
+    state, arm = _arm_state(tmp_path)
+    journal = load(state)
+    ticket = journal.begin(_canary_binding(arm["nonce"]), "fixture")
+    running = journal.canary_phase(ticket, "canary_running")
+    canary.consume_arm(state, operator_uid=os.getuid())
+    scope = state / "canary" / arm["nonce"]
+    handle = journal.spawn_intent(running, "a" * 32, "canary-bootstrap")
+    identity = {"pid": 12, "uid": os.getuid(), "pgid": 12, "birth": [1, 0]}
+    journal.spawn_owned(handle, identity)
+    # The worker stages its latch temp mid-scan, then renames it in place.
+    staged = scope / (".latch.json." + "b" * 32)
+    fd = os.open(staged, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as stream:
+        stream.write("partial\n")
+
+    def finish():
+        time.sleep(0.15)
+        os.replace(staged, scope / "latch.json")
+
+    writer = threading.Thread(target=finish)
+    writer.start()
+    try:
+        journal.spawn_closed(handle, identity, cleanup_proven=True)
+    finally:
+        writer.join()
+    row = json.load(open(state / "recovery" / "spawns" / ("a" * 32 + ".json")))
+    assert row["state"] == "closed"
+    # A PERSISTED temp (crashed write) still fails closed.
+    from core.restart_control.recovery import RecoveryError
+    stuck = scope / (".latch.json." + "c" * 32)
+    fd = os.open(stuck, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as stream:
+        stream.write("crashed\n")
+    with pytest.raises(RecoveryError):
+        journal.spawn_intent(running, "d" * 32, "canary-bootout")
+
+
+

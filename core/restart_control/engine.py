@@ -63,6 +63,36 @@ def canonical_digest(obj):
     return hashlib.sha256(canonical_bytes(obj)).hexdigest()
 
 
+# Transient atomic-rename temporary from atomic_json's staging step:
+# ".<final-name>.<32-hex>". atomic_json stages exactly this shape next to
+# the final file and renames it into place; a concurrent directory scan
+# can observe it mid-write. It is a dotfile by construction, uid-owned,
+# and disappears on rename or crash-cleanup — scanners treat a LIVE one
+# as "not yet" (bounded re-scan), and one that persists past the scan
+# window as a crashed-write uncertainty that blocks (never cleans).
+_ATOMIC_TEMP = re.compile(r"^\.([A-Za-z0-9._-]+)\.([0-9a-f]{32})$")
+
+
+def atomic_temp_name(name):
+    """True when name is an atomic_json in-flight temporary for a known file."""
+    match = _ATOMIC_TEMP.match(name or "")
+    if match is None:
+        return False
+    return match.group(1) in ("intent.json", "latch.json", "diagnostic.json",
+                              "mutation.json") or \
+        match.group(1).startswith("local.restart-canary.") or \
+        match.group(1).endswith(".plist") or \
+        _token_like(match.group(1))
+
+
+def _token_like(value):
+    from .recovery import _token, _ID
+    try:
+        return _token(value, _ID)
+    except Exception:
+        return False
+
+
 def _sync_fd(fd):
     if _SYNC is not None:
         fcntl.fcntl(fd, _SYNC)

@@ -356,6 +356,46 @@ def test_scan_partial_scope_write_blocks(tmp_path):
         canary.scan_canary_namespace(tmp_path)
 
 
+def test_scan_transient_atomic_temp_is_waited_out(tmp_path):
+    """Live gate-4 finding (attempt 7): the worker's SIGTERM latch
+    write stages ".latch.json.<32-hex>" in the shared scope while the
+    controller journals spawn transitions; the scan that raced it
+    refused on the dot-name. A LIVE temp is "not yet" — the scan waits
+    it out; a temp that persists past the window still blocks.
+    """
+    import threading
+    record_detail = detail()
+    blob = json.dumps(record_detail, sort_keys=True).encode()
+    detail_digest = hashlib.sha256(blob).hexdigest()
+    record_evidence = evidence(detail_digest=detail_digest)
+    place_state(tmp_path, scopes=[NONCE], evidence_records=[record_evidence],
+                detail_records=[record_detail])
+    root = tmp_path/"canary"/NONCE
+    atomic_json(root/"intent.json", arm())
+    # A writer stages the latch temp mid-scan, then renames it into place
+    # (atomic_json stages 0600; a wrong-mode file is refused by the scan).
+    staged = root/(".latch.json." + "a"*32)
+    fd = os.open(staged, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as stream:
+        stream.write("partial\n")
+    def finish():
+        time.sleep(0.15)
+        os.replace(staged, root/"latch.json")
+    writer = threading.Thread(target=finish)
+    writer.start()
+    try:
+        summary = canary.scan_canary_namespace(tmp_path)
+        assert list(summary["scopes"]) == [NONCE]
+    finally:
+        writer.join()
+    assert (root/"latch.json").exists()
+    # A PERSISTED temp (crashed write) still fails closed.
+    stuck = root/(".latch.json." + "b"*32)
+    stuck.write_text("crashed\n")
+    with pytest.raises(Fault):
+        canary.scan_canary_namespace(tmp_path)
+
+
 # -- T017: arm command and one-time consumption -------------------------------
 
 ARM_BINDINGS = {"policy_digest": DIGEST, "controller_digest": DIGEST,

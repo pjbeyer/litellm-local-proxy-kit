@@ -579,6 +579,18 @@ def scan_canary_namespace(state, *, wall=None, mono=None, boot=None):
     if not root.exists():
         return {"armed": None, "scopes": {}}
     root = private_dir(root)
+    from .engine import atomic_temp_name
+    # The namespace is shared with live writers (an arm write from
+    # arm-canary; the worker's latch write inside a scope): an atomic
+    # staging temp observed mid-write is "not yet" — bounded re-scan of
+    # the whole namespace until no temp remains. A temp that persists
+    # past the window is a crashed write: fail-closed (the per-entry
+    # checks below still refuse anything unrecognized).
+    deadline = _time.monotonic() + 1.0
+    while any(atomic_temp_name(e.name) for e in root.iterdir()):
+        if _time.monotonic() >= deadline:
+            raise Fault("recovery_invalid")
+        _time.sleep(0.02)
     recognized = {"intent.json"}
     consumed = {}
     entries = sorted(root.iterdir())
@@ -716,8 +728,25 @@ def _bounded_names(directory):
 
 
 def _scan_scope(scope, root):
-    """Cross-check one consumed nonce scope against its terminal records."""
-    files = sorted(scope.iterdir())
+    """Cross-check one consumed nonce scope against its terminal records.
+
+    The scope is shared with the LIVE lane worker: its SIGTERM handler
+    writes latch.json through atomic_json, whose staging temp briefly
+    appears as ".latch.json.<32-hex>" in this directory (observed live:
+    the controller's spawn_closed scan raced the worker's latch write
+    and refused on the temp's dot-name). A transient temp is "not yet" —
+    bounded re-scan; a persisted temp still blocks (fail-closed).
+    """
+    from .engine import atomic_temp_name
+    deadline = time.monotonic() + 1.0
+    while True:
+        files = sorted(scope.iterdir())
+        if any(atomic_temp_name(f.name) for f in files):
+            if time.monotonic() >= deadline:
+                raise Fault("recovery_invalid")
+            time.sleep(0.02)
+            continue
+        break
     if len(files) > _BOUND_POPULATION:
         raise Fault("recovery_invalid")
     summary = {"files": [f.name for f in files], "evidence": None, "detail": None}

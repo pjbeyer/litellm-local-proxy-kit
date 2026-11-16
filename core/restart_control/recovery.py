@@ -107,6 +107,16 @@ class RecoveryError(Exception):
         super().__init__(self.code)
 
 
+class _TransientTemp(Exception):
+    """Internal: an atomic_json staging temp observed mid-write.
+
+    Raised by the inventory scan's directory walk when it sees an
+    in-flight ``.<name>.<32-hex>`` temporary for a file the namespace
+    legitimately contains; ``inventory`` re-scans until it renames away
+    (bounded). Never escapes the class.
+    """
+
+
 def _require(condition):
     if not condition:
         raise RecoveryError()
@@ -1185,6 +1195,27 @@ class RecoveryStore:
             raise RecoveryError() from None
 
     def inventory(self):
+        """Return bounded facts, never an admission or clearance decision.
+
+        The scope namespace is shared with the LIVE lane worker: its
+        SIGTERM latch handler writes latch.json through atomic_json while
+        the controller journals spawn transitions, so a scan can observe
+        an in-flight ".<name>.<32-hex>" staging temp mid-write (observed
+        live: spawn_closed raced the worker's latch write and refused on
+        the temp's dot-name). A transient temp is "not yet" — bounded
+        re-scan until it renames away; one that persists past the window
+        is a crashed write and still blocks (fail-closed).
+        """
+        deadline = time.monotonic() + 1.0
+        while True:
+            try:
+                return self._inventory_once()
+            except _TransientTemp as pending:
+                if time.monotonic() >= deadline:
+                    raise RecoveryError() from None
+                time.sleep(0.02)
+
+    def _inventory_once(self):
         """Return bounded facts, never an admission or clearance decision."""
         self._checked_dir(self.state_dir)
         count = 0
@@ -1250,6 +1281,12 @@ class RecoveryStore:
         canary_terminal = set()
         for name in entries(canary, optional=True):
             path = canary / name
+            from .engine import atomic_temp_name
+            if atomic_temp_name(name):
+                # In-flight atomic_json staging temp (e.g. the worker's
+                # latch write): "not yet", re-scan bounded; a persisted
+                # temp raises RecoveryError at the deadline above.
+                raise _TransientTemp()
             if name == "intent.json":
                 # T019: a pending arm is uncertainty for proxy work, but
                 # is classified — validated by the canary scan at
@@ -1270,6 +1307,11 @@ class RecoveryStore:
                 # with a diagnostic is a blocked attempt: hard refusal
                 # for mutation admission until operator reconciliation.
                 for child in entries(path):
+                    from .engine import atomic_temp_name as _temp
+                    if _temp(child):
+                        # Worker mid-write (e.g. latch.json staging temp):
+                        # transient, re-scan bounded.
+                        raise _TransientTemp()
                     if child == "diagnostic.json":
                         self._checked_file(path / child)
                         canary_uncertain = True
