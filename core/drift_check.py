@@ -49,7 +49,20 @@ def load_exemptions(root: Path) -> list[str]:
         return []
     import yaml
     data = yaml.safe_load(p.read_text()) or {}
-    return list(data.get("exempt", []))
+    entries: list[str] = []
+    for e in data.get("exempt", []):
+        # Entries are either plain strings or {path, reason} mappings
+        # (the in-repo shape since 2026-10-22); accept both.
+        if isinstance(e, dict):
+            path = e.get("path")
+            if not isinstance(path, str) or not path:
+                raise ValueError(f"exemption entry missing 'path': {e!r}")
+            entries.append(path)
+        elif isinstance(e, str):
+            entries.append(e)
+        else:
+            raise ValueError(f"unsupported exemption entry: {e!r}")
+    return entries
 
 
 def main() -> int:
