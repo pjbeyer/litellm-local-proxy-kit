@@ -107,7 +107,9 @@ def test_counter_case_vi_unquoted_apostrophe_still_refused(scope):
     evaluate, _, _ = scope
     decision = evaluate("echo it" + A + "s-fine")
     assert decision is not None
-    assert decision["category"] == "VETO"
+    # lpkit-ovj: fail-closed refusal holds; category is corrective
+    # SHAPE_ENVELOPE (LGV-020), not the kill-workflow VETO.
+    assert decision["category"] == "SHAPE_ENVELOPE"
 
 
 @pytest.mark.parametrize("command", [

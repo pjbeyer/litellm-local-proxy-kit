@@ -43,7 +43,10 @@ def test_unparseable_unquoted_apostrophe_still_refused(scope):
     evaluate, _, _ = scope
     decision = evaluate("echo it" + A + "s-fine")
     assert decision is not None
-    assert decision["category"] == "VETO"
+    # lpkit-ovj: unparseable shell is fail-closed REFUSED, but the
+    # category is the corrective SHAPE_ENVELOPE (LGV-020), not the
+    # kill-workflow VETO — parse failures are shape failures.
+    assert decision["category"] == "SHAPE_ENVELOPE"
 
 
 def test_paired_quote_apostrophe_passes(scope):

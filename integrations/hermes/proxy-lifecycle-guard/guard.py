@@ -1225,14 +1225,103 @@ _CHUNK_SEPS = ("&&", "||", ";", "\n", "\r", "&")
 
 
 def _split_segments(text, separators, limit=MAX_CHUNKS):
-    """Quote-aware split on shell separators. Bounded by ``limit``."""
+    """Quote-aware split on shell separators. Bounded by ``limit``.
+
+    lpkit-ovj: also substitution-aware. A ``$(``/``` `` ` `` region is a
+    nested shell program: bash reparses its contents in a NEW quote
+    context, so a ``;``/``&&``/``|`` inside the substitution interior is a
+    separator of the INNER program, not of the outer command. Splitting
+    there fragments the payload (the head fragment ends with an
+    unterminated ``$(``), which then fail-closes as an unparseable
+    veto — the nested same-char-quoting false-positive class. The
+    substitution interior is tracked with its own scanner (same
+    quote/substitution state machine as ``_command_substitutions``) and
+    separators inside it never split the outer command; the interior
+    still receives its own recursive analysis (``_analyze_shell_text`` on
+    the yielded body), so signal intent there is never lost."""
     parts, buf = [], []
     quote = None
+    subst_depth = 0          # >0: inside $( ... ) or ` ... `
+    subst_quote = None       # quote state INSIDE the substitution
+    subst_outer_quote = None  # outer quote to restore when region closes
     i, n = 0, len(text)
     seps = sorted(separators, key=len, reverse=True)
     while i < n:
         ch = text[i]
+        if subst_depth > 0:
+            # nested-shell scanner: own quote state; backslashes escape
+            # except inside single quotes; ( ) track $() depth; the
+            # region ends when $() depth returns to 0 or a closing
+            # backtick appears (backtick regions carry no depth).
+            if subst_quote == "'":
+                if ch == "'":
+                    subst_quote = None
+                buf.append(ch)
+                i += 1
+                continue
+            if ch == "\\" and subst_quote != "'":
+                buf.append(ch)
+                if i + 1 < n:
+                    buf.append(text[i + 1])
+                i += 2
+                continue
+            if subst_quote:
+                if ch == subst_quote:
+                    subst_quote = None
+                buf.append(ch)
+                i += 1
+                continue
+            if ch in ("'", '"'):
+                subst_quote = ch
+                buf.append(ch)
+                i += 1
+                continue
+            if ch == "`":
+                buf.append(ch)
+                i += 1
+                subst_depth = 0
+                # closing backtick: restore outer quote if the region
+                # began inside a double-quoted arg (lpkit-ovj)
+                if subst_outer_quote:
+                    quote = subst_outer_quote
+                    subst_outer_quote = None
+                continue
+            if ch == "(":
+                subst_depth += 1
+                buf.append(ch)
+                i += 1
+                continue
+            if ch == ")":
+                subst_depth -= 1
+                buf.append(ch)
+                i += 1
+                if subst_depth == 0:
+                    subst_quote = None
+                    # region closed: restore outer quote if the region
+                    # began inside a double-quoted arg (lpkit-ovj) —
+                    # the outer arg continues after "$(...)"
+                    if subst_outer_quote:
+                        quote = subst_outer_quote
+                        subst_outer_quote = None
+                continue
+            buf.append(ch)
+            i += 1
+            continue
         if quote:
+            # lpkit-ovj: inside DOUBLE quotes, $( and ` still open a
+            # command substitution region (bash reparses the interior
+            # in a new quote context) — the inner " of
+            # "$(python3 -c "...")" must NOT close the outer quote.
+            # Inside single quotes nothing expands.
+            if quote == '"' and (text.startswith("$(", i) or ch == "`"):
+                start_len = 2 if text.startswith("$(", i) else 1
+                buf.append(text[i:i + start_len])
+                i += start_len
+                subst_outer_quote = '"'
+                subst_depth = 1
+                subst_quote = None
+                quote = None
+                continue
             buf.append(ch)
             if ch == "\\" and quote == '"' and i + 1 < n:
                 buf.append(text[i + 1])
@@ -1252,6 +1341,16 @@ def _split_segments(text, separators, limit=MAX_CHUNKS):
             if i + 1 < n:
                 buf.append(text[i + 1])
             i += 2
+            continue
+        # entering a command substitution region: "$( or bare $( or `.
+        # A bare "$(" (no preceding quote) is still a nested program.
+        if text.startswith("$(", i) or ch == "`":
+            start_len = 2 if text.startswith("$(", i) else 1
+            buf.append(text[i:i + start_len])
+            i += start_len
+            subst_depth = 1
+            subst_quote = None
+            subst_outer_quote = None
             continue
         matched = None
         for sep in seps:
@@ -1280,11 +1379,18 @@ def _split_segments(text, separators, limit=MAX_CHUNKS):
 
 
 def _tokenize(segment, limit=MAX_TOKENS):
-    """Decode ordinary shell quoting without executing expansions."""
+    """Decode ordinary shell quoting without executing expansions.
+
+    lpkit-ovj (secondary defect, parity with lpkit-1cz): shlex's
+    "No closing quotation" ValueError is a parse/shape failure of a
+    shell payload, not a lifecycle threat. Refuse with the
+    SHAPE_ENVELOPE corrective category so the operator restructures
+    the command; the kill-workflow VETO wording misleads on this
+    class. Fail-closed stays: the payload is still refused."""
     try:
         tokens = shlex.split(segment, posix=True)
     except ValueError:
-        raise _Block() from None
+        raise _BoundRefuse("SHAPE_ENVELOPE") from None
     return tokens[:limit], len(tokens) >= limit
 
 
@@ -2413,7 +2519,16 @@ def _command_substitutions(text, *, with_spans=False):
                         break
                 j += 1
             if j >= len(text):
-                raise _Block()
+                # lpkit-ovj (secondary defect, parity with lpkit-1cz on
+                # the tool_call surface): an unterminated command
+                # substitution is a PARSE/shape failure of a shell
+                # payload, not a lifecycle threat. Refuse with the
+                # SHAPE_ENVELOPE corrective category — the operator
+                # restructures the command — never the kill-workflow
+                # VETO message that actively misleads ("do not
+                # substitute another kill command"). Fail-closed stays:
+                # the payload is still refused.
+                raise _BoundRefuse("SHAPE_ENVELOPE") from None
             count += 1
             if count > MAX_CHUNKS:
                 raise _Block()
