@@ -322,6 +322,42 @@ def test_qualify_refuses_deployment_root_without_freeze_closure(context):
             deploy_conf.write_bytes(saved)
 
 
+def test_qualify_refuses_stale_installed_controller_bundle(context):
+    """Live lpkit-976 regression: kit HEAD carried the A1 fix while the
+    DEPLOYED bundle (controller_root) stayed at pre-A1 bytes, so the
+    reissued record bound controller_digest dd74e980 (kit-HEAD closure)
+    for a bundle actually serving ae25e913 — every prepare refused
+    controller_copy_changed under a "valid" qualification. qualify() now
+    byte-compares every installed CONTROLLER_INPUTS copy against the
+    loaded sources (the same comparison freeze() enforces) and refuses
+    qualification_invalid BEFORE accepting the record: a record may
+    never qualify a generation ahead of what is installed.
+    """
+    runtime = context.runtime
+    target = runtime.controller_root/'restart_control'/'runtime.py'
+    saved = target.read_bytes()
+    target.write_bytes(saved + b'\n# stale bundle stub\n')
+    try:
+        with pytest.raises(Fault, match='qualification_invalid'):
+            qualify(context)
+    finally:
+        target.write_bytes(saved)
+
+
+def test_qualify_refuses_each_missing_installed_controller_copy(context):
+    """Any single missing/mutated installed copy refuses independently
+    (fail-closed on the whole closure, not just one file)."""
+    runtime = context.runtime
+    target = runtime.controller_root/'restart_control'/'canary.py'
+    saved = target.read_bytes()
+    target.unlink()
+    try:
+        with pytest.raises(Fault, match='qualification_invalid'):
+            qualify(context)
+    finally:
+        target.write_bytes(saved)
+
+
 @pytest.mark.parametrize('variant', ['deploy_conf', 'overlay', 'credentials',
                                      'pin_lock', 'deployment_dir'])
 def test_qualify_refuses_each_missing_freeze_closure_member(context, variant):

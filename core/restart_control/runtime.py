@@ -1541,6 +1541,19 @@ class Runtime:
             deployment_pin = deployment_dir/'pin.lock'
             for name in PROXY_OPTIONAL_INPUTS:
                 _native_receipt(deployment_pin, name)
+            # lpkit-976 (installed-closure probe): binding_facts() digests the
+            # LOADED kit sources, so a record can bind a generation ahead of
+            # the deployed bundle — exactly the post-A1 regression (kit HEAD
+            # at 4ac18a04, installed runtime.py still ae25e913; every prepare
+            # refused controller_copy_changed under a "valid" record). The
+            # installed copies under controller_root must byte-match the
+            # loaded sources — the same comparison freeze() enforces at
+            # prepare — or qualification refuses, fail-closed: a record may
+            # never qualify a deployment axis it cannot actually restart.
+            for name in CONTROLLER_INPUTS:
+                copy = self.controller_root/name.removeprefix('core/')
+                if _regular(copy) != self._loaded_sources[name]:
+                    raise ValueError('controller_copy_changed')
         except Exception:
             raise Fault('qualification_invalid') from None
         try:
