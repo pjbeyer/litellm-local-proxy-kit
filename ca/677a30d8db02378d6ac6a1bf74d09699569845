@@ -1,0 +1,19 @@
+docs/evidence/2026-11-17-ambiguous-listener-owner-package.md
+  s_fa8397285f8e39::t_e184b54473556c 1-113
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "ca677a30d8db02378d6ac6a1bf74d09699569845",
+  "prompts": {},
+  "sessions": {
+    "s_fa8397285f8e39": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261115_071947_efc532",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
