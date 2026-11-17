@@ -161,7 +161,8 @@ and verified build inputs before installation or live qualification.
 - `runtime_invalid`: preserve runtime/cache evidence. Verify the deployed pin,
   tracked blobs, distribution mapping and active-tag bytecode. Do not clear or
   rebuild caches automatically to make the gate green.
-- `unmanaged_listener`/`primary_changed`: preserve the listener. Reconcile birth,
+- `unmanaged_listener`/`ambiguous_listener`/`primary_changed`: preserve the
+  listener. Reconcile birth,
   label, loaded policy and trusted bootstrap receipt; never kill by name or port.
 - `candidate_cleanup_failed`: stop work and reconcile the retained owned child
   and process group. There is no SIGKILL escalation or arbitrary cleanup command.
