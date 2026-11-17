@@ -28,12 +28,11 @@ upstream:
 
 master_key_env: LITELLM_PERSONAL_KEY
 
-# proxy-env.sh derives CLOUDFLARE_API_BASE at runtime from
-# CLOUDFLARE_ACCOUNT_ID; declared here so credential coverage passes.
-# WIRING TODO: the runtime value is set by the launch/wiring stage, not by
-# this file — reconcile with proxy-env.sh integration at wiring time.
-runtime_environment:
-  CLOUDFLARE_API_BASE: "SET-AT-WIRING-STAGE"
+# WIRING-STAGE NOTE (not a runtime_environment block): the personal deployment
+# has no MCP stdio servers yet and no DATABASE_URL decision — both are wiring
+# items. CLOUDFLARE_API_BASE is declared in credentials.toml (owner-action
+# pending); its runtime derivation from CLOUDFLARE_ACCOUNT_ID via proxy-env.sh
+# must be reconciled at wiring time (pick one home, not both).
 
 extra_model_list:
   # Local oMLX (SIMPLE/MEDIUM tier target of the auto-free router).

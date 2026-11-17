@@ -1,17 +1,37 @@
 # pin.lock — personal deployment (PinnedBuild, spec 015 data-model)
 #
-# The personal deployment initially runs the SAME patched build family
-# (one shared artifact per research R4); its config surface differs
-# (oMLX + free-cloud), not the patch. Drift check compares both pins.
-base_version = "1.103.0"
+# OWNER DECISION (2026-11-16): the personal deployment adopts the SAME
+# deployed runtime as work (verified-7897e75e79cf build) — one shared
+# artifact, superseding the original plan to hold a distinct 1.103.0-class
+# personal build. The original 1.103.0 pin below is superseded; kept for
+# provenance of what the layout was first written against:
+#   base_version 1.103.0, base_ref fba00f508,
+#   patch_branch fix/responses-falsy-argument-delta,
+#   patch_commits a01ac33996 / 1da7971bf3 / fffbc4be45, patch_tip fffbc4be45.
+# Behavior contracts verified on this runtime transfer to the personal
+# deployment without a compatibility check (same pin, same patch set).
+# Revisit only if the personal deployment deliberately diverges.
+base_version = "1.106.2"                       # pip dist-info version of the editable source build
 base_upstream = "BerriAI/litellm"
-base_ref = "fba00f508"
-patch_branch = "fix/responses-falsy-argument-delta"
+base_ref = "49943cd52e"                        # v1.106.2 tag (merge-base with fork main line)
+patch_branch = "pin/v1.106.2-ports"
 patch_remote = "https://github.com/pjbeyer/litellm.git"
+# Every patch commit the deployment depends on (FR-006: cover ALL, not one module):
 patch_commits = [
-    "a01ac33996",  # treat empty or absent stream deltas as no-op frames (hlite-qmb)
-    "1da7971bf3",  # stop duplicating arguments already sent on output_item.added
-    "fffbc4be45",  # stop assigning provider metadata as an attribute on a dict
+    "a45fd07d5e",  # treat empty or absent stream deltas as no-op frames (port from 1.103.0 custom)
+    "aa41d4030f",  # stop duplicating arguments already sent on output_item.added
+    "c20800d0ab",  # test(responses_bridge): pin exactly-once streamed tool-call arguments
+    "b3ce9c4c3a",  # stop assigning provider metadata as an attribute on a dict
+    "7897e75e79",  # clamp declared reasoning_effort levels before dispatch (litest-7z2.3)
 ]
-patch_tip = "fffbc4be45"
-sentinel = "args_already_complete"  # patch-introduced per-stream state (1da7971bf3); positive assertion target
+patch_tip = "7897e75e79"
+source_worktree = "~/Projects/pjbeyer/litellm-wt-falsy-delta"   # pre-artifact provenance; installer resolves the artifact, never this path (FR-006)
+sentinel = "args_already_complete"  # patch-introduced per-stream state (aa41d4030f, exactly-once tool-call args); sentinel verified green in the .venv-1062 boot 2026-10-22
+
+[native_artifact]
+version = 1
+path = "litellm/rust_bridge/_native.abi3.so"
+sha256 = "1a79db7bd86050d8c208fd1d722959ec80f3b18bd2a8f80ac82c4cbd1eb707e9"
+source_tree = "41526edaecc0e135e2c4cac181df092abc443e0b"
+receipt_sha256 = "7005c3adbf6a337c65fc850f9aa833f1e7741460af6776bc4396abf69668a15f"
+baseline_pin_digest = "8a64bdb88608f83b8cac3ba5d29e708148dc83f771b963a7a40766b25f808361"
