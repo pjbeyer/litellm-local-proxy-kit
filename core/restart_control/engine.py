@@ -14,7 +14,7 @@ import uuid
 from pathlib import Path
 
 
-CODES = frozenset("invalid_request busy state_io approval_missing approval_invalid approval_stale plan_stale unknown_request replayed interrupted clock_invalid unmanaged_listener primary_changed gate_failed candidate_failed candidate_cleanup_failed lkg_invalid runtime_invalid qualification_missing qualification_invalid service_control_denied service_control_timeout postcheck_failed rollback_failed internal_error controller_unavailable foreign_peer socket_exists controller_stopping recovery_invalid canary_binding_mismatch canary_arm_expired canary_identity_invalid canary_first_load_failed canary_exit_failed canary_keepalive_failed canary_cleanup_failed canary_shutdown_receipt_missing canary_shutdown_unresolved canary_job_absent".split())
+CODES = frozenset("invalid_request busy state_io approval_missing approval_invalid approval_stale plan_stale unknown_request replayed interrupted clock_invalid unmanaged_listener ambiguous_listener primary_changed gate_failed candidate_failed candidate_cleanup_failed lkg_invalid runtime_invalid qualification_missing qualification_invalid service_control_denied service_control_timeout postcheck_failed rollback_failed internal_error controller_unavailable foreign_peer socket_exists controller_stopping recovery_invalid canary_binding_mismatch canary_arm_expired canary_identity_invalid canary_first_load_failed canary_exit_failed canary_keepalive_failed canary_cleanup_failed canary_shutdown_receipt_missing canary_shutdown_unresolved canary_job_absent".split())
 _ID = re.compile(r"[0-9a-f]{32}\Z")
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _APPROVAL_TIME = {"issued_at", "expires_at", "issued_monotonic", "expires_monotonic"}
