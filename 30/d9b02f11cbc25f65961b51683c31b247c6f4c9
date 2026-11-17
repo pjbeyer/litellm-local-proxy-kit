@@ -1,0 +1,35 @@
+docs/evidence/2026-11-17-lpkit-976-verification-record.md
+  s_c057dc2e80bf3c::t_f898b21997ae2b 1-31
+core/restart_control/runtime.py
+  s_fa8397285f8e39::t_7ccb8c25cb688f 1544-1556
+docs/evidence/2026-11-17-lpkit-976-owner-package.md
+  s_fa8397285f8e39::t_8ca1b43a14eb88 1-90
+docs/evidence/2026-11-17-fhz-remediation-vv-record.md
+  s_c057dc2e80bf3c::t_4216b647664364 1-28
+tests/test_controller_qualification.py
+  s_fa8397285f8e39::t_2453d6af8d0bd9 325-360
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "30d9b02f11cbc25f65961b51683c31b247c6f4c9",
+  "prompts": {},
+  "sessions": {
+    "s_c057dc2e80bf3c": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261116_084056_7456d1",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_fa8397285f8e39": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261115_071947_efc532",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
