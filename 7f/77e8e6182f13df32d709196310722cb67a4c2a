@@ -1,0 +1,21 @@
+core/restart_control/engine.py
+  s_fa8397285f8e39::t_31a5e6f8e86ffa 17
+tests/test_controller_fault_taxonomy.py
+  s_fa8397285f8e39::t_bbab050b5b1669 1-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "7f77e8e6182f13df32d709196310722cb67a4c2a",
+  "prompts": {},
+  "sessions": {
+    "s_fa8397285f8e39": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261115_071947_efc532",
+        "model": "smart-router"
+      },
+      "human_author": null
+    }
+  }
+}
