@@ -1,0 +1,19 @@
+docs/evidence/2026-11-17-8c5e0f06-restart-fix-owner-package.md
+  s_fa8397285f8e39::t_8694757778e999 1-103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "11e769fe6c6095eb038b7690f9c35de4649684e4",
+  "prompts": {},
+  "sessions": {
+    "s_fa8397285f8e39": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261115_071947_efc532",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
