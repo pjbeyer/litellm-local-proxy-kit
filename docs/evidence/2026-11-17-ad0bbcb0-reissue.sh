@@ -59,8 +59,9 @@ assert rec["controller_plist_digest"] == sha(os.path.expanduser(
     "~/Library/LaunchAgents/ai.litellm.restart-controller.plist")), "controller plist drift"
 
 # 4. Archive old record (never delete), then exclusive-create the new one
-os.rename(STATE + "/qualification.json",
-           STATE + "/archived-qualification-v2-pre-ad0bbcb0-20261117.json")
+dst = STATE + "/archived-qualification-v2-pre-ad0bbcb0-20261117-2.json"
+assert not os.path.exists(dst), "archive destination collision - pick a fresh name"
+os.rename(STATE + "/qualification.json", dst)
 fd = os.open(STATE + "/qualification.json", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
 os.write(fd, json.dumps(rec, sort_keys=True, indent=1).encode()); os.close(fd)
 print("reissued against daemon pid", ident["pid"], "epoch", rec["controller_epoch"][:16],
