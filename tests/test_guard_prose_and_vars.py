@@ -104,14 +104,16 @@ def test_resolved_kill_command_still_vetoes(scope):
     assert decision["log_code"] == "LGV-001"
 
 
-def test_signal_text_as_data_still_blocks(scope):
-    # documented source-data rule (README): quoted program inspection
-    # grants no exception for signal text carried as data
+def test_signal_text_as_data_passes(scope):
+    # lpkit-0gk/90d posture change: signal vocabulary in a DEAD data
+    # structure (never executed) is not a lifecycle threat and passes —
+    # it is consistent with the terminal surface, which always allowed
+    # the same literal. Genuine execution of the signal (os.system /
+    # subprocess / kill argv) still vetoes (red battery).
     evaluate, _, _ = scope
     code = 'rows = {"cleanup": "pkill -f litellm"}\nprint(len(rows))'
     decision = evaluate("python3 -c " + shlex.quote(code))
-    assert decision is not None
-    assert decision["category"] == "VETO"
+    assert decision is None
 
 
 def test_analysis_cell_unprovable_gets_bound_category(scope):

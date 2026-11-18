@@ -26,8 +26,13 @@ or an opaque stdin producer proves unrelated ownership.
 Shell control-flow words are normalized only outside quoted or escaped text.
 Quoted inline shell/Python programs are inspected recursively without changing
 payload bytes; a Python conditional or a string containing `else` must not
-become different code during analysis. This does not grant an exception for
-signal intent, opaque targets, or source text carried as data. Source-only
+become different code during analysis. **Signal vocabulary carried as inert
+DATA (dict values, json.dumps args, bytestrings, list/tuple contents, commit
+messages) is not a lifecycle threat and is not analyzed as code** (lpkit-0gk/
+90d): only string operands that reach an EXECUTION primitive (os.system /
+os.popen / subprocess shell or argv with a lifecycle executor verb / exec /
+eval — including bare-name and module-alias forms and wrapper-wrapped kill
+argv) are inspected. Genuine execution of a signal always vetoes. Source-only
 regression results do not authorize retrying a refused live invocation.
 
 ## Refusal reference (rev-3 vocabulary)

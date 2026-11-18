@@ -832,9 +832,6 @@ _OS_KILL_RE = re.compile(r"\bos\s*\.\s*kill(?:pg)?\s*\(")
 _PSUTIL_KILL_RE = re.compile(r"\.\s*(?:kill|terminate)\s*\(")
 _DOMAIN_ROOT_RE = re.compile(r"(?:gui|user)/\d+\s*$")
 _DOMAIN_SUBST_RE = re.compile(r"(?:gui|user)/\$\(")
-_SHELL_KEYWORDS = ("kill", "pkill", "killall", "lsof", "fuser", "launchctl",
-                   "brew services", "xargs")
-
 # FR-007 bound decision table support: over-bound inputs get a bounded
 # head-scan; provably intent-free benign shapes pass (row a), unprovable
 # shapes refuse with the bound's category (row c).
@@ -2805,40 +2802,224 @@ _FULL_TEXT_INTENT_RE_WORDS = frozenset(
 # Python code scanning (execute_code / browser_exec / inline subprocess)
 # ---------------------------------------------------------------------------
 
-def _iter_string_literals(text, limit=80):
-    """Use Python's parser for multiline/escaped literals and literal argv.
+# lpkit-0gk/90d: execute_code string literals are analyzed ONLY when they
+# are the operand of an execution primitive that will actually run them
+# (os.system/os.popen/subprocess shell|argv/os.exec*/spawn*/exec/eval).
+# Dead DATA — dict values, json.dumps args, bytestrings, census lists —
+# may carry kill vocabulary but is never executed, so it passes. This is
+# the posture the two issues request (the suite's prior 'data still
+# blocks' rule is reversed); execution forms still veto (red rows kept).
+_EXEC_SHELL_CALLS = frozenset({
+    "os.system", "os.popen", "os.popen2", "os.popen3", "os.popen4",
+    "subprocess.run", "subprocess.call", "subprocess.check_call",
+    "subprocess.check_output", "subprocess.Popen",
+    "subprocess.getoutput", "subprocess.getstatusoutput",
+    "commands.getoutput", "commands.getstatusoutput",
+})
+_EXEC_ARGV_CALLS = frozenset({
+    "os.spawnl", "os.spawnle", "os.spawnlp", "os.spawnlpe",
+    "os.spawnv", "os.spawnve", "os.spawnvp", "os.spawnvpe",
+    "os.execl", "os.execle", "os.execlp", "os.execlpe",
+    "os.execv", "os.execve", "os.execvp", "os.execvpe",
+})
 
-    Unknown argv operands become unresolved shell operands, never evaluated.
-    Imported/generated code remains outside this bounded static contract.
-    """
-    tree = ast.parse(text)
+
+def _callee_dotted(fn):
+    """Resolve a Call's function to its dotted name (os.system, exec...)."""
+    parts, cur = [], fn
+    while isinstance(cur, ast.Attribute):
+        parts.append(cur.attr)
+        cur = cur.value
+    if isinstance(cur, ast.Name):
+        parts.append(cur.id)
+        return ".".join(reversed(parts))
+    return ""
+
+
+def _lit_str(node):
+    """Plain string of a str/bytes Constant (int→str for argv), else None."""
+    if isinstance(node, ast.Constant):
+        v = node.value
+        if isinstance(v, str):
+            return v
+        if isinstance(v, bytes):
+            return v.decode("utf-8")
+        if isinstance(v, int):
+            return str(v)
+    return None
+
+
+def _join_argv(node):
+    """shlex-join a list/tuple argv node; dynamic elements refuse (FR-006)."""
+    vals = []
+    for elt in node.elts:
+        s = _lit_str(elt)
+        if s is None:
+            raise _Block()  # dynamic argv element: unprovable (FR-006)
+        vals.append(s)
+    return shlex.join(vals)
+
+
+def _has_shell_true(node):
+    for kw in node.keywords:
+        if kw.arg == "shell" and isinstance(kw.value, ast.Constant) \
+                and kw.value.value is True:
+            return True
+    return False
+
+
+def _exec_argv_relevant(values):
+    """True when a subprocess/exec argv (literal list) names an executable
+    the guard routes to shell analysis: a kill-family verb, an interactive
+    shell (sh/bash/zsh), or an interpreter whose operands carry program text
+    (python -c, node -e, osascript...). An arbitrary program with DATA argv
+    (subprocess.run(['grep', 'a;b'])) is outside the lifecycle scope and not
+    joined/re-scored. Wrapper verbs are peeled first so ['sudo','kill','4711']
+    (a real kill) is relevant while ['sudo','grep',...] is not."""
+    def _verb(v):
+        return v.rsplit("/", 1)[-1].lower()
+    # peel leading wrapper verbs (sudo/env/nohup/...)
+    while values and _verb(values[0]) in WRAPPER_VERBS:
+        values = values[1:]
+    if not values:
+        return False
+    verb = _verb(values[0])
+    return (verb in _FULL_TEXT_INTENT_RE_WORDS
+            or verb in ("sh", "bash", "zsh", "python", "python2", "python3",
+                        "node", "ruby", "perl", "php", "osascript"))
+
+
+def _build_env(tree):
+    """Collect aliases (import) and plain-literal assignments to resolve
+    bare-name executors and variable operands (the alias/flow holes the
+    old blanket loop closed by accident). Returns {name: dotted-callee}
+    and {name: literal-string}."""
+    aliases, assignments = {}, {}
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            for a in node.names:
+                aliases[a.asname or a.name] = a.name
+        elif isinstance(node, ast.ImportFrom):
+            for a in node.names:
+                aliases[a.asname or a.name] = (
+                    (node.module + "." + a.name) if node.module else a.name)
+        elif isinstance(node, ast.Assign) and len(node.targets) == 1 \
+                and isinstance(node.targets[0], ast.Name):
+            v = _lit_str(node.value)
+            if v is not None:
+                assignments[node.targets[0].id] = v
+    return aliases, assignments
+
+
+def _resolve_callee(fn, aliases):
+    """Map a Call's function to its canonical dotted executor name or
+    python builtin (run/system/subprocess.run/exec/eval...), resolving
+    alias/submodule indirection via the import environment."""
+    if isinstance(fn, ast.Name):
+        name = fn.id
+        if name in ("exec", "eval", "compile", "input"):
+            return name
+        if name in ("system", "popen"):
+            return "os." + name
+        if name in ("run", "call", "check_call", "check_output", "Popen",
+                    "getoutput", "getstatusoutput"):
+            return "subprocess." + name
+        # could alias to os.system etc. (import os as o; o.system(...) is
+        # Attribute — handled below; this covers assign-aliasing like
+        # sp = subprocess then sp.run) — resolve via aliases table
+        return aliases.get(name, "")
+    dotted = _callee_dotted(fn)
+    if not dotted:
+        return ""
+    head, _, tail = dotted.partition(".")
+    if head in aliases:
+        # resolve the imported module alias: import subprocess as sp -> sp.run
+        return (aliases[head] + "." + tail).lstrip(".")
+    return dotted
+
+
+def _iter_exec_operands(text, limit=40):
+    """Yield ('shell'|'code', operand) for execution-primitive string
+    operands; raise _Block for an unprovable execution sink whose operand
+    is not a plain literal (FR-006 unresolved-operand doctrine).
+
+    Two-pass (lpkit-0gk/90d + regressions): first build the alias/assignment
+    environment, then walk the AST. Only literals that reach an EXECUTION
+    sink (subprocess/os/exec/eval) are analyzed — dead data is never yielded.
+    Bare-name executors (from subprocess import run; run(...)), submodule
+    aliases (import subprocess as sp; sp.run(...)), from-os imports
+    (from os import system; system(...)), wrapper-wrapped kill argv
+    (['sudo','kill','4711']), and variable operands that resolve to a plain
+    literal ALL stay covered — preserving the pre-0gk blocking behavior for
+    genuine execution while dropping dead-data vetoes (the FP being removed)."""
+    tree = ast.parse(text)  # caller's parse gate guarantees parseability
+    aliases, assignments = _build_env(tree)
     count = 0
     for position, node in enumerate(ast.walk(tree)):
         if position > 10000:
             raise _Block()
-        value = None
-        if isinstance(node, ast.Constant) and isinstance(node.value, (str, bytes)):
-            value = node.value.decode('utf-8') if isinstance(node.value, bytes) else node.value
-        elif isinstance(node, ast.JoinedStr):
-            value = ''.join(part.value if isinstance(part, ast.Constant) and
-                            isinstance(part.value, str) else '$UNRESOLVED'
-                            for part in node.values)
-        elif isinstance(node, (ast.List, ast.Tuple)) and node.elts:
-            first = node.elts[0]
-            if isinstance(first, ast.Constant) and isinstance(first.value, str):
-                executable = first.value.rsplit('/', 1)[-1]
-                if executable in WRAPPER_VERBS or executable in (
-                        'sh', 'bash', 'zsh', 'kill', 'pkill', 'killall',
-                        'fuser', 'launchctl', 'brew', 'osascript'):
-                    values = [str(part.value) if isinstance(part, ast.Constant)
-                              and isinstance(part.value, (str, int)) else '$UNRESOLVED'
-                              for part in node.elts]
-                    value = shlex.join(values)
-        if value is not None:
-            count += 1
-            if count >= limit:
+        if not isinstance(node, ast.Call) or not node.args:
+            continue
+        cname = _resolve_callee(node.func, aliases)
+        if not cname:
+            continue
+        a0 = node.args[0]
+        # resolve an operand variable to its plain-literal value
+        if isinstance(a0, ast.Name) and a0.id in assignments:
+            a0 = ast.Constant(value=assignments[a0.id])
+        if cname in _EXEC_SHELL_CALLS:
+            s = _lit_str(a0)
+            if s is not None:
+                kind, operand = "shell", s
+            elif isinstance(a0, (ast.List, ast.Tuple)):
+                argv_lits = _list_strs(a0)
+                if not argv_lits or not _exec_argv_relevant(argv_lits):
+                    continue  # not a lifecycle executor — outside scope
+                kind, operand = "shell", _join_argv(a0)
+            elif cname in ("os.system", "os.popen",
+                           "subprocess.getoutput", "subprocess.getstatusoutput",
+                           "commands.getoutput", "commands.getstatusoutput") \
+                    or _has_shell_true(node):
+                # unambiguous shell sink (or shell=True) holding a dynamic
+                # command (f-string/concatenation/variable): unprovable — fail
+                # closed (FR-006)
                 raise _Block()
-            yield value
+            else:
+                continue  # dynamic argv to subprocess: outside static scope
+        elif cname in _EXEC_ARGV_CALLS:
+            a_last = node.args[-1]
+            if isinstance(a_last, ast.Name) and a_last.id in assignments:
+                a_last = ast.Constant(value=assignments[a_last.id])
+            if isinstance(a_last, (ast.List, ast.Tuple)):
+                if not _exec_argv_relevant(_list_strs(a_last)):
+                    continue
+                kind, operand = "shell", _join_argv(a_last)
+            else:
+                s = _lit_str(a_last)
+                if s is None:
+                    raise _Block()
+                kind, operand = "shell", s
+        elif cname in ("exec", "eval"):
+            s = _lit_str(node.args[0])
+            if s is None:
+                raise _Block()
+            kind, operand = "code", s
+        elif cname in ("compile", "input"):
+            s = _lit_str(node.args[0])
+            if s is None:
+                raise _Block()
+            kind, operand = "code", s
+        else:
+            continue
+        count += 1
+        if count >= limit:
+            raise _Block()
+        yield kind, operand
+
+
+def _list_strs(node):
+    """Literal-string projection of a List/Tuple node (for relevance)."""
+    return [_lit_str(e) or "" for e in node.elts]
 
 
 _SIGNAL0_FORMS = frozenset({"0", "signal.SIG_ZERO", "SIG_ZERO", "signal.SIG_0"})
@@ -2929,23 +3110,23 @@ def _analyze_code_text(text, policy, get_snapshot):
     low = text.lower()
     if PLUGIN_DIR_MARKER in low and _python_write_intent(text, low):
         raise _Block()
-    for literal in _iter_string_literals(text):
-        low = literal.lower()
-        if any(keyword in low for keyword in _SHELL_KEYWORDS):
-            _analyze_shell_text(literal, policy, get_snapshot)
-        # lpkit-z4b B-06: an exec()-built program is a string literal
-        # that parses as Python — route it to the code analyzer so
-        # os.kill/exec/indirect calls inside it get the SAME analysis
-        # as top-level code. Bounded by the literal count cap.
-        if literal.lstrip()[:1] not in ("",) and (
-                "import " in literal or "os.kill" in literal
-                or "getattr(" in literal):
+    # lpkit-0gk/90d: only execution-primitive operands are inspected —
+    # shell sinks (os.system/os.popen/subprocess shell/argv) route to
+    # shell analysis; exec/eval operands parse as Python and route to
+    # the code analyzer (os.kill/exec inside them gets the SAME analysis
+    # as top-level code). Dead data literals are never yielded.
+    for kind, operand in _iter_exec_operands(text):
+        if kind == "shell":
+            _analyze_shell_text(operand, policy, get_snapshot)
+        else:  # exec/eval program text: analyze as Python
             try:
-                ast.parse(literal)
+                ast.parse(operand)
+                _analyze_code_text(operand, policy, get_snapshot)
             except SyntaxError:
-                pass
-            else:
-                _analyze_code_text(literal, policy, get_snapshot)
+                # exec operand that does not parse as Python is routed
+                # to shell analysis (os.system-style inside exec is
+                # rare but valid); unprovable either way fails closed
+                _analyze_shell_text(operand, policy, get_snapshot)
     # lpkit-z4b B-07: getattr(os, 'kill') is os.kill by indirection —
     # the literal 'kill' alone is inert, the CALL SHAPE is the signal
     if re.search(r"\bgetattr\s*\(\s*os\s*,\s*['\"]kill", text, re.I):

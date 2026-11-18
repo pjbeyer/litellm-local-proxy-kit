@@ -33,16 +33,19 @@ def test_quoted_newline_commit_messages_pass(scope, code):
     assert evaluate("python3 -c " + shlex.quote(code)) is None
 
 
-def test_quoted_newline_with_signal_intent_still_vetoes(scope):
+def test_quoted_newline_signal_intent_as_data_passes(scope):
+    # lpkit-0gk/90d posture change: a commit MESSAGE (or any inert
+    # argv data) containing kill-family text is DEAD DATA, not an
+    # execution path. It now passes (consistent with the terminal
+    # `git commit -m` surface, which always allowed the same string).
+    # Genuine execution of the signal (os.system/subprocess shell /
+    # kill argv) still vetoes — pinned by the red battery.
     evaluate, _, _ = scope
     code = (
         'import subprocess\n'
         'subprocess.run(["git", "commit", "-m", ' +
         repr("msg.\n\n" + "pkill -f litellm" + " done.") + '])')
-    decision = evaluate("python3 -c " + shlex.quote(code))
-    assert decision is not None
-    assert decision["category"] == "VETO"
-    assert decision["log_code"] == "LGV-001"
+    assert evaluate("python3 -c " + shlex.quote(code)) is None
 
 
 def test_terminal_quoted_newline_commit_passes(scope):
