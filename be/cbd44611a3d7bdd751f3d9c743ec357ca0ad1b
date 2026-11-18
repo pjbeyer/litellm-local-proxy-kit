@@ -1,0 +1,21 @@
+core/restart_control/engine.py
+  s_fa8397285f8e39::t_41d08f20c11d31 410
+  s_fa8397285f8e39::t_10369604143309 250
+  s_fa8397285f8e39::t_fbe11f00023b50 388,395-406
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "becbd44611a3d7bdd751f3d9c743ec357ca0ad1b",
+  "prompts": {},
+  "sessions": {
+    "s_fa8397285f8e39": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261115_071947_efc532",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
