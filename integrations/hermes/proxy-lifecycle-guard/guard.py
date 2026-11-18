@@ -3229,6 +3229,47 @@ def _check_process_manage(arguments, policy):
         raise _Block()
 
 
+def _decode_envelope_str(text):
+    """Graceful, bounded, non-executing relay-envelope decode (lpkit-63x).
+
+    Returns the decoded Python object for a stringified ``calls`` envelope,
+    or raises ``_BoundRefuse("SHAPE_ENVELOPE")`` if the text is not a pure
+    literal shape (the caller maps it to the corrective SHAPE_ENVELOPE/LGV-020
+    refusal — never a VETO, never a guess at ambiguous content).
+
+    Order of attempts (fast path first):
+      1. Strip a leading UTF-8 BOM and surrounding whitespace.
+      2. Strict ``json.loads`` (pre-existing canonical fast path).
+      3. ``ast.literal_eval`` — accepts ONLY Python literal syntax (dict,
+         list, str, int/float/bool/None, and combinations). It never
+         evaluates an expression or call, so a benign string can never
+         become a live call; the decoded object re-enters the SAME
+         canonical analysis pipeline and is bounded by the caller's
+         depth/size envelope, so decode never bypasses veto strictness.
+
+    Anything else (model-interleaved text, mixed/ambiguous wrappers) is
+    left to SHAPE_ENVELOPE: we never guess at or salvage ambiguous content
+    (guard-hardening: interleaved model text is the severe variant and stays
+    refused by design).
+    """
+    if not isinstance(text, str):
+        return text
+    stripped = text.lstrip("\ufeff").strip()
+    if not stripped:
+        raise _BoundRefuse("SHAPE_ENVELOPE")
+    try:
+        return json.loads(stripped)
+    except Exception:
+        pass
+    if not (stripped[:1] in ("[", "{") and stripped[-1:] in ("]", "}")):
+        # not a pure literal envelope shape -> unprovable
+        raise _BoundRefuse("SHAPE_ENVELOPE")
+    try:
+        return ast.literal_eval(stripped)
+    except Exception:
+        raise _BoundRefuse("SHAPE_ENVELOPE")
+
+
 def _analyze_tool_call(arguments, policy, get_snapshot, depth=0):
     if depth > MAX_TOOL_CALL_DEPTH:
         raise _BoundRefuse("BOUND_DEPTH")
@@ -3238,23 +3279,30 @@ def _analyze_tool_call(arguments, policy, get_snapshot, depth=0):
     if calls is None and str(arguments.get('name') or '').strip():
         calls = [{'name': arguments['name'], 'arguments': arguments.get('arguments')}]
     # F-009/US1-S7: JSON-string-encoded call lists unwrap iteratively
-    # (bounded); a non-decoding string is an unprovable shape (guard-hardening:
+    # (bounded). A non-decoding string is an unprovable shape (guard-hardening:
     # SHAPE_ENVELOPE, never a VETO — a hand-typed envelope that fails
     # json.loads is a shape defect with corrective guidance, not a
-    # lifecycle threat)
+    # lifecycle threat). lpkit-63x: benign dialect envelopes (single-quote
+    # JSON, Python-repr dict/list, BOM/whitespace) are decoded gracefully via
+    # _decode_envelope_str (json.loads then ast.literal_eval); the severe
+    # interleaved-model-text variant still refuses SHAPE_ENVELOPE.
     for _ in range(4):
         if not isinstance(calls, str):
             break
         if len(calls) > MAX_TEXT_CHARS:
             raise _BoundRefuse("BOUND_SIZE")
-        try:
-            calls = json.loads(calls)
-        except Exception:
-            raise _BoundRefuse("SHAPE_ENVELOPE")
+        calls = _decode_envelope_str(calls)
     if isinstance(calls, dict):
         calls = [calls]
     if not isinstance(calls, list) or not calls:
-        raise _Block()
+        # lpkit-63x: a decoded-but-not-a-call-list shape (empty list, bare
+        # scalar like true/42) is a SHAPE DEFECT, not a lifecycle threat —
+        # refuse with corrective shape guidance, never a kill-veto.
+        raise _BoundRefuse("SHAPE_ENVELOPE")
+    if not all(isinstance(c, dict) for c in calls):
+        # a list whose elements are not call dicts (e.g. [1,2,3] from
+        # literal_eval) is also a shape defect, not a kill threat.
+        raise _BoundRefuse("SHAPE_ENVELOPE")
     # FR-007 bound decision table for count: over max_chunks, analyze the
     # inspectable head; intent-free benign batches pass (row a), intent
     # vetoes (row b), unprovable shapes refuse BOUND_COUNT (row c)

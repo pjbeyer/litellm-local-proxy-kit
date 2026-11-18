@@ -2022,12 +2022,20 @@ class TestShapeEnvelopeBattery(GuardHarness):
 
     # ---- guard-hardening: non-decodable JSON strings ----------------------------
 
-    def test_calls_string_decode_failure_is_shape_refusal(self):
-        # hand-typed single-quoted JSON: json.loads fails. Must surface as
-        # SHAPE_ENVELOPE with corrective guidance — the exact failure that
-        # misled the 02:00 cron run into reading a kill-workflow message.
+    def test_calls_benign_single_quote_json_now_allows(self):
+        # post-lpkit-63x: single-quoted JSON is a benign dialect, decoded
+        # gracefully via ast.literal_eval and ALLOWED. This reverses the
+        # pre-fix posture where the SAME benign payload refused SHAPE_ENVELOPE
+        # (the exact failure that misled the 02:00 cron run into reading a
+        # kill-workflow message) — the misleading refusal is what's fixed.
         bad = "[{'name': 'terminal', 'arguments': {'command': 'echo hi'}}]"
-        self.assert_refuse("tool_call", {"calls": bad},
+        self.assert_allowed("tool_call", {"calls": bad})
+
+    def test_calls_non_literal_string_is_shape_refusal(self):
+        # a string that is NOT a pure literal envelope shape (neither JSON nor
+        # a valid call-list dict/list literal) still refuses SHAPE_ENVELOPE —
+        # the severe/garbled variant, never salvaged.
+        self.assert_refuse("tool_call", {"calls": "not-a-list"},
                            "SHAPE_ENVELOPE", "LGV-020")
 
     def test_inner_arguments_string_decode_failure_is_shape_refusal(self):

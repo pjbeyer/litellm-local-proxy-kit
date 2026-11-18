@@ -48,7 +48,11 @@ does not depend on runtime surfacing.
   carries corrective guidance (reduce and resubmit); large-but-innocent inputs
   that the bounded scan proves safe are allowed.
 - **SHAPE_ENVELOPE — LGV-020**: deferred-call envelope that could not be
-  proven safe.
+  proven safe — a non-decoding / garbled / model-interleaved envelope shape.
+  (Benign stringified dialects — single-quoted JSON, Python `repr` of a
+  call-list dict, BOM/whitespace-wrapped JSON — are decoded gracefully via
+  `json.loads` then `ast.literal_eval` and analyzed normally; only genuinely
+  ambiguous content stays SHAPE_ENVELOPE, never salvaged.)
 - **POLICY_INVALID — LGV-030**: policy missing, unreadable, schema-invalid,
   tampered (digest mismatch), or deployed source diverged from the
   owner-recorded digests. Read-only tools still pass (fail-closed split).

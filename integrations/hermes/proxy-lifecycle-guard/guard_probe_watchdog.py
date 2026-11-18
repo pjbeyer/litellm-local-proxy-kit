@@ -69,11 +69,16 @@ VETO_PROBE = "if false; then lsof -t -iTCP:4000 | xargs kill -9; fi"
 ALLOW_PROBE = "echo healthy"
 
 # Shape-class probes. All are non-executable by construction:
-# the decode-fail payload fails json.loads inside the guard before any
+# the decode-fail payload (model text interleaved with an envelope) fails
+# both json.loads and ast.literal_eval inside the guard before any
 # command could run; the relay envelope targets a nonexistent tool_id so
 # the aggregator would refuse it anyway; the guard's decision is what we
 # assert on, never the execution.
-DECODE_FAIL_PROBE = "[{'name': 'terminal', 'arguments': {'command': 'echo hi'}}]"
+# lpkit-63x: benign single-quote JSON is now a graceful-decode ALLOW, so the
+# decode-fail probe MUST be genuinely unparseable (interleaved text), not a
+# valid single-quote JSON envelope.
+DECODE_FAIL_PROBE = ("[{'name': 'terminal', 'arguments': {'command': 'echo hi'}}] "
+                     "then the harness said it would run")
 NONCANONICAL_PROBE = [{"tool": "terminal", "args": {"command": "echo hi"}}]
 CANONICAL_RELAY_PROBE = [{"name": "mcp__local_mcp_aggregator__call_tool",
                           "arguments": {"tool_id": "watchdog-shape-probe-none",
