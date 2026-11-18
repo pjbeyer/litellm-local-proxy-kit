@@ -1188,11 +1188,17 @@ class Runtime:
                 raise Fault('controller_stopping') from None
             checkpoints.append(1)
         admit()
-        self._capture(['/bin/bash', str(self.kit/'core/installer.sh'), str(self.deployment), '--verify'], 90)
+        status, raw = self._observe(['/bin/bash', str(self.kit/'core/installer.sh'), str(self.deployment), '--verify'], 90)
+        if status:
+            raise ValueError('installer_verify_failed')
         admit()
-        self._capture([self.python, str(self.kit/'core/drift_check.py'), '--deployment-root', str(self.deployment)], 90)
+        status, raw = self._observe([self.python, str(self.kit/'core/drift_check.py'), '--deployment-root', str(self.deployment)], 90)
+        if status:
+            raise ValueError('drift_check_failed')
         admit()
-        self._capture([*self.job['ProgramArguments'], '--preflight'], 180)
+        status, raw = self._observe([*self.job['ProgramArguments'], '--preflight'], 180)
+        if status:
+            raise ValueError('preflight_failed')
         admit()
         try:
             import yaml
@@ -1207,8 +1213,11 @@ class Runtime:
             row = rows[0]
             admit()
             if row.get('source', 'op') == 'op':
-                sa = self._capture(['/usr/bin/security', 'find-generic-password', '-s',
-                                    self.env['OP_KEYCHAIN_SERVICE'], '-a', self.env['OP_KEYCHAIN_ACCOUNT'], '-w'], 15).decode().strip()
+                sa_status, sa_raw = self._observe(['/usr/bin/security', 'find-generic-password', '-s',
+                        self.env['OP_KEYCHAIN_SERVICE'], '-a', self.env['OP_KEYCHAIN_ACCOUNT'], '-w'], 15)
+                if sa_status:
+                    raise ValueError('resolver_unavailable')
+                sa = sa_raw.decode().strip()
                 if not sa or sa.startswith('op://') or any(c.isspace() for c in sa):
                     raise ValueError('resolver_unavailable')
                 env = {**self.env, 'OP_LOAD_DESKTOP_APP_SETTINGS': 'false', 'OP_CACHE': 'false',
@@ -1217,14 +1226,20 @@ class Runtime:
                 if not op:
                     raise ValueError('resolver_unavailable')
                 admit()
-                key = self._capture([op, 'read', row['op_ref']], 30, env=env).decode().strip()
+                op_status, op_raw = self._observe([op, 'read', row['op_ref']], 30, env=env)
+                if op_status:
+                    raise ValueError('resolver_unavailable')
+                key = op_raw.decode().strip()
                 del sa, env
             elif row.get('source') == 'flexai-token':
                 tool = shutil.which('flexai', path=self.env['PATH'])
                 if not tool:
                     raise ValueError('resolver_unavailable')
                 admit()
-                key = self._capture([tool, 'auth', 'print-token'], 30).decode().strip()
+                flex_status, flex_raw = self._observe([tool, 'auth', 'print-token'], 30)
+                if flex_status:
+                    raise ValueError('resolver_unavailable')
+                key = flex_raw.decode().strip()
             else:
                 raise ValueError('master_source_invalid')
             if not key or key.startswith('op://') or any(c.isspace() for c in key):

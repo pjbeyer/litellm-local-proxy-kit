@@ -75,10 +75,10 @@ def test_check_gates_checkpoint_precedes_every_resolver_step(gate_runtime):
     runtime, journal, latch, _ = gate_runtime
     import types
     events = []
-    def fake_capture(argv, timeout=90, env=None, control=False, purpose=None):
-        events.append(('capture', argv[0]))
-        return b'fixture'
-    runtime._capture = fake_capture
+    def fake_observe(argv, timeout=90, env=None, control=False):
+        events.append(('observe', argv[0]))
+        return 0, b'fixture'
+    runtime._observe = fake_observe
     runtime.rows = [{'env_var': 'FIXTURE_KEY', 'required': True, 'source': 'flexai-token'}]
     runtime.kit = Path(runtime.state/'kit-stub')
     runtime.kit.mkdir(exist_ok=True)
@@ -94,7 +94,7 @@ def test_check_gates_checkpoint_precedes_every_resolver_step(gate_runtime):
          mock.patch.object(module.shutil, 'which', return_value='/fixture/flexai'):
         runtime.check_gates()
     checkpoints = [i for i, e in enumerate(events) if e[0] == 'checkpoint']
-    captures = [i for i, e in enumerate(events) if e[0] == 'capture']
+    captures = [i for i, e in enumerate(events) if e[0] == 'observe']
     # A checkpoint precedes the first helper and separates each subsequent
     # step; the resolver checkpoint sits between lookup and read.
     assert len(checkpoints) >= len(captures)
@@ -105,7 +105,7 @@ def test_check_gates_checkpoint_precedes_every_resolver_step(gate_runtime):
 def test_check_gates_latch_before_first_helper_spawns_nothing(gate_runtime):
     runtime, journal, latch, _ = gate_runtime
     latch.request()
-    runtime._capture = mock.Mock(side_effect=AssertionError('helper ran after latch'))
+    runtime._observe = mock.Mock(side_effect=AssertionError('helper ran after latch'))
     with pytest.raises(Fault) as caught:
         runtime.check_gates()
     assert caught.value.code == 'controller_stopping'
@@ -122,12 +122,12 @@ def test_check_gates_latch_between_resolver_steps_refuses_next(gate_runtime):
     (runtime.state/'config.rendered.yaml').write_text(
         'general_settings:\n  master_key: "os.environ/FIXTURE_KEY"\n')
     calls = []
-    def fake_capture(argv, timeout=90, env=None, control=False, purpose=None):
+    def fake_observe(argv, timeout=90, env=None, control=False):
         if argv[:2] == ['/bin/bash', str(runtime.kit/'core/installer.sh')]:
             latch.request()  # latch fires after the first helper
         calls.append(argv[0])
-        return b'fixture-sentinel'
-    runtime._capture = fake_capture
+        return 0, b'fixture-sentinel'
+    runtime._observe = fake_observe
     with pytest.raises(Fault) as caught:
         runtime.check_gates()
     assert caught.value.code == 'controller_stopping'
