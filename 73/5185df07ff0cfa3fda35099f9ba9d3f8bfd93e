@@ -1,0 +1,25 @@
+core/restart_control/recovery.py
+  s_fa8397285f8e39::t_44ef340d8adf17 459-469
+  s_fa8397285f8e39::t_95fab911d6ac45 342-353
+tests/test_controller_recovery.py
+  s_fa8397285f8e39::t_9a887f2efdd235 2304-2327,2329,2331
+  s_fa8397285f8e39::t_a90fe7ec314cba 2328
+  s_fa8397285f8e39::t_8f8dc40763d6e9 2330
+  s_fa8397285f8e39::t_ff82bcb71ace7a 2332-2334
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "735185df07ff0cfa3fda35099f9ba9d3f8bfd93e",
+  "prompts": {},
+  "sessions": {
+    "s_fa8397285f8e39": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261115_071947_efc532",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
