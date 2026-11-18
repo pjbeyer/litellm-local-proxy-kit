@@ -1,0 +1,69 @@
+core/restart_control/runtime.py
+  s_fa8397285f8e39::t_729f9dc99297af 1563,1585
+docs/evidence/2026-11-11-r1-integration-and-predecessor-inventory.md
+  s_fa8397285f8e39::t_4bdf59be5057ac 157
+docs/evidence/2026-11-11-yt5.1-refusal-dispositions.md
+  s_fa8397285f8e39::t_b1509ecb0c3c0e 1,5,53,82-83
+docs/evidence/2026-11-16-fhz-verification-record.md
+  s_fa8397285f8e39::t_303fbaca3b9983 1,15,33
+docs/evidence/2026-11-16-g6-verification-record.md
+  s_fa8397285f8e39::t_936c44a2cb3491 13,26
+docs/evidence/2026-11-16-manual-restart-runbook.md
+  s_fa8397285f8e39::t_d0ce2676ee5af8 33
+docs/evidence/2026-11-16-reissue-one-liner.sh
+  s_fa8397285f8e39::t_f5531b0adc6620 4,16-17
+docs/evidence/2026-11-16-restart-enablement-owner-package.md
+  s_fa8397285f8e39::t_a540c6258f6881 28-29
+docs/evidence/2026-11-17-54060da8-gates-fix-owner-package.md
+  s_fa8397285f8e39::t_4af1817926eb48 39,44,56
+docs/evidence/2026-11-17-54060da8-reissue.sh
+  s_fa8397285f8e39::t_bf29d2b63fed1d 6,10-11
+docs/evidence/2026-11-17-8c5e0f06-reissue.sh
+  s_fa8397285f8e39::t_f5ca0ea5a5e87d 6,10-11
+docs/evidence/2026-11-17-8c5e0f06-restart-fix-owner-package.md
+  s_fa8397285f8e39::t_b5442c55e97459 49,57,63,78
+docs/evidence/2026-11-17-976-owner-package.md
+  s_fa8397285f8e39::t_047f7599738c86 1,8,13,46,51,55,67
+docs/evidence/2026-11-17-976-verification-record.md
+  s_fa8397285f8e39::t_aa8fe34a7820b0 1,7,15,23,27
+docs/evidence/2026-11-17-ad0bbcb0-reissue.sh
+  s_fa8397285f8e39::t_1b26ecd6660bce 6,10-11
+docs/evidence/2026-11-17-ambiguous-listener-owner-package.md
+  s_fa8397285f8e39::t_253f876ff8efea 8,61,67,73,88
+docs/evidence/2026-11-17-bind-frozen-owner-package.md
+  s_fa8397285f8e39::t_233107b0ca9b9e 80,87,93,108
+docs/evidence/2026-11-17-fhz-remediation-vv-record.md
+  s_fa8397285f8e39::t_bcea1fb1456abd 1,28
+docs/evidence/2026-11-17-freeze-fault-masking-incident.md
+  s_fa8397285f8e39::t_658fa721bd8e8d 26
+docs/evidence/2026-11-18-761fdf29-reissue.sh
+  s_fa8397285f8e39::t_b9df0bd0c606c5 6,10-11
+docs/evidence/owner-runbook-761fdf29.md
+  s_fa8397285f8e39::t_98e51f7130a59d 8
+docs/handoffs/2026-11-11-t009-correction-prompt-owner-landing.md
+  s_fa8397285f8e39::t_e9311118a0b27c 16
+docs/handoffs/2026-11-15-gate4-owner-landing.md
+  s_fa8397285f8e39::t_af5f74d8fcfb32 3,15,52-54,59-61,66,71
+integrations/hermes/proxy-lifecycle-guard/guard_probe_watchdog.py
+  s_fa8397285f8e39::t_f2fe7625de65ac 8,10,51,67,194,226,231,263
+tests/test_controller_fault_taxonomy.py
+  s_fa8397285f8e39::t_8733760795590d 46
+tests/test_controller_qualification.py
+  s_fa8397285f8e39::t_8544e87480e5a6 300,304,326
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "c89dfb7fe121f8fe5299368fd52804e816aa5ae8",
+  "prompts": {},
+  "sessions": {
+    "s_fa8397285f8e39": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261115_071947_efc532",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
