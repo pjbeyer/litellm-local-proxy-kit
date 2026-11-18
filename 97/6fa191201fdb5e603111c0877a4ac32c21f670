@@ -1,0 +1,16 @@
+docs/evidence/2026-11-18-761fdf29-reissue.sh
+  h_c5be3b3dad7ca8 1-67
+docs/evidence/owner-runbook-761fdf29.md
+  h_c5be3b3dad7ca8 1-67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "976fa191201fdb5e603111c0877a4ac32c21f670",
+  "prompts": {},
+  "humans": {
+    "h_c5be3b3dad7ca8": {
+      "author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
