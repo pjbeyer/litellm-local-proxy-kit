@@ -339,6 +339,18 @@ class RecoveryStore:
                  and accepted["identity"]["uid"] == plan["uid"]
                  and accepted["identity"] != plan["original_identity"])
 
+    def _validate_manual_history(self, view, row):
+        """Reread a dispositioned manual-recovery record; the request is authority."""
+        from . import engine
+
+        request_id = row["binding"]["request_id"]
+        plan = self._matching_consumed(view, row)
+        _require(plan["phase"] == row["phase"] == row["outcome"]
+                 and row["primary_control_committed"] is True
+                 and plan.keys() == (_PREPARED_REQUEST | {"code", "failed_phase"})
+                 and type(plan["code"]) is str and plan["code"] in engine.CODES
+                 and type(plan["failed_phase"]) is str)
+
     def _require_clear_view(self, view, active, *, owning_intent=None,
                             projected_row=None, own_canary_nonce=None):
         # T019: the canary lane's OWN pending arm and its own empty
@@ -444,6 +456,17 @@ class RecoveryStore:
                 _require(fence is None and all(child["state"] == "closed"
                                           for child in children.get(request_id, ())))
                 self._validate_terminal_history(view, row)
+            elif (row["phase"] == "manual_recovery_required"
+                  and row["outcome"] == "manual_recovery_required"):
+                # A dispositioned manual-recovery record is settled
+                # history: it never reopens ("No consumed/manual/accepted
+                # restart record reopens"), so like restarted/rolled_back
+                # it blocks nothing once its evidence is coherent and its
+                # fence is resolved (the operator's documented manual
+                # recovery removed mutation.json).
+                _require(fence is None and all(child["state"] == "closed"
+                                          for child in children.get(request_id, ())))
+                self._validate_manual_history(view, row)
             elif (row["phase"] == "restart_pending" and row["outcome"] is None
                   and fence is None and request_id == active_id):
                 _require(approval is not None and approval[0] is False

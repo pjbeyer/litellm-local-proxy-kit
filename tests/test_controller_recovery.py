@@ -2301,6 +2301,37 @@ def test_request_first_manual_failure_bars_new_intents(tmp_path, purpose):
     assert tree_bytes(state) == before
 
 
+def test_dispositioned_manual_recovery_is_settled_history(tmp_path):
+    """A closed manual-recovery row (outcome set, fence reconciled away) never
+    reopens but also never blocks new work — the operator disposition path."""
+    from core.restart_control.recovery import RecoveryError
+
+    journal, state, ticket = _manual_failure_ready(tmp_path, "starting")
+    path = state / "requests" / (RID + ".json")
+    plan = engine._read_json(path)
+    plan.update(phase="manual_recovery_required", code="internal_error",
+                failed_phase="stopping")
+    engine.atomic_json(path, plan)
+    # Operator disposition: close the record, resolve the fence.
+    row = engine._read_json(state / "recovery" / "operations" / (RID + ".json"))
+    dispositioned = {**row, "phase": "manual_recovery_required",
+                     "outcome": "manual_recovery_required"}
+    engine.atomic_json(state / "recovery" / "operations" / (RID + ".json"),
+                       dispositioned)
+    (state / "recovery" / "mutation.json").unlink()
+    # A FRESH store (new process/daemon boot, no active ticket) sees settled
+    # history: require_clear passes and begin() admits new work.
+    fresh = load(state)
+    assert fresh.require_clear() is None
+    # A subsequent prepare begins under a NEW request id with fresh null digests
+    # (pre-freeze proxy binding) — the dispositioned record never reopens.
+    binding = dict(dispositioned["binding"])
+    binding["request_id"] = "b" * 32
+    binding["asset_digest"] = None
+    binding["runtime_digest"] = None
+    fresh.begin(binding, "production")
+
+
 def test_request_first_manual_failure_preserves_issued_child_cleanup(tmp_path):
     from core.restart_control.recovery import RecoveryError
 
