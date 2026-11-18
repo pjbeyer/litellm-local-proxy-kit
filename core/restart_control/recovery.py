@@ -548,9 +548,62 @@ class RecoveryStore:
         with self._spawn_transition_lock():
             self._require_clear_view(self.inventory(), active)
 
+    def _dispose_stale_approvals(self):
+        """Archive expired, unconsumed approvals out of the bounded approvals
+        dir so a stale approval can never permanently fail-close the recovery
+        view (lpkit-hq3). Only unconsumed files whose wall expiry is already
+        past are archived — never delete, archive to the STATE ROOT. A genuinely
+        live unconsumed approval is untouched. Must be called under the spawn
+        transition lock, before any view admission or clearance check.
+        """
+        approvals_dir = self.approvals_dir
+        if not self._checked_dir(approvals_dir, optional=True):
+            return
+        now = time.time()
+        try:
+            with os.scandir(approvals_dir) as scan:
+                names = [entry.name for entry in scan]
+        except OSError:
+            raise RecoveryError() from None
+        for name in names:
+            if name.endswith(".consumed"):
+                continue  # consumed approvals are terminal history
+            if not name.endswith(".json"):
+                continue  # not an approval record; fail-closed later as today
+            key = name[:-len(".json")]
+            try:
+                if not _token(key, _ID):
+                    continue
+                approval = self._checked_file(approvals_dir / name)
+            except RecoveryError:
+                continue  # leave unreadable files alone; normal validation fails closed
+            if not isinstance(approval, dict):
+                continue
+            expires = approval.get("expires_at")
+            if not isinstance(expires, (int, float)) or not math.isfinite(expires):
+                continue
+            if expires < now:
+                dest = self.state_dir / (
+                    f"archived-approval-expired-unconsumed-"
+                    f"{key[:8]}-{time.strftime('%Y%m%d')}.json")
+                # Bounded retry to a unique name; never overwrite an archive.
+                suffix = 1
+                while dest.exists():
+                    dest = self.state_dir / (
+                        f"archived-approval-expired-unconsumed-"
+                        f"{key[:8]}-{time.strftime('%Y%m%d')}-{suffix}.json")
+                    suffix += 1
+                try:
+                    os.replace(approvals_dir / name, dest)
+                    self._sync_directory(self.state_dir)
+                    self._sync_directory(approvals_dir)
+                except OSError:
+                    raise RecoveryError() from None
+
     def begin(self, binding, scope):
         """Durably index a new operation and return its sole active ticket."""
         with self._spawn_transition_lock():
+            self._dispose_stale_approvals()
             _require(self._active_ticket is None)
             view = self.inventory()
             # The canary's own begin runs while its arm is still pending

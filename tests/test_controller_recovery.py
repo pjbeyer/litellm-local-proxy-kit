@@ -10,6 +10,7 @@ import threading
 import time
 
 import pytest
+from conftest import REQUIRES_REAL_MAC
 
 from core.restart_control import engine
 
@@ -3179,6 +3180,7 @@ def test_canary_lane_journal_phases_over_real_store(tmp_path):
     assert terminal.request_id == arm["nonce"]
 
 
+@REQUIRES_REAL_MAC
 def test_terminal_write_survives_runtime_context_release(tmp_path):
     """Live gate-4 finding: run() releases the runtime operation context
     (real end_operation clears the store's active ticket) BEFORE the
@@ -3269,6 +3271,49 @@ def test_inventory_waits_out_worker_latch_staging_temp(tmp_path):
         stream.write("crashed\n")
     with pytest.raises(RecoveryError):
         journal.spawn_intent(running, "d" * 32, "canary-bootout")
+
+
+def test_begin_disposes_expired_unconsumed_approval_and_admits(tmp_path):
+    """lpkit-hq3: a stale unconsumed approval is archived (never deleted) at
+    begin() admission so a new prepare is not permanently blocked, while the
+    archived copy remains at the state root for operator review."""
+    journal, state, _ = _mutation_ready(tmp_path)
+    approvals = state / "approvals"
+    assert (approvals / (RID + ".json")).exists()
+    fresh = load(state)
+    new_id = "d" * 32
+    ticket = fresh.begin({**binding(frozen=False), "request_id": new_id},
+                         "fixture")
+    assert ticket.request_id == new_id
+    # The stale approval was archived out of the bounded dir (not deleted)
+    # and not consumed.
+    assert not (approvals / (RID + ".json")).exists()
+    assert not (approvals / (RID + ".consumed")).exists()
+    archived = [p.name for p in state.glob("archived-approval-expired-unconsumed-*")]
+    assert len(archived) == 1 and RID[:8] in archived[0]
+    # The archived copy is the original approval payload.
+    stale = engine._read_json(next(state.glob("archived-approval-expired-*")))
+    assert stale["request_id"] == RID
+
+
+def test_begin_keeps_live_unconsumed_approval_and_still_refuses(tmp_path):
+    """lpkit-hq3: a genuinely live (future-expiring) unconsumed approval is
+    NOT disposed and admission still fails — the auto-expire must never relax
+    a live approval's guarantee."""
+    from core.restart_control.recovery import RecoveryError
+    journal, state, _ = _mutation_ready(tmp_path)
+    approvals = state / "approvals"
+    plan, live = _prepared_records(state)
+    live["expires_at"] = time.time() + 60
+    live["expires_monotonic"] = time.monotonic() + 60
+    engine.atomic_json(approvals / (RID + ".json"), live)
+    fresh = load(state)
+    with pytest.raises(RecoveryError):
+        fresh.begin({**binding(frozen=False), "request_id": "d" * 32},
+                    "fixture")
+    # Untouched: still present, not archived, not consumed.
+    assert (approvals / (RID + ".json")).exists()
+    assert not list(state.glob("archived-approval-*"))
 
 
 
