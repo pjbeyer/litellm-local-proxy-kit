@@ -1,0 +1,19 @@
+docs/evidence/2026-11-17-bind-frozen-owner-package.md
+  s_fa8397285f8e39::t_1aec7414428b6f 1-137
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "f0a97f35ec6b922970f685cf86bfc698696102f5",
+  "prompts": {},
+  "sessions": {
+    "s_fa8397285f8e39": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261115_071947_efc532",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
