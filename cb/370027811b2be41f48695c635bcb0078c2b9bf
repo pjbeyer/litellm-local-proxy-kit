@@ -1,0 +1,29 @@
+tests/test_controller_interruption.py
+  s_fa8397285f8e39::t_121061400bd114 442-443
+  s_fa8397285f8e39::t_fb456d0fd5ffcd 445-450
+tests/conftest.py
+  s_fa8397285f8e39::t_6e68f46c8afb2b 51
+  s_fa8397285f8e39::t_8ec8067c2b31f9 30
+  s_fa8397285f8e39::t_2d75f806ed9b15 62,64,67-70
+  s_fa8397285f8e39::t_846deacf4d764e 1-2,23-24,26-28,44-45,54,58-61,63,71
+  s_fa8397285f8e39::t_0babd5e30fc69f 3-12,20-22,25,29,31-43,56,65-66
+  s_fa8397285f8e39::t_52ce77f04fdbcd 13-19,46-50,52-53,55,57
+tests/test_controller_canary.py
+  s_fa8397285f8e39::t_874712060d6847 468,529,597
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "cb370027811b2be41f48695c635bcb0078c2b9bf",
+  "prompts": {},
+  "sessions": {
+    "s_fa8397285f8e39": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261115_071947_efc532",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
