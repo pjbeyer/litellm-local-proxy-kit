@@ -463,6 +463,10 @@ def test_barrier_engine_prepared_write_failure_publishes_full_blocked_stage(tmp_
         def snapshot_lkg(self, path):
             return {"asset_digest": DIGEST, "runtime_digest": DIGEST}
 
+
+    def freeze_restart(self):
+        """Fixture twin of Runtime.freeze_restart: same frozen digest."""
+        return self.freeze()
     controller = engine.Controller(tmp_path / "engine", Backend(),
                                    clock=lambda: 1.0, monotonic=lambda: 1.0,
                                    shutdown=EngineShutdown())

@@ -46,6 +46,10 @@ class FixtureBackend:
     def freeze(self):
         return self.call("freeze", dict.fromkeys(("asset_digest", "runtime_digest", "policy_digest", "controller_digest"), D))
 
+
+    def freeze_restart(self):
+        """Fixture twin of Runtime.freeze_restart: same frozen digest."""
+        return self.freeze()
     def check_gates(self):
         self.call("check_gates")
 

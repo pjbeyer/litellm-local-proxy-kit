@@ -267,6 +267,10 @@ class FakeLaunchctlBackend:
         self._note("freeze")
         return dict(FIXTURE_FREEZE)
 
+
+    def freeze_restart(self):
+        """Fixture twin of Runtime.freeze_restart: same frozen digest."""
+        return self.freeze()
     def binding_facts(self):
         self._note("binding_facts")
         return {"policy_digest": FIXTURE_FREEZE["policy_digest"],

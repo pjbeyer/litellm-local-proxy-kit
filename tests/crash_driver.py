@@ -64,6 +64,10 @@ class CrashBackend:
         return {"asset_digest": "5" * 64, "runtime_digest": "6" * 64,
                 "policy_digest": "7" * 64, "controller_digest": "8" * 64}
 
+
+    def freeze_restart(self):
+        """Fixture twin of Runtime.freeze_restart: same frozen digest."""
+        return self.freeze()
     def binding_facts(self):
         self.calls.append("binding_facts")
         return {"policy_digest": "7" * 64, "controller_digest": "8" * 64,
