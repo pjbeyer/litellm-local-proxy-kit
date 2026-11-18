@@ -27,7 +27,16 @@ jobs:
           uv venv .venv-tests
           uv pip install --python .venv-tests/bin/python pytest pyyaml
       - name: Offline test suite
-        run: .venv-tests/bin/python -m pytest -q tests
+        # The controller's privacy validator refuses symlinked ancestors and
+        # some tests index TMPDIR directly; macOS runners symlink /var and
+        # Linux runners leave TMPDIR unset. Point TMPDIR at a real directory
+        # inside the workspace on every OS.
+        env:
+          TMPDIR: ${{ github.workspace }}/.tmp-tests
+        run: |
+          mkdir -p "$TMPDIR"
+          chmod 700 "$TMPDIR"
+          .venv-tests/bin/python -m pytest -q tests
 
   hygiene-scan:
     # Publication hygiene: no secrets, private paths, or merge markers.

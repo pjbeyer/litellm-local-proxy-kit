@@ -89,7 +89,7 @@ harvest_file() {
   local f="$1" name="$2"
   [[ -f "$f" ]] || return 0
   local size off
-  size="$(stat -f%z "$f" 2>/dev/null || echo 0)"
+  size="$(stat -f%z "$f" 2>/dev/null || stat -c%s "$f" 2>/dev/null || echo 0)"
   off="$(awk -v n="$name" '$1 == n { print $2; exit }' "$CURSOR" 2>/dev/null)"
   [[ "$off" =~ ^[0-9]+$ ]] || off=0
 

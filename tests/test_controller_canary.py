@@ -16,6 +16,11 @@ from pathlib import Path
 
 import pytest
 
+# The canary arm/consume path binds the kernel bootsessionuuid — a darwin-only
+# primitive by contract — so those paths cannot run on other platforms.
+DARWIN_ONLY = pytest.mark.skipif(sys.platform != "darwin",
+                                 reason="canary arm/consume binds the darwin kernel boot identity")
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'core'))
 sys.path.insert(0, str(ROOT/'tests'))
@@ -402,6 +407,7 @@ ARM_BINDINGS = {"policy_digest": DIGEST, "controller_digest": DIGEST,
                 "controller_plist_digest": DIGEST}
 
 
+@DARWIN_ONLY
 def test_arm_canary_creates_exclusive_private_envelope(tmp_path):
     record = canary.arm_canary(tmp_path, ARM_BINDINGS)
     root = tmp_path/"canary"
@@ -415,6 +421,7 @@ def test_arm_canary_creates_exclusive_private_envelope(tmp_path):
         canary.arm_canary(tmp_path, ARM_BINDINGS)
 
 
+@DARWIN_ONLY
 def test_arm_refuses_existing_uncertainty(tmp_path):
     canary.arm_canary(tmp_path, ARM_BINDINGS)
     # Any consumed scope present (even without evidence) blocks a new arm.
@@ -433,6 +440,7 @@ def test_arm_rejects_incomplete_bindings(tmp_path):
             canary.arm_canary(tmp_path, bad)
 
 
+@DARWIN_ONLY
 def test_consume_arm_moves_envelope_into_scope_once(tmp_path):
     record = canary.arm_canary(tmp_path, ARM_BINDINGS)
     consumed = canary.consume_arm(tmp_path, operator_uid=os.getuid())
@@ -445,6 +453,7 @@ def test_consume_arm_moves_envelope_into_scope_once(tmp_path):
         canary.consume_arm(tmp_path, operator_uid=os.getuid())
 
 
+@DARWIN_ONLY
 def test_consume_arm_refuses_when_scope_is_dirty(tmp_path):
     record = canary.arm_canary(tmp_path, ARM_BINDINGS)
     scope = tmp_path/"canary"/record["nonce"]
