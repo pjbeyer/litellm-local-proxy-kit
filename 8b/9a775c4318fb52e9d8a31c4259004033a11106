@@ -1,0 +1,19 @@
+tests/test_restart_runtime.py
+  s_fa8397285f8e39::t_cfd91f1f1c13e7 22-26,301
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "8b9a775c4318fb52e9d8a31c4259004033a11106",
+  "prompts": {},
+  "sessions": {
+    "s_fa8397285f8e39": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261115_071947_efc532",
+        "model": "deepseek-v4-flash-0731"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
