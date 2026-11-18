@@ -16,6 +16,11 @@ from pathlib import Path
 
 import pytest
 
+# Canary-lane tests spawn a real worker subprocess that reads the darwin kernel
+# boot identity; it cannot inherit the parent-stub on Linux.
+DARWIN_ONLY = pytest.mark.skipif(sys.platform != "darwin",
+                                 reason="canary lane binds the darwin kernel boot identity")
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'core'))
 sys.path.insert(0, str(ROOT/'tests'))
@@ -284,6 +289,7 @@ def test_arm_binding_mismatch_leaves_diagnostic_and_no_calls(runtime, private_ro
     assert (runtime.state/'canary'/'intent.json').exists()
 
 
+@DARWIN_ONLY
 def test_full_pass_lane_with_real_worker_children(runtime, private_root):
     """The full lane passes: bootstrap → load → exit → KeepAlive → bootout.
 
@@ -386,6 +392,7 @@ def test_shutdown_latch_blocks_lane(runtime, private_root):
     assert diagnostic['code'] == 'controller_stopping'
 
 
+@DARWIN_ONLY
 def test_registration_latency_polls_not_blocks(runtime, private_root):
     """Transient print absences before first sighting poll, not block.
 

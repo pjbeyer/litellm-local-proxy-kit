@@ -16,7 +16,13 @@ import os
 import signal
 import time
 
+import sys
 import pytest
+
+# Canary-lane tests spawn a real double-forked worker subprocess that reads the
+# darwin kernel boot identity; it cannot inherit the parent-stub.
+DARWIN_ONLY = pytest.mark.skipif(sys.platform != "darwin",
+                                 reason="canary lane binds the darwin kernel boot identity")
 
 from restart_control.engine import Fault, atomic_json
 from restart_control import canary
@@ -172,6 +178,7 @@ def _scope_diagnostic(runtime, arm_record):
     return json.loads((scope/"diagnostic.json").read_text())
 
 
+@DARWIN_ONLY
 def test_lane_rejects_wrong_supervision_parity(runtime, private_root):
     """A loaded job whose throttle (supervision) differs is refused."""
     import restart_control.startup as startup
@@ -198,6 +205,7 @@ def test_lane_rejects_wrong_supervision_parity(runtime, private_root):
     assert len([c for c in fake.calls if c[1] == "bootstrap"]) == 1
 
 
+@DARWIN_ONLY
 def test_lane_rejects_wrong_logging_environment(runtime, private_root):
     """A loaded job missing its declared logging environment refuses."""
     import restart_control.startup as startup
@@ -219,6 +227,7 @@ def test_lane_rejects_wrong_logging_environment(runtime, private_root):
     assert result["code"] == "canary_first_load_failed"
 
 
+@DARWIN_ONLY
 def test_lane_rejects_respawn_count_other_than_two(runtime, private_root):
     """A third incarnation (runs == 3) never satisfies the lane.
 
@@ -248,6 +257,7 @@ def test_lane_rejects_respawn_count_other_than_two(runtime, private_root):
     assert not evidence_dir.exists() or not list(evidence_dir.iterdir())
 
 
+@DARWIN_ONLY
 def test_lane_rejects_lost_latch_receipt(runtime, private_root):
     """Missing latch.json after bootout: shutdown detail refuses."""
     lane, fake, arm_record = _lane(runtime, keepalive=True)
@@ -269,6 +279,7 @@ def test_lane_rejects_lost_latch_receipt(runtime, private_root):
         "canary_shutdown_receipt_missing"
 
 
+@DARWIN_ONLY
 def test_lane_rejects_incomplete_cleanup(runtime, private_root):
     """A job still loaded after bootout refuses: cleanup proves absence."""
     lane, fake, arm_record = _lane(runtime, keepalive=True)
@@ -302,6 +313,7 @@ def test_lane_rejects_incomplete_cleanup(runtime, private_root):
         "canary_cleanup_failed"
 
 
+@DARWIN_ONLY
 def test_lane_rejects_control_refusal_without_retry(runtime, private_root):
     """A refused bootout blocks the lane once; never a retry."""
     lane, fake, arm_record = _lane(runtime, keepalive=True)
@@ -339,6 +351,7 @@ def test_lane_control_refusal_emits_no_success_envelope(runtime, private_root):
     assert (scope/"intent.json").exists()
 
 
+@DARWIN_ONLY
 def test_lane_completed_attempt_never_replays(runtime, private_root):
     """After one completed pass, a re-serve performs zero canary activity."""
     lane, fake, arm_record = _lane(runtime, keepalive=True)
