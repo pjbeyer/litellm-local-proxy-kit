@@ -1,0 +1,36 @@
+tests/test_controller_canary.py
+  s_fa8397285f8e39::t_8061e6e5119e2b 19-23
+  s_fa8397285f8e39::t_5b1321204b0c33 410,424,443,456
+core/harvest-filter-metrics.sh
+  s_fa8397285f8e39::t_7c5ebcbe5a8376 92
+.github/workflows/tests.yml
+  s_fa8397285f8e39::t_8d279760b5f0d4 30-39
+tests/test_controller_recovery.py
+  s_fa8397285f8e39::t_6496f8d2f76563 15-19
+  s_fa8397285f8e39::t_ad48440f8cc030 8
+  s_c3bcb9d054962a::t_7f24ffe6b59400 3130,3152,3190,3236
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "6324264c7ae2f8b45e46a08fc17fceb187f9dd0d",
+  "prompts": {},
+  "sessions": {
+    "s_c3bcb9d054962a": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261114_154648_59b3af",
+        "model": "deepseek-v4-flash-0731"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_fa8397285f8e39": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261115_071947_efc532",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
