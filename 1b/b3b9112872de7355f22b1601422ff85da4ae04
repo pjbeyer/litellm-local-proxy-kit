@@ -1,0 +1,22 @@
+tests/test_controller_interruption.py
+  s_fa8397285f8e39::t_fa023d8925c17b 172-174,176
+core/restart_control/engine.py
+  s_fa8397285f8e39::t_f9e48c2d87b1bb 457-462
+  s_fa8397285f8e39::t_766ddb48f88573 445,448-456,463-466,489-491
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "1bb3b9112872de7355f22b1601422ff85da4ae04",
+  "prompts": {},
+  "sessions": {
+    "s_fa8397285f8e39": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261115_071947_efc532",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
