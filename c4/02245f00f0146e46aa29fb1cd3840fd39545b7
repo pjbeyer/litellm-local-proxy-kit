@@ -1,0 +1,52 @@
+integrations/hermes/proxy-lifecycle-guard/README.md
+  s_c3bcb9d054962a::t_8e7edf5af57594 29-35
+integrations/hermes/proxy-lifecycle-guard/guard.py
+  s_c3bcb9d054962a::t_c543a3287db9e5 2915,2925-2928,2932-2935
+  s_c3bcb9d054962a::t_5b7ed43aa0f84d 2975-2976
+  s_c3bcb9d054962a::t_048c1ce6d33731 2873-2876
+  s_c3bcb9d054962a::t_6d9f5a72becb7e 3021
+  s_c3bcb9d054962a::t_83bdb4846323bd 2806-2824,2826-2868,2939-2941,2953,2962-2964,2968-2972,2977-2988,2991,2994-3004,3011-3015
+  s_c3bcb9d054962a::t_1e99f8b7ba8602 2877-2881,2884,2890-2914,2916-2924,2929-2931,2936-2938,2942-2952,2954,2961,2965-2967,2989-2990,2992-2993,3005-3009,3016-3020
+  s_c3bcb9d054962a::t_6decc874f55668 2973-2974
+  s_c3bcb9d054962a::t_978536be84e385 3113-3120,3123,3126-3127
+  s_b1a18a0bb18a46::t_ed1237c7e2cab2 3121,3124,3129
+  s_c3bcb9d054962a::t_c1734a38463a69 2869-2872,2882-2883,2885-2889
+  s_c3bcb9d054962a::t_ca77bb99971eef 3128
+  s_c3bcb9d054962a::t_1ad4d7a103e89a 2955
+  s_c3bcb9d054962a::t_d3f8b7a6643ca7 2805
+  s_c3bcb9d054962a::t_16c80726602687 2956
+  s_c3bcb9d054962a::t_a751eef0b494d5 3022
+tests/test_guard_prose_and_vars.py
+  s_c3bcb9d054962a::t_d5b9aedcde44d0 107-112,116
+tests/test_guard_code_data_vs_execution.py
+  s_c3bcb9d054962a::t_1e4ba54c40ef0c 1-51,53,56-121
+  s_c3bcb9d054962a::t_45a8bf26b06c44 55
+  s_c3bcb9d054962a::t_ec1d8841fca898 52,54
+tests/test_guard_quotation_fp.py
+  s_c3bcb9d054962a::t_632c485bf8afcf 36
+  s_c3bcb9d054962a::t_eb58a62f9a212b 37-42,48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "c402245f00f0146e46aa29fb1cd3840fd39545b7",
+  "prompts": {},
+  "sessions": {
+    "s_b1a18a0bb18a46": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261103_122930_556d2b",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_c3bcb9d054962a": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261114_154648_59b3af",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
