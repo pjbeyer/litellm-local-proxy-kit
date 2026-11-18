@@ -1,0 +1,9 @@
+cases=7
+killed=7
+shutdown_latch_checkpoint=killed
+engine_replay_refusal=killed
+recovery_spawn_intent_durable_write=killed
+recovery_fence_sync_write=killed
+engine_plan_expiry_check=killed
+recovery_exact_active_ticket=killed
+runtime_qualification_scope_binding=killed

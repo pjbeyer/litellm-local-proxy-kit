@@ -13,6 +13,7 @@ from unittest import mock
 
 from core.restart_control.engine import Controller, Fault, approval_binding, atomic_json, private_dir
 from core.restart_control.wire import _serve_one, client, serve
+from restart_lifecycle_adapter import FixtureLifecycleAdapter
 
 
 D = "a" * 64
@@ -27,6 +28,11 @@ class FixtureBackend:
         self.fail = None
         self.managed = True
         self.identity = {"pid": 123, "uid": os.getuid(), "birth": [1, 2]}
+        self.approval_root = Path()  # wired by setUp to the controller approvals dir
+
+    def binding_facts(self):
+        self.call("binding_facts")
+        return {"policy_digest": D, "controller_digest": D, "controller_plist_digest": D}
 
     def call(self, name, value=None):
         self.calls.append(name)
@@ -40,6 +46,10 @@ class FixtureBackend:
     def freeze(self):
         return self.call("freeze", dict.fromkeys(("asset_digest", "runtime_digest", "policy_digest", "controller_digest"), D))
 
+
+    def freeze_restart(self):
+        """Fixture twin of Runtime.freeze_restart: same frozen digest."""
+        return self.freeze()
     def check_gates(self):
         self.call("check_gates")
 
@@ -84,7 +94,9 @@ class ControllerTest(unittest.TestCase):
         self.now = 1000.0
         self.mono = 500.0
         self.controller = Controller(self.root / "state", self.backend,
-                                     clock=lambda: self.now, monotonic=lambda: self.mono)
+                                     clock=lambda: self.now, monotonic=lambda: self.mono,
+                                     test_lifecycle=FixtureLifecycleAdapter(namespace='core'))
+        self.backend.approval_root = self.controller.approvals
 
     def prepare(self):
         result = self.controller.handle({"op": "prepare"})
@@ -121,7 +133,8 @@ class ControllerTest(unittest.TestCase):
         plan = self.prepare()
         self.approve(plan)
         other = Controller(self.root / "state", self.backend, clock=lambda: self.now,
-                           monotonic=lambda: self.mono)
+                           monotonic=lambda: self.mono,
+                           test_lifecycle=FixtureLifecycleAdapter(namespace='core'))
         self.assertEqual(other.handle({"op": "restart", "request_id": plan["request_id"],
                                        "asset_digest": D})["code"], "plan_stale")
         self.mono += 301

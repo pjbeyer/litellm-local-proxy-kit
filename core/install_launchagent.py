@@ -3,7 +3,7 @@
 
 Modes: --render (write substituted plists to a target dir), --check (fail if
 target plists differ from freshly rendered ones). Never loads/unloads launchd
-jobs — the operator runs launchctl commands (EDR Mac; hardened-endpoint posture).
+jobs — the operator runs launchctl commands (EDR Mac; flex-dekil posture).
 """
 from __future__ import annotations
 

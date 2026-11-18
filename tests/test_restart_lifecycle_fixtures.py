@@ -28,6 +28,7 @@ import urllib.error
 import urllib.request
 import uuid
 from pathlib import Path
+from typing import Optional
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -35,7 +36,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from core.restart_control import engine as engine_module
 from core.restart_control import process_identity
 from core.restart_control.engine import Controller, Fault, approval_binding, atomic_json
+from core.restart_control.shutdown import Shutdown
 from core.restart_control.wire import client, serve
+from restart_lifecycle_adapter import FixtureLifecycleAdapter
 
 
 # Synthetic, non-secret fixture generation digests (fixture-scope only).
@@ -100,6 +103,11 @@ def main():
         while True:
             line = sys.stdin.readline()
             if not line or line.strip() == "shutdown":
+                if MODE == "dirty-exit":
+                    # Fixture-only unknown-outcome simulation: the child
+                    # dies with a nonzero code instead of a graceful stop.
+                    import os as _os
+                    _os._exit(1)
                 threading.Thread(target=server.shutdown).start()
                 return
 
@@ -212,8 +220,31 @@ class FakeLaunchctlBackend:
         self.birth_usec_delta = 0
         self.qualify_hooks = {}        # qualify ordinal -> callable
         self.restored = None
+        self.approval_root = Path()   # set by FixtureRig to the state root's approvals dir
+        self.shutdown: Optional[Shutdown] = None  # set by FixtureRig: shared latch
+        self.latch_at = {}             # verb -> 1-based ordinal at which to latch
+
+    def _checkpoint(self):
+        """Latch admission mirroring production _capture before control.
+
+        Production routes every launchctl control through the tracked
+        runner, which admits against the shared shutdown latch before
+        the child exists; a latched controller refuses further service
+        control. The fake backend owns only fixture children but must
+        honor the same boundary so interruption tests observe the real
+        engine semantics.
+        """
+        if self.shutdown is not None and self.shutdown.requested:
+            raise Fault("controller_stopping")
 
     def _note(self, name):
+        # Interruption injection: latch the shared shutdown when the
+        # configured verb occurrence arrives, after this verb's own
+        # admission already passed — mirroring a signal landing mid-flight.
+        when = self.latch_at.get(name)
+        if (when is not None and self.shutdown is not None
+                and self.calls.count(name) + 1 == when):
+            self.shutdown.request()
         self.calls.append(name)
 
     def _refused(self, name):
@@ -235,6 +266,16 @@ class FakeLaunchctlBackend:
     def freeze(self):
         self._note("freeze")
         return dict(FIXTURE_FREEZE)
+
+
+    def freeze_restart(self):
+        """Fixture twin of Runtime.freeze_restart: same frozen digest."""
+        return self.freeze()
+    def binding_facts(self):
+        self._note("binding_facts")
+        return {"policy_digest": FIXTURE_FREEZE["policy_digest"],
+                "controller_digest": FIXTURE_FREEZE["controller_digest"],
+                "controller_plist_digest": hashlib.sha256(b"fixture-controller-plist").hexdigest()}
 
     def check_gates(self):
         self._note("check_gates")
@@ -278,6 +319,7 @@ class FakeLaunchctlBackend:
             raise Fault("lkg_invalid")
 
     def restore_lkg(self, path, binding):
+        self._checkpoint()
         self._note("restore_lkg")
         if self._refused("restore_lkg"):
             raise Fault("service_control_denied")
@@ -292,6 +334,7 @@ class FakeLaunchctlBackend:
             hook()
 
     def stop(self):
+        self._checkpoint()
         self._note("stop")
         if self._refused("stop"):
             raise Fault("service_control_denied")
@@ -304,6 +347,7 @@ class FakeLaunchctlBackend:
         self.service_child = None
 
     def start(self):
+        self._checkpoint()
         self._note("start")
         if self._refused("start"):
             raise Fault("service_control_denied")
@@ -331,6 +375,43 @@ class FakeLaunchctlBackend:
         self._note("release_credentials")
 
 
+def _wait_for_unix_listener(path, thread, timeout=10.0):
+    """Return only after a real AF_UNIX connect to ``path`` succeeds.
+
+    Socket-file existence is not readiness: ``serve`` binds the path before it
+    calls ``listen``, so a constructor that only polls ``Path.exists`` can win
+    the race and return while direct connects still get ECONNREFUSED (proven
+    against this fixture). Probe with an actual connection instead, retrying
+    only the two pre-listen errnos (ENOENT, ECONNREFUSED) against a monotonic
+    deadline. Anything else -- EPERM/EACCES included -- propagates immediately
+    and is never retried or worked around. Fails loud if the server thread
+    dies first or the deadline passes. The probe connection closes right away;
+    the serving worker treats that as an ordinary EOF.
+    """
+    deadline = time.monotonic() + timeout
+    last_error = None
+    while True:
+        if not thread.is_alive():
+            raise AssertionError(
+                "fixture controller server thread exited before its socket "
+                "accepted connections")
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise AssertionError(
+                "fixture controller socket never accepted connections "
+                "within %.1fs: %s" % (timeout, last_error))
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
+                probe.settimeout(min(0.25, remaining))
+                probe.connect(str(path))
+            return
+        except OSError as exc:
+            if exc.errno not in (errno.ENOENT, errno.ECONNREFUSED):
+                raise
+            last_error = exc
+            time.sleep(min(0.02, max(0.0, deadline - time.monotonic())))
+
+
 class FixtureRig:
     """Per-test fixture world: real UDS transport, real HTTP children, fake launchctl."""
 
@@ -342,9 +423,13 @@ class FixtureRig:
         self.mono = [500.0]
         self.backend = FakeLaunchctlBackend(self.root, self.script)
         self.state = self.root / "state"
+        self.backend.approval_root = self.state / "approvals"
         self.controller = Controller(self.state, self.backend,
                                      clock=lambda: self.wall[0],
-                                     monotonic=lambda: self.mono[0])
+                                     monotonic=lambda: self.mono[0],
+                                     test_lifecycle=FixtureLifecycleAdapter(namespace='core'))
+        self.shutdown = self.controller.shutdown   # shared latch for injection
+        self.backend.shutdown = self.shutdown
         self.primary = _spawn(self.root, self.script, "ok")
         self.backend.children.append(self.primary)
         self.backend.service_child = self.primary
@@ -354,13 +439,7 @@ class FixtureRig:
                                        args=(self.sock, self.controller, self.stop_event),
                                        daemon=True)
         self.thread.start()
-        deadline = time.monotonic() + 10
-        while time.monotonic() < deadline:
-            if self.sock.exists():
-                break
-            time.sleep(0.02)
-        if not self.sock.exists():
-            raise AssertionError("fixture controller socket never appeared")
+        _wait_for_unix_listener(self.sock, self.thread)
 
     # -- transport ---------------------------------------------------------
     def op(self, request):

@@ -1,6 +1,7 @@
 """Fixed macOS backend. No caller-provided commands, primary signals or logs."""
 from __future__ import annotations
 import contextlib
+import hashlib
 import http.client
 import json
 import math
@@ -13,17 +14,64 @@ import signal
 import selectors
 import socket
 import stat
+import struct
 import subprocess
 import time
 import threading
+import uuid
 
 from .engine import Fault, atomic_json, canonical_digest, private_dir, _read_json
-from .process_identity import process_identity
-from .runtime_identity import (CONTROLLER_INPUTS, PROXY_INPUTS, file_fact, source_facts)
+from .process_identity import process_identity, process_group_identities
+from .runtime_identity import (CONTROLLER_INPUTS, PROXY_INPUTS, file_fact, source_facts,
+                               _owned_observer_stop)
+
+from .runtime_identity import PROXY_OPTIONAL_INPUTS, native_receipt_fact, read_pin
 
 POLICY_FIELDS = {'version', 'kit_root', 'deployment_root', 'plist', 'auto_plist',
                  'state_dir', 'scratch_dir', 'candidate_port', 'models',
                  'controller_root', 'controller_label'}
+
+
+def controller_job(policy, policy_path, python):
+    """The single generated controller definition used by install and qualify.
+
+    The supervision generation is declared, not observed: the exit timeout
+    and the launchd logging key come from the frozen SHUTDOWN_CONTRACT so
+    installer and qualification share one exact source.
+    """
+    from .shutdown import SHUTDOWN_CONTRACT
+    destination = Path(policy['controller_root'])
+    return {'Label': policy['controller_label'],
+        'ProgramArguments': [python, '-I', str(destination/'restart_controller.py'),
+                             '--policy', str(policy_path), 'serve'],
+        'WorkingDirectory': str(destination), 'RunAtLoad': True, 'KeepAlive': True,
+        'ThrottleInterval': 30,
+        'ExitTimeOut': SHUTDOWN_CONTRACT['supervisor_exit_seconds'],
+        'EnvironmentVariables': {'HOME': str(Path.home()),
+            'PATH': '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
+            **SHUTDOWN_CONTRACT['logging_environment']},
+        'StandardOutPath': '/dev/null', 'StandardErrorPath': '/dev/null'}
+
+
+def controller_supervision(job):
+    return {key: job[key] for key in ('KeepAlive', 'ThrottleInterval', 'RunAtLoad', 'ExitTimeOut')}
+
+
+# Qualification v2 canary-evidence schema (plan §9): the closed envelope key
+# set and derived-check key set qualification revalidates. A fixture
+# runtime (fixture=True subclass) accepts fixture/isolated-launchd
+# evidence classes only; a production runtime accepts exclusively
+# intended-controller evidence — the operator-qualified class — and a
+# fixture record can never masquerade as production qualification.
+CANARY_EVIDENCE_KEYS = {'version', 'scope', 'nonce', 'boot_identity', 'operator_uid',
+                        'controller_identity', 'controller_epoch', 'controller_digest',
+                        'policy_digest', 'controller_plist_digest', 'controller_supervision',
+                        'shutdown_contract', 'canary_label', 'canary_plist_digest',
+                        'incarnations', 'checks', 'detail_digest', 'issued_at', 'issued_monotonic'}
+CANARY_CHECK_KEYS = {'loaded_definition', 'bootstrap', 'keepalive', 'bootout',
+                     'cleanup', 'shutdown_budget'}
+FIXTURE_EVIDENCE_SCOPES = {'fixture', 'isolated-launchd'}
+PRODUCTION_EVIDENCE_SCOPE = 'intended-controller'
 
 
 REQUEST_TIMEOUT = 15.0
@@ -40,6 +88,15 @@ def _identity(pid):
         raise Fault('primary_changed') from None
 
 
+def _journal_identity(pid):
+    """Four-key journal identity; never fabricate a missing pgid or birth."""
+    full = process_identity(pid)
+    if full['uid'] != os.getuid():
+        raise ValueError('foreign_process')
+    return {'pid': full['pid'], 'uid': full['uid'],
+            'pgid': full['pgid'], 'birth': full['birth']}
+
+
 def _regular(path):
     try:
         return file_fact(path)
@@ -51,13 +108,39 @@ def _finite(value):
     return type(value) in (int, float) and math.isfinite(value)
 
 
+def _native_receipt(pin_path, name):
+    if name not in PROXY_OPTIONAL_INPUTS:
+        raise ValueError('native_receipt_invalid')
+    pin_path = Path(pin_path)
+    expects = 'native_artifact' in read_pin(pin_path)
+    present = os.path.lexists(pin_path.parent/name)
+    fact = native_receipt_fact(pin_path)
+    if (fact is not None) != present or present != expects:
+        raise ValueError('native_receipt_unpaired')
+    return fact
+
+
 class Runtime:
     fixture = False
 
-    def __init__(self, policy_path):
+    def __init__(self, policy_path, *, shutdown=None, test_lifecycle=None):
+        from .shutdown import Shutdown, ShutdownRequested
+        if test_lifecycle is not None:
+            from .engine import FixtureLifecyclePort
+            if not isinstance(test_lifecycle, FixtureLifecyclePort):
+                raise Fault('invalid_request')
+            if shutdown is not None and shutdown is not test_lifecycle.shutdown:
+                raise Fault('invalid_request')
+            shutdown = test_lifecycle.shutdown
+        elif type(shutdown) is not Shutdown:
+            raise Fault('invalid_request')
+        self._expected_shutdown = shutdown
+        self.shutdown = shutdown
+        shutdown.checkpoint()
         self.policy_path = Path(policy_path).absolute()
         try:
             policy = _read_json(self.policy_path)
+            shutdown.checkpoint()
             if (not isinstance(policy, dict) or set(policy) != POLICY_FIELDS or
                     type(policy['version']) is not int or policy['version'] != 1):
                 raise ValueError('policy_invalid')
@@ -123,6 +206,7 @@ class Runtime:
             self._key = None
             self._operation_started = None
             self._last_runtime = None
+            self._last_observed = None
             self._last_frozen = None
             self._candidate = None
             self._cleanup_blocked = False
@@ -130,47 +214,692 @@ class Runtime:
             self._manifest_blob = (self.config/'credentials.toml').read_bytes()
             self._loaded_sources = source_facts(self.kit)
             self._last_proxy = None
+            self._proof_state = {'root': None}
+            shutdown.checkpoint()
+            if test_lifecycle is not None:
+                self.recovery = test_lifecycle
+                self._active_operation = object()
+                self._lifecycle_bound = True
+        except ShutdownRequested:
+            raise
         except Fault:
             raise
+        except Exception:
+            raise Fault('runtime_invalid') from None
+
+    def binding_facts(self):
+        """Pre-freeze journal binding facts from already-loaded sources.
+
+        No spawn, no proof: the controller source digest comes from the
+        loaded kit facts and the controller-plist digest is the exact
+        generated controller plist bytes (identical to the installed
+        supervisor file when qualification passes). Null asset/runtime
+        digests bind pre-freeze work only; freeze fills both later.
+        """
+        try:
+            controller = {name: self._loaded_sources[name] for name in CONTROLLER_INPUTS}
+            job = controller_job(self.policy, self.policy_path, self.python)
+            return {'policy_digest': self.policy_digest,
+                    'controller_digest': canonical_digest(controller),
+                    'controller_plist_digest': hashlib.sha256(
+                        plistlib.dumps(job, sort_keys=True)).hexdigest()}
         except Exception:
             raise Fault('runtime_invalid') from None
 
     def release_credentials(self):
         self._key = None
         self._operation_started = None
+        active = getattr(self, '_active_operation', None)
+        self._active_operation = None
+        if active is not None:
+            try:
+                self.recovery.end_operation(active)
+            except Exception:
+                raise Fault('recovery_invalid') from None
+
+    def bind_lifecycle(self, shutdown, recovery):
+        from .recovery import RecoveryStore
+        from .shutdown import Shutdown
+        if (getattr(self, '_lifecycle_bound', False)
+                or type(shutdown) is not Shutdown or type(recovery) is not RecoveryStore
+                or shutdown is not self._expected_shutdown
+                or recovery.state_dir.resolve() != self.state.resolve()):
+            raise Fault('recovery_invalid')
+        self.shutdown = shutdown
+        self.recovery = recovery
+        self._active_operation = None
+        self._lifecycle_bound = True
+
+    def begin_operation(self, handle):
+        from .shutdown import ShutdownRequested
+        if (handle is None or not getattr(self, '_lifecycle_bound', False)
+                or self._active_operation is not None):
+            raise Fault('recovery_invalid')
+        try:
+            self.shutdown.checkpoint()
+            self.recovery.require_clear(handle)
+        except ShutdownRequested:
+            raise Fault('controller_stopping') from None
+        except Exception:
+            raise Fault('recovery_invalid') from None
+        self._active_operation = handle
+
+    def refresh_operation(self, handle):
+        """Re-bind the exact refreshed journal ticket after a phase change.
+
+        The store issues a new immutable ticket when an operation row is
+        rewritten (e.g. canary_phase); the in-memory operation context
+        must carry the refreshed handle, and the replaced one is no
+        longer admissible anywhere.
+        """
+        from .shutdown import ShutdownRequested
+        if (handle is None or not getattr(self, '_lifecycle_bound', False)
+                or self._active_operation is None):
+            raise Fault('recovery_invalid')
+        try:
+            self.shutdown.checkpoint()
+            self.recovery.require_clear(handle)
+        except ShutdownRequested:
+            raise Fault('controller_stopping') from None
+        except Exception:
+            raise Fault('recovery_invalid') from None
+        self._active_operation = handle
+
+    def _admit_helper(self):
+        from .shutdown import ShutdownRequested
+        if not getattr(self, '_lifecycle_bound', False) or self._active_operation is None:
+            raise Fault('recovery_invalid')
+        try:
+            self.shutdown.checkpoint()
+            self.recovery.require_clear(self._active_operation)
+        except ShutdownRequested:
+            raise Fault('controller_stopping') from None
+        except Exception:
+            raise Fault('recovery_invalid') from None
 
     def _group_exists(self, pgid):
-        result = subprocess.run(['/bin/ps', '-axo', 'pgid='], env=self.env,
-                                capture_output=True, text=True, timeout=5)
-        if result.returncode:
-            raise Fault('candidate_cleanup_failed')
-        return str(pgid) in result.stdout.split()
+        return bool(process_group_identities(pgid))
 
     def _owned_stop(self, child, birth, grace=20):
-        try:
-            if child.poll() is not None:
-                if self._group_exists(child.pid):
-                    raise Fault('candidate_cleanup_failed')
-                child.wait()
-                return
-            if birth is None or _identity(child.pid) != birth or os.getpgid(child.pid) != child.pid:
-                raise Fault('candidate_cleanup_failed')
-            # Only a retained owned child/group; NEVER the primary listener.
-            os.killpg(child.pid, signal.SIGTERM)
-            child.wait(timeout=grace)
-            if self._group_exists(child.pid):
-                raise Fault('candidate_cleanup_failed')
-        except Exception:
-            # The child can exit between poll and kernel identity inspection.
-            # Reap that ordinary failure, but never signal an unknown identity.
-            with contextlib.suppress(Exception):
-                if child.poll() is not None and not self._group_exists(child.pid):
-                    child.wait()
-                    return
+        if type(grace) not in (int, float) or grace <= 0:
             self._cleanup_blocked = True
-            raise Fault('candidate_cleanup_failed') from None
+            raise Fault("candidate_cleanup_failed")
+        deadline = time.monotonic() + grace
+        if not deadline < float("inf"):
+            self._cleanup_blocked = True
+            raise Fault("candidate_cleanup_failed")
 
-    def _capture(self, argv, timeout=90, env=None, control=False):
+        def remaining():
+            local = max(0.0, deadline - time.monotonic())
+            value = self.shutdown.remaining(local, cleanup=True)
+            if value <= 0:
+                raise RuntimeError()
+            return value
+
+        try:
+            def valid_birth(value):
+                return (
+                    type(value) is list
+                    and len(value) == 2
+                    and type(value[0]) is int
+                    and value[0] > 0
+                    and type(value[1]) is int
+                    and 0 <= value[1] < 1_000_000
+                )
+
+            def valid_full(identity):
+                return (
+                    type(identity) is dict
+                    and set(identity) == {"pid", "uid", "ppid", "pgid", "birth"}
+                    and type(identity["pid"]) is int
+                    and identity["pid"] > 0
+                    and type(identity["uid"]) is int
+                    and identity["uid"] >= 0
+                    and type(identity["ppid"]) is int
+                    and identity["ppid"] >= 0
+                    and type(identity["pgid"]) is int
+                    and identity["pgid"] > 0
+                    and valid_birth(identity["birth"])
+                )
+
+            def current_leader():
+                identity = process_identity(child.pid)
+                if not valid_full(identity):
+                    raise RuntimeError()
+                if (
+                    identity["pid"] != child.pid
+                    or identity["uid"] != os.getuid()
+                    or identity["pgid"] != child.pid
+                    or identity["birth"] != captured_birth
+                ):
+                    raise RuntimeError()
+                if captured_pgid is not None and identity["pgid"] != captured_pgid:
+                    raise RuntimeError()
+                return identity
+
+            def empty_group():
+                remaining()
+                first = process_group_identities(child.pid)
+                if type(first) is not tuple or first:
+                    raise RuntimeError()
+                remaining()
+                second = process_group_identities(child.pid)
+                if type(second) is not tuple or second:
+                    raise RuntimeError()
+                remaining()
+                child.wait(timeout=0)
+
+            def validate_census(leader):
+                remaining()
+                census = process_group_identities(child.pid)
+                if type(census) is not tuple or not census:
+                    raise RuntimeError()
+                seen = set()
+                found_leader = False
+                for member in census:
+                    if not valid_full(member):
+                        raise RuntimeError()
+                    pid = member["pid"]
+                    if (
+                        pid in seen
+                        or member["uid"] != os.getuid()
+                        or member["pgid"] != child.pid
+                        or member["birth"] < captured_birth
+                    ):
+                        raise RuntimeError()
+                    seen.add(pid)
+                    if pid == child.pid:
+                        if member != leader:
+                            raise RuntimeError()
+                        found_leader = True
+                if not found_leader:
+                    raise RuntimeError()
+                remaining()
+
+            if type(child.pid) is not int or child.pid <= 0:
+                raise RuntimeError()
+            remaining()
+            if birth is None:
+                if child.poll() is None:
+                    raise RuntimeError()
+                empty_group()
+                return None
+            if type(birth) is not dict or set(birth) not in (
+                {"pid", "uid", "birth"},
+                {"pid", "uid", "pgid", "birth"},
+            ):
+                raise RuntimeError()
+            if type(birth["pid"]) is not int or birth["pid"] != child.pid:
+                raise RuntimeError()
+            if type(birth["uid"]) is not int or birth["uid"] != os.getuid():
+                raise RuntimeError()
+            if "pgid" in birth:
+                if type(birth["pgid"]) is not int or birth["pgid"] != child.pid:
+                    raise RuntimeError()
+                captured_pgid = birth["pgid"]
+            else:
+                captured_pgid = None
+            captured_birth = birth["birth"]
+            if not valid_birth(captured_birth):
+                raise RuntimeError()
+
+            remaining()
+            if child.poll() is not None:
+                empty_group()
+                return None
+            leader = current_leader()
+            validate_census(leader)
+
+            if child.poll() is not None:
+                empty_group()
+                return None
+            current_leader()
+            remaining()
+            os.killpg(child.pid, signal.SIGTERM)
+
+            while True:
+                remaining()
+                if child.poll() is not None:
+                    empty_group()
+                    return None
+                leader = current_leader()
+                validate_census(leader)
+                timeout = min(0.05, remaining())
+                self.shutdown.wait(timeout, cleanup=True)
+        except Exception:
+            # The child can exit between a poll and a kernel identity
+            # inspection — including immediately after our own SIGTERM.
+            # That is an ordinary, expected exit, not a blocked state:
+            # bounded-wait for the death to land, reap it, and prove the
+            # group empty with two scans. Fail closed only when the child
+            # stays alive with unreadable identity, or members remain.
+            # Never signal an unknown identity from this path.
+            try:
+                end = time.monotonic() + min(2.0, max(0.0, deadline - time.monotonic()))
+                while child.poll() is None and time.monotonic() < end:
+                    time.sleep(0.01)
+                if child.poll() is not None:
+                    # poll() reaped the child; prove emptiness with two scans
+                    # before any wait() call. No signal is ever issued here.
+                    first = process_group_identities(child.pid)
+                    second = process_group_identities(child.pid)
+                    if (type(first) is tuple and not first
+                            and type(second) is tuple and not second):
+                        return None
+            except Exception:
+                pass
+            self._cleanup_blocked = True
+            raise Fault("candidate_cleanup_failed") from None
+
+    _PROOF_OPS = frozenset({'bind', 'git_root', 'git_head', 'git_entries',
+                            'native_sources', 'native_tree', 'native_exports'})
+    _PROOF_REQUEST_LIMIT_BYTES = 4096
+    _PROOF_DATA_LIMIT = 4 * 1024 * 1024
+    _PROOF_MAX_REQUESTS = 64
+
+    def _serve_proof_channel(self, connection, deadline, state):
+        """Serve one worker's observations; each executes through the action gate.
+
+        Single-threaded: the parent blocks in recv while the worker runs;
+        every observation is a journalled, tracked helper spawn. No observer
+        commits after the shutdown latch; disconnection, unknown observer
+        state or cleanup failure is sticky recovery uncertainty, never a
+        success digest. One absolute deadline bounds the whole channel.
+        """
+        requests = 0
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise Fault('service_control_timeout')
+            request = self._proof_read_request(connection, deadline)
+            if request is None:  # worker closed the channel: proof finished
+                return
+            requests += 1
+            if requests > self._PROOF_MAX_REQUESTS:
+                raise Fault('invalid_request')
+            self._dispatch_proof_observation(connection, request, state, deadline)
+
+    def _proof_read_request(self, connection, deadline):
+        """Read one newline-terminated JSON request, exactly; None on EOF.
+
+        Silence while the worker verifies sources is normal: recv retries
+        until the absolute deadline, never a per-request timeout.
+        """
+        chunks = bytearray()
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise Fault('service_control_timeout')
+            connection.settimeout(min(remaining, 0.5))
+            try:
+                part = connection.recv(4096)
+            except TimeoutError:
+                continue
+            except (BlockingIOError, InterruptedError):
+                continue
+            if not part:
+                if chunks:
+                    raise Fault('invalid_request')
+                return None
+            chunks.extend(part)
+            if len(chunks) > self._PROOF_REQUEST_LIMIT_BYTES:
+                raise Fault('invalid_request')
+            if b'\n' in chunks:
+                line, _, tail = bytes(chunks).partition(b'\n')
+                # No pipelining: bytes after the first newline refuse.
+                if tail:
+                    raise Fault('invalid_request')
+                if not line:
+                    raise Fault('invalid_request')
+                return line
+
+    def _dispatch_proof_observation(self, connection, request, state, deadline):
+        """Validate one closed observation request and execute it journalled."""
+        try:
+            decoded = json.loads(request)
+        except Exception:
+            raise Fault('invalid_request') from None
+        if (type(decoded) is not dict or decoded.get('version') != 1
+                or type(decoded.get('seq')) is not int or decoded['seq'] < 1
+                or type(decoded.get('op')) is not str):
+            raise Fault('invalid_request')
+        op = decoded['op']
+        if op not in self._PROOF_OPS:
+            raise Fault('invalid_request')
+        if op == 'bind':
+            if (decoded['seq'] != 1 or set(decoded) != {
+                    'version', 'seq', 'op', 'nonce', 'pid', 'source_sha256',
+                    'pin_sha256'}):
+                raise Fault('invalid_request')
+        else:
+            if decoded['seq'] != state['next_seq']:
+                raise Fault('invalid_request')
+            if op == 'git_root':
+                if set(decoded) != {'version', 'seq', 'op', 'path'}:
+                    raise Fault('invalid_request')
+            elif op == 'git_entries':
+                if set(decoded) != {'version', 'seq', 'op', 'relative'}:
+                    raise Fault('invalid_request')
+                if (type(decoded['relative']) is not str or not decoded['relative']
+                        or decoded['relative'].startswith('/')):
+                    raise Fault('invalid_request')
+            elif set(decoded) != {'version', 'seq', 'op'}:
+                raise Fault('invalid_request')
+            state['next_seq'] = decoded['seq'] + 1
+        status, data = self._execute_proof_observation(op, decoded, state, deadline)
+        self._proof_respond(connection, status, data)
+
+    def _execute_proof_observation(self, op, request, state, deadline):
+        """Run one observation through the journal-attached action gate.
+
+        Returns (0, data) on success or (1, b'') refusal. Protocol forgery
+        (bind mismatch) tears the channel down; admission refusals answer
+        the worker with a refusal byte and fail its proof.
+        """
+        if op == 'bind':
+            fact = self._loaded_sources['core/restart_control/runtime_identity.py']
+            if (request['nonce'] != state['nonce']
+                    or request['source_sha256'] != fact['sha256']
+                    or request['pid'] != state['pid']
+                    or request['pin_sha256'] != state['pin_sha256']):
+                raise Fault('invalid_request')
+            return 0, b''
+        if op == 'bind-shape':  # unreachable; keeps linters honest
+            raise Fault('invalid_request')
+        if op == 'git_root':
+            if state['root'] is not None:
+                return 1, b''
+            try:
+                nominated = Path(request['path']).resolve(strict=True)
+            except Exception:
+                return 1, b''
+            if nominated.name != 'litellm' or not nominated.is_dir():
+                return 1, b''
+            root_raw = self._capture(
+                ['git', '-C', str(nominated), 'rev-parse', '--show-toplevel'],
+                timeout=60, purpose='runtime-proof')
+            root = Path(root_raw.decode().strip()).resolve()
+            head = self._capture(
+                ['git', '-C', str(root), 'rev-parse', 'HEAD'],
+                timeout=60, purpose='runtime-proof').decode().strip()
+            pin = read_pin(self.config/'pin.lock')
+            if not head.startswith(pin['patch_tip']):
+                return 1, b''
+            state['root'] = root
+            return 0, str(root).encode()
+        root = state['root']
+        if root is None:
+            return 1, b''
+        if op == 'git_head':
+            return 0, self._capture(
+                ['git', '-C', str(root), 'rev-parse', 'HEAD'],
+                timeout=60, purpose='runtime-proof')
+        if op == 'git_entries':
+            relative = request['relative']
+            try:
+                (root/relative).resolve(strict=True).relative_to(root)
+            except Exception:
+                return 1, b''
+            return 0, self._capture(
+                ['git', '-C', str(root), 'ls-tree', '-rz', 'HEAD', '--', relative],
+                timeout=60, purpose='runtime-proof')
+        if op == 'native_sources':
+            return 0, self._capture(
+                ['git', '-C', str(root), 'ls-tree', '-rz', 'HEAD', '--',
+                 'litellm-rust', '.cargo'],
+                timeout=60, purpose='runtime-proof')
+        if op == 'native_tree':
+            return 0, self._capture(
+                ['git', '-C', str(root), 'rev-parse', 'HEAD:litellm-rust'],
+                timeout=60, purpose='runtime-proof')
+        if op == 'native_exports':
+            from .runtime_identity import NATIVE_PATH
+            return 0, self._capture(
+                ['/usr/bin/nm', '-gU', str(root/NATIVE_PATH)],
+                timeout=60, purpose='runtime-proof')
+        raise Fault('invalid_request')
+
+    def _proof_respond(self, connection, status, data):
+        """Fixed status/length framing; refusal is one byte, no payload."""
+        if data is None:
+            data = b''
+        if len(data) > self._PROOF_DATA_LIMIT:
+            raise Fault('invalid_request')
+        connection.settimeout(2.0)
+        connection.sendall(struct.pack('>BI', status, len(data)))
+        if data:
+            connection.sendall(data)
+
+    _PROOF_WORKER_SOURCE = 'core/restart_control/proof_worker.py'
+
+    def run_proof_worker(self):
+        """Fresh isolated pinned-interpreter proof worker for every proof.
+
+        The worker is our own single helper child: fixed script, -I -B, no
+        controller-package imports, one inherited anonymous socketpair. The
+        parent owns its Popen/PID/birth/group and serves every observation
+        through the journal-attached action gate; worker stdout carries only
+        the existing bounded proof result. Cleanup follows _capture's exact
+        contract: single SIGTERM, bounded reap, group census, sticky
+        uncertainty on any doubt.
+        """
+        import socket as socket_module
+        from .shutdown import ShutdownRequested
+        if (self._proof_state.get('root') is not None or
+                self._candidate is not None or self._cleanup_blocked):
+            raise Fault('recovery_invalid')
+        worker_source = self.controller_root/'restart_control'/'proof_worker.py'
+        fact = self._loaded_sources[self._PROOF_WORKER_SOURCE]
+        if file_fact(worker_source) != fact:
+            raise Fault('runtime_invalid')
+        nonce = uuid.uuid4().hex
+        spawn_id = uuid.uuid4().hex
+        parent_end, child_end = socket_module.socketpair()
+        child = None
+        journal = None
+        birth = None
+        handle = None
+        out = None
+        try:
+            self._admit_helper()
+            handle = self.recovery.spawn_intent(self._active_operation,
+                                                spawn_id, 'runtime-proof')
+            try:
+                permit = self.shutdown.commit('runtime-proof')
+                self.shutdown.claim(permit)
+            except ShutdownRequested:
+                with contextlib.suppress(Exception):
+                    self.recovery.mark_uncertain(handle)
+                raise Fault('controller_stopping') from None
+            deadline = time.monotonic() + 120
+            argv = [self.python, '-I', '-B', str(worker_source),
+                    str(self.config/'pin.lock'), str(child_end.fileno()), nonce]
+            child = subprocess.Popen(
+                argv, env=self.env, cwd=self.config, stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                start_new_session=True, pass_fds=(child_end.fileno(),))
+            try:
+                journal = _journal_identity(child.pid)
+                birth = {k: journal[k] for k in ('pid', 'uid', 'birth')}
+            except Fault:
+                if child.poll() is None:
+                    raise
+                journal = None
+                birth = None
+            if journal is not None:
+                self.recovery.spawn_owned(handle, journal)
+            state = {'next_seq': 2, 'nonce': nonce, 'pid': child.pid,
+                     'pin_sha256': file_fact(self.config/'pin.lock')['sha256'],
+                     'root': None}
+            child_end.close()
+            try:
+                self._serve_proof_channel(parent_end, deadline, state)
+                out = self._read_worker_stdout(child, deadline)
+            finally:
+                with contextlib.suppress(Exception):
+                    parent_end.close()
+                with contextlib.suppress(Exception):
+                    if child.poll() is not None:
+                        child.wait(timeout=1)
+                if child.stdout is not None:
+                    child.stdout.close()
+        except Fault:
+            self._cleanup_blocked = self._cleanup_blocked or (journal is None)
+            if handle is not None:
+                with contextlib.suppress(Exception):
+                    self.recovery.mark_uncertain(handle)
+            raise
+        except Exception:
+            # Journal write or identity loss: never invent ownership/closure.
+            self._cleanup_blocked = True
+            if handle is not None:
+                with contextlib.suppress(Exception):
+                    self.recovery.mark_uncertain(handle)
+            raise Fault('recovery_invalid') from None
+        else:
+            if journal is not None:
+                try:
+                    self.recovery.spawn_closed(handle, journal, cleanup_proven=True)
+                except Exception:
+                    self._cleanup_blocked = True
+                    raise Fault('recovery_invalid') from None
+            self._proof_state['root'] = None
+            return out
+        finally:
+            # Worker cleanup is never an unowned escalation: our own child,
+            # identity-proven stop through _owned_stop, bounded reap.
+            with contextlib.suppress(Exception):
+                child_end.close()
+            if child is not None:
+                try:
+                    self._owned_stop(child, birth)
+                finally:
+                    if child.stdout is not None:
+                        child.stdout.close()
+                    if child.stderr is not None:
+                        child.stderr.close()
+
+    def _read_worker_stdout(self, child, deadline):
+        """Bounded proof-result read during pipe reads, not post-buffering."""
+        stream = child.stdout
+        assert stream is not None
+        out = bytearray()
+        with selectors.DefaultSelector() as reader:
+            reader.register(stream, selectors.EVENT_READ)
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise Fault('service_control_timeout')
+                if not reader.select(min(remaining, 0.1)):
+                    continue
+                part = os.read(stream.fileno(),
+                               min(65536, HELPER_OUTPUT_LIMIT + 1 - len(out)))
+                if not part:
+                    break
+                out.extend(part)
+                if len(out) > HELPER_OUTPUT_LIMIT:
+                    raise Fault('gate_failed')
+        child.wait(timeout=max(.001, deadline-time.monotonic()))
+        if child.returncode:
+            raise Fault('gate_failed')
+        return bytes(out)
+
+    _observe_stderr = False
+
+    def _observe(self, argv, timeout, env=None, control=False):
+        """Run one read-only observation child (lsof, launchctl print).
+
+        Latch-checked before the child is created, bounded pipe reads
+        against one absolute deadline, and SIGTERM-only cleanup through
+        the shared primitive — the last two implicit-kill subprocess.run
+        sites are gone. A surviving observer after its grace window is
+        sticky cleanup uncertainty. Like the pre-existing observation
+        one-shots, these short-lived read-only children are outside the
+        journaled tracked-spawn family (per-poll journaling would
+        exhaust the frozen 64-spawn recovery cap during acceptance
+        polling); the latch check before each child and the bounded
+        no-escalation cleanup are the SC-003/SC-004 obligations here.
+        Unlike _capture a nonzero exit is a RESULT, not a failure: lsof
+        returns 1 for no listener and launchctl print is nonzero for a
+        missing service, so callers inspect the status.
+        """
+        from .shutdown import ShutdownRequested
+        try:
+            self.shutdown.checkpoint()
+        except ShutdownRequested:
+            raise Fault('controller_stopping') from None
+        if self._cleanup_blocked:
+            raise Fault('candidate_cleanup_failed')
+        if self._operation_started is None:
+            self._operation_started = time.monotonic()
+        remaining = 900 - (time.monotonic() - self._operation_started)
+        if remaining <= 0:
+            raise Fault('service_control_timeout' if control else 'gate_failed')
+        child = None
+        try:
+            deadline = time.monotonic() + min(timeout, remaining)
+            child = subprocess.Popen(argv, env=self.env if env is None else env,
+                                     cwd=self.config, stdin=subprocess.DEVNULL,
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                     start_new_session=True)
+            stream, errors = child.stdout, child.stderr
+            assert stream is not None and errors is not None
+            out, err = bytearray(), bytearray()
+            with selectors.DefaultSelector() as reader:
+                reader.register(stream, selectors.EVENT_READ)
+                reader.register(errors, selectors.EVENT_READ)
+                while reader.get_map():
+                    available = deadline - time.monotonic()
+                    if available <= 0 or not reader.select(available):
+                        raise subprocess.TimeoutExpired(argv, timeout)
+                    for key, _ in reader.select(0):
+                        target = out if key.fd == stream.fileno() else err
+                        data = os.read(key.fd,
+                                       min(65536, HELPER_OUTPUT_LIMIT + 1 - len(target)))
+                        if not data:
+                            reader.unregister(key.fileobj)
+                            continue
+                        target.extend(data)
+                    if len(out) > HELPER_OUTPUT_LIMIT or len(err) > HELPER_OUTPUT_LIMIT:
+                        raise ValueError('observation_overflow')
+            child.wait(timeout=max(.001, deadline-time.monotonic()))
+            if self._observe_stderr:
+                # The not-found signature launchctl prints for a missing
+                # service ("Could not find service ...") goes to STDERR;
+                # callers classify absence on the returned bytes, so both
+                # streams must be present in the observation result. On
+                # a successful print stderr is empty, so field parsing
+                # sees the same payload as before.
+                return child.returncode, bytes(out) + bytes(err)
+            return child.returncode, bytes(out)
+        except subprocess.TimeoutExpired:
+            raise Fault('service_control_timeout' if control else 'gate_failed') from None
+        except ShutdownRequested:
+            raise Fault('controller_stopping') from None
+        except Exception:
+            raise Fault('unmanaged_listener') from None
+        finally:
+            # Single SIGTERM, bounded reap, never SIGKILL or killpg. A
+            # surviving observer is sticky; the business Fault still
+            # propagates.
+            if child is not None:
+                try:
+                    if child.poll() is None:
+                        _owned_observer_stop(child)
+                except Exception:
+                    self._cleanup_blocked = True
+                finally:
+                    if child.stdout is not None:
+                        child.stdout.close()
+                    if child.stderr is not None:
+                        child.stderr.close()
+
+    def _capture(self, argv, timeout=90, env=None, control=False, purpose=None):
+        from .shutdown import ShutdownRequested
+        spawn_id = uuid.uuid4().hex
+        if purpose is None:
+            purpose = 'diagnostic'
+        self._admit_helper()
         if self._candidate is not None or self._cleanup_blocked:
             raise Fault('candidate_cleanup_failed')
         if self._operation_started is None:
@@ -178,69 +907,144 @@ class Runtime:
         remaining = 900 - (time.monotonic() - self._operation_started)
         if remaining <= 0:
             raise Fault('service_control_timeout' if control else 'gate_failed')
-        deadline = time.monotonic() + min(timeout, remaining)
-        child = subprocess.Popen(argv, env=self.env if env is None else env, cwd=self.config,
-                                 stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                 stderr=subprocess.DEVNULL, start_new_session=True)
+        handle = self.recovery.spawn_intent(self._active_operation, spawn_id, purpose)
+        try:
+            permit = self.shutdown.commit(purpose)
+            self.shutdown.claim(permit)
+        except ShutdownRequested:
+            with contextlib.suppress(Exception):
+                self.recovery.mark_uncertain(handle)
+            raise Fault('controller_stopping') from None
+        child = None
+        journal = None
         birth = None
+        result = None
         try:
             try:
-                birth = _identity(child.pid)
-            except Fault:
-                if child.poll() is None:
-                    raise
-            stream = child.stdout
-            assert stream is not None  # Popen was explicitly given stdout=PIPE
-            out = bytearray()
-            with selectors.DefaultSelector() as reader:
-                reader.register(stream, selectors.EVENT_READ)
-                while True:
-                    available = deadline - time.monotonic()
-                    if available <= 0 or not reader.select(available):
-                        raise subprocess.TimeoutExpired(argv, timeout)
-                    part = os.read(stream.fileno(), min(65536, HELPER_OUTPUT_LIMIT + 1 - len(out)))
-                    if not part:
-                        break
-                    out.extend(part)
-                    if len(out) > HELPER_OUTPUT_LIMIT:
-                        raise Fault('gate_failed')
-            child.wait(timeout=max(.001, deadline-time.monotonic()))
-            if child.returncode:
-                raise Fault('service_control_denied' if control else 'gate_failed')
-            return bytes(out)
-        except subprocess.TimeoutExpired:
-            raise Fault('service_control_timeout' if control else 'gate_failed') from None
-        finally:
-            try:
-                self._owned_stop(child, birth)
+                deadline = time.monotonic() + min(timeout, remaining)
+                child = subprocess.Popen(argv, env=self.env if env is None else env,
+                                         cwd=self.config, stdin=subprocess.DEVNULL,
+                                         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                         start_new_session=True)
+                try:
+                    journal = _journal_identity(child.pid)
+                    birth = {k: journal[k] for k in ('pid', 'uid', 'birth')}
+                except Fault:
+                    if child.poll() is None:
+                        raise
+                if journal is not None:
+                    self.recovery.spawn_owned(handle, journal)
+                stream = child.stdout
+                assert stream is not None  # Popen was explicitly given stdout=PIPE
+                out = bytearray()
+                with selectors.DefaultSelector() as reader:
+                    reader.register(stream, selectors.EVENT_READ)
+                    while True:
+                        available = deadline - time.monotonic()
+                        if available <= 0 or not reader.select(available):
+                            raise subprocess.TimeoutExpired(argv, timeout)
+                        part = os.read(stream.fileno(),
+                                       min(65536, HELPER_OUTPUT_LIMIT + 1 - len(out)))
+                        if not part:
+                            break
+                        out.extend(part)
+                        if len(out) > HELPER_OUTPUT_LIMIT:
+                            raise Fault('gate_failed')
+                child.wait(timeout=max(.001, deadline-time.monotonic()))
+                if child.returncode:
+                    raise Fault('service_control_denied' if control else 'gate_failed')
+                result = bytes(out)
             finally:
-                if child.stdout is not None:
-                    child.stdout.close()
+                if child is not None:
+                    try:
+                        self._owned_stop(child, birth)
+                    finally:
+                        if child.stdout is not None:
+                            child.stdout.close()
+                        if child.stderr is not None:
+                            child.stderr.close()
+        except Fault:
+            # Deliberate conservatism: a helper that failed its business work
+            # (e.g. nonzero exit -> gate_failed) is journaled 'uncertain' even
+            # when cleanup was fully proven. The child is dead and reaped, so
+            # the label is semantically conservative, not exact — but an
+            # uncertain row only costs a cleared-ticket reconciliation before
+            # the next admission, and never fabricates closure for a helper
+            # whose work failed.
+            self._cleanup_blocked = self._cleanup_blocked or (journal is None)
+            with contextlib.suppress(Exception):
+                self.recovery.mark_uncertain(handle)
+            raise
+        except subprocess.TimeoutExpired:
+            with contextlib.suppress(Exception):
+                self.recovery.mark_uncertain(handle)
+            raise Fault('service_control_timeout' if control else 'gate_failed') from None
+        except Exception:
+            # Journal write or identity loss: never invent ownership/closure,
+            # stay sticky and refuse next work with a closed Fault.
+            with contextlib.suppress(Exception):
+                self.recovery.mark_uncertain(handle)
+            self._cleanup_blocked = True
+            raise Fault('recovery_invalid') from None
+        else:
+            if journal is not None:
+                try:
+                    self.recovery.spawn_closed(handle, journal, cleanup_proven=True)
+                except Exception:
+                    # Close-write failure after fully proven cleanup: state is
+                    # preserved and we fail loud; never return success while
+                    # the durable close is unproven.
+                    self._cleanup_blocked = True
+                    raise Fault('recovery_invalid') from None
+            return result
 
     def _listener(self, port):
-        try:
-            r = subprocess.run(['/usr/sbin/lsof', '-t', '-nP', '-iTCP:'+str(port), '-sTCP:LISTEN'],
-                               env=self.env, capture_output=True, timeout=5)
-            values = r.stdout.decode().split()
-            if r.returncode == 1 and not values and not r.stderr.strip():
-                return None
-            if r.returncode or not values or any(not v.isdigit() for v in values):
-                raise ValueError('unknown_listener')
-            pids = set(map(int, values))
-            if len(pids) != 1:
-                raise ValueError('ambiguous_listener')
-            return _identity(pids.pop())
-        except Exception:
-            raise Fault('unmanaged_listener') from None
+        if type(port) is not int or port not in (self.port, self.policy['candidate_port']):
+            raise Fault('unmanaged_listener')
+        status, out = self._observe(['/usr/sbin/lsof', '-t', '-nP', '-iTCP:'+str(port), '-sTCP:LISTEN'],
+                                    timeout=10)
+        # lsof exit 1 with empty output and empty stderr is its documented
+        # "nothing matches" result; any other shape is an unknown state.
+        if status == 1 and not out.strip():
+            return None
+        values = out.decode().split()
+        if status or not values or any(not v.isdigit() for v in values):
+            raise Fault('unmanaged_listener')
+        pids = set(map(int, values))
+        if len(pids) != 1:
+            raise Fault('ambiguous_listener')
+        return _identity(pids.pop())
 
-    def _job_state(self, label=None):
+    def _job_state(self, label=None, expected=None, expected_path=None,
+                   timeout=10):
         label = label or self.label
+        controller_check = expected is not None
+        expected = self.job if expected is None else expected
+        expected_path = self.auto_plist if expected_path is None else expected_path
+        status = None
         try:
-            r = subprocess.run(['/bin/launchctl', 'print', f'gui/{os.getuid()}/'+label],
-                               env=self.env, capture_output=True, text=True, timeout=10)
-            if r.returncode:
-                return None
-            text = r.stdout
+            # launchctl's not-found signature is written to stderr;
+            # include it in this observation's returned bytes so the
+            # absence classification can match it.
+            self._observe_stderr = True
+            try:
+                status, raw = self._observe(['/bin/launchctl', 'print', f'gui/{os.getuid()}/'+label],
+                                            timeout=timeout)
+            finally:
+                self._observe_stderr = False
+            if status:
+                # launchctl print's documented not-found signature (exit
+                # 113 with the fixed "Could not find service" text) is
+                # the ONLY nonzero result classified as absence; any
+                # other nonzero status or an observation exception is an
+                # indeterminate observation, never proof the job is
+                # gone (plan §4: classify permission/unsupported-query
+                # failures as refusal, not job absence).
+                if (status == 113
+                        and b"Could not find service" in raw):
+                    return None
+                raise Fault('unmanaged_listener')
+            text = raw.decode('utf-8', 'replace')
             def field(key):
                 match = re.search(r'(?m)^\s*'+re.escape(key)+r' = (.+)$', text)
                 return match.group(1).strip() if match else None
@@ -254,12 +1058,39 @@ class Runtime:
                 for line in envmatch.group(1).splitlines():
                     if ' => ' in line:
                         key, value = line.strip().split(' => ', 1)
+                        # A repeated key with a DIFFERENT value cannot
+                        # attest which one launchd actually loaded; the
+                        # observation is ambiguous and refuses rather
+                        # than picking one. An identical repeat is not
+                        # ambiguous: launchd re-emits injected defaults
+                        # (e.g. OSLogRateLimit) alongside the plist's own
+                        # copy, and both sightings agree.
+                        if key in actual_env and actual_env[key] != value:
+                            return None
                         actual_env[key] = value
-            parity = (field('path') == str(self.auto_plist) and args == self.job['ProgramArguments']
-                      and all(actual_env.get(k) == v for k, v in self.job['EnvironmentVariables'].items())
-                      and field('minimum runtime') == str(self.supervision['ThrottleInterval']))
+            parity = (field('path') == str(expected_path) and args == expected['ProgramArguments']
+                      and all(actual_env.get(k) == v for k, v in expected['EnvironmentVariables'].items())
+                      and field('minimum runtime') == str(expected['ThrottleInterval']))
+            if controller_check:
+                # launchd may add only its matching service-name metadata.
+                # Read the unique top-level observation; nested or duplicate
+                # fields cannot attest the controller's shutdown grace period.
+                exit_timeouts = re.findall(r'(?m)^\texit timeout = ([^\r\n]+)$', text)
+                exit_parity = (len(exit_timeouts) == 1 and
+                               exit_timeouts[0].strip() == str(expected['ExitTimeOut']))
+                explicit = dict(actual_env)
+                if explicit.get('XPC_SERVICE_NAME') == label:
+                    explicit.pop('XPC_SERVICE_NAME')
+                parity = (parity and exit_parity and field('program') == expected['ProgramArguments'][0]
+                          and field('working directory') == expected['WorkingDirectory']
+                          and explicit == expected['EnvironmentVariables'])
             return {'identity': identity, 'runs': int(runs) if runs and runs.isdigit() else None,
                     'parity': parity}
+        except Fault:
+            # The explicit refusal above (indeterminate observation) must
+            # propagate, never be flattened to a None "absence" that
+            # cleanup would misread as proven removal.
+            raise
         except Exception:
             return None
 
@@ -281,7 +1112,7 @@ class Runtime:
                 managed = False
         return {'identity': identity, 'managed': managed}
 
-    def freeze(self):
+    def freeze(self, *, reuse=False):
         try:
             if canonical_digest(_read_json(self.policy_path)) != self.policy_digest:
                 raise ValueError('policy_changed')
@@ -297,31 +1128,78 @@ class Runtime:
                 if fact != facts[name]:
                     raise ValueError('controller_copy_changed')
                 controller[name] = fact
-            proxy = {name: _regular(self.config/name) for name in
+            proxy: dict[str, object] = {name: _regular(self.config/name) for name in
                      (*PROXY_INPUTS, self.label+'.plist', self.label+'.rotate.plist')}
+            for name in PROXY_OPTIONAL_INPUTS:
+                proxy['optional/'+name] = _native_receipt(self.config/'pin.lock', name)
             inputs: dict[str, object] = {'deploy.conf.sh': _regular(self.deployment/'deploy.conf.sh'),
                       'auto_plist': _regular(self.auto_plist)}
+            deployment_pin = self.deployment/'deployments'/self.name/'pin.lock'
             for name in ('overlay.yaml', 'credentials.toml', 'pin.lock'):
                 inputs['deployment/'+name] = _regular(self.deployment/'deployments'/self.name/name)
+            for name in PROXY_OPTIONAL_INPUTS:
+                inputs['deployment/'+name] = _native_receipt(deployment_pin, name)
             exemptions = self.deployment/'drift-exemptions.yaml'
             inputs['drift-exemptions.yaml'] = _regular(exemptions) if exemptions.exists() else None
-            proof = json.loads(self._capture([self.python, str(self.kit/'core/restart_control/runtime_identity.py'),
-                                             str(self.config/'pin.lock')], timeout=90))
-            runtime_digest = proof['runtime_digest']
-            full = {'kit': facts, 'proxy': proxy, 'inputs': inputs,
-                    'policy_digest': self.policy_digest, 'runtime_digest': runtime_digest,
-                    'controller': controller}
+            observed = {'kit': facts, 'proxy': proxy, 'inputs': inputs,
+                        'policy_digest': self.policy_digest, 'controller': controller}
+            if reuse and self._last_runtime is not None and self._last_observed == observed:
+                # Call-site-gated restart revalidation. A prepare-stage freeze
+                # already proved the worker-derived runtime digest under an
+                # open journal operation; a restart's pre-intent freeze runs
+                # with no active operation, and T004 admits no child intent
+                # outside a nonterminal operation, so a proof spawn here is
+                # structurally impossible (it latches cleanup uncertainty and
+                # refuses as recovery_invalid under freeze's catch-all).
+                # Equivalence is not assumed: the cached digest is carried
+                # forward ONLY when every re-observed byte-level input
+                # (kit facts, proxy receipts, deployment closure, policy
+                # digest, controller copies) equals the exact input set whose
+                # runtime proof was accepted at prepare. Any drift takes the
+                # worker path, which under T004 refuses and latches cleanup
+                # uncertainty — fail-closed, never a stale-digest pass.
+                runtime_digest = self._last_runtime
+            else:
+                proof = json.loads(self.run_proof_worker())
+                runtime_digest = proof['runtime_digest']
+            full = dict(observed, runtime_digest=runtime_digest)
             frozen = {'asset_digest': canonical_digest(full), 'runtime_digest': runtime_digest,
                       'policy_digest': self.policy_digest, 'controller_digest': canonical_digest(controller)}
-            self._last_runtime, self._last_frozen, self._last_proxy = runtime_digest, frozen, proxy
+            self._last_runtime, self._last_observed, self._last_frozen, self._last_proxy = (
+                runtime_digest, observed, frozen, proxy)
             return frozen
         except Exception:
             raise Fault('runtime_invalid') from None
 
+    def freeze_restart(self):
+        """Restart-stage revalidation: reuse the prepare-stage proof digest
+        when every observed byte-level input matches (T004 admits no child
+        intent outside a nonterminal operation, so a proof spawn is
+        structurally impossible in a restart's pre-intent stage)."""
+        return self.freeze(reuse=True)
+
     def check_gates(self):
-        self._capture(['/bin/bash', str(self.kit/'core/installer.sh'), str(self.deployment), '--verify'], 90)
-        self._capture([self.python, str(self.kit/'core/drift_check.py'), '--deployment-root', str(self.deployment)], 90)
-        self._capture([*self.job['ProgramArguments'], '--preflight'], 180)
+        from .shutdown import ShutdownRequested
+        checkpoints = []
+        def admit():
+            try:
+                self.shutdown.checkpoint()
+            except ShutdownRequested:
+                raise Fault('controller_stopping') from None
+            checkpoints.append(1)
+        admit()
+        status, raw = self._observe(['/bin/bash', str(self.kit/'core/installer.sh'), str(self.deployment), '--verify'], 90)
+        if status:
+            raise ValueError('installer_verify_failed')
+        admit()
+        status, raw = self._observe([self.python, str(self.kit/'core/drift_check.py'), '--deployment-root', str(self.deployment)], 90)
+        if status:
+            raise ValueError('drift_check_failed')
+        admit()
+        status, raw = self._observe([*self.job['ProgramArguments'], '--preflight'], 180)
+        if status:
+            raise ValueError('preflight_failed')
+        admit()
         try:
             import yaml
             config = yaml.safe_load((self.config/'config.rendered.yaml').read_text())
@@ -333,9 +1211,13 @@ class Runtime:
             if len(rows) != 1 or rows[0].get('required') is not True:
                 raise ValueError('master_row_invalid')
             row = rows[0]
+            admit()
             if row.get('source', 'op') == 'op':
-                sa = self._capture(['/usr/bin/security', 'find-generic-password', '-s',
-                                    self.env['OP_KEYCHAIN_SERVICE'], '-a', self.env['OP_KEYCHAIN_ACCOUNT'], '-w'], 15).decode().strip()
+                sa_status, sa_raw = self._observe(['/usr/bin/security', 'find-generic-password', '-s',
+                        self.env['OP_KEYCHAIN_SERVICE'], '-a', self.env['OP_KEYCHAIN_ACCOUNT'], '-w'], 15)
+                if sa_status:
+                    raise ValueError('resolver_unavailable')
+                sa = sa_raw.decode().strip()
                 if not sa or sa.startswith('op://') or any(c.isspace() for c in sa):
                     raise ValueError('resolver_unavailable')
                 env = {**self.env, 'OP_LOAD_DESKTOP_APP_SETTINGS': 'false', 'OP_CACHE': 'false',
@@ -343,28 +1225,43 @@ class Runtime:
                 op = shutil.which('op', path=self.env['PATH'])
                 if not op:
                     raise ValueError('resolver_unavailable')
-                key = self._capture([op, 'read', row['op_ref']], 30, env=env).decode().strip()
+                admit()
+                op_status, op_raw = self._observe([op, 'read', row['op_ref']], 30, env=env)
+                if op_status:
+                    raise ValueError('resolver_unavailable')
+                key = op_raw.decode().strip()
                 del sa, env
-            elif row.get('source') == 'cli-token':
-                tool = shutil.which('cli-token', path=self.env['PATH'])
+            elif row.get('source') == 'flexai-token':
+                tool = shutil.which('flexai', path=self.env['PATH'])
                 if not tool:
                     raise ValueError('resolver_unavailable')
-                key = self._capture([tool, 'auth', 'print-token'], 30).decode().strip()
+                admit()
+                flex_status, flex_raw = self._observe([tool, 'auth', 'print-token'], 30)
+                if flex_status:
+                    raise ValueError('resolver_unavailable')
+                key = flex_raw.decode().strip()
             else:
                 raise ValueError('master_source_invalid')
             if not key or key.startswith('op://') or any(c.isspace() for c in key):
                 raise ValueError('master_unresolved')
             self._key = key
+        except ShutdownRequested:
+            raise Fault('controller_stopping') from None
         except Exception:
             raise Fault('gate_failed') from None
 
     def _request(self, port, path, key=None, payload=None):
+        from .shutdown import ShutdownRequested
         if port not in (self.port, self.policy['candidate_port']) or path not in (
                 '/health/liveliness', '/health/readiness', '/v1/models', '/v1/chat/completions'):
             raise Fault('postcheck_failed')
         headers = {'Content-Type': 'application/json'}
         if key is not None:
             headers['Authorization'] = 'Bearer '+key
+        try:
+            self.shutdown.checkpoint()
+        except ShutdownRequested:
+            raise Fault('controller_stopping') from None
         if self._operation_started is None:
             self._operation_started = time.monotonic()
         budget = min(REQUEST_TIMEOUT, 900 - (time.monotonic() - self._operation_started))
@@ -373,48 +1270,79 @@ class Runtime:
         # http.client has no ambient-proxy or redirect machinery. The fixed
         # literal host, approved port and closed path define the only URL.
         connection = http.client.HTTPConnection('127.0.0.1', port, timeout=budget)
-        expired, owned_socket = threading.Event(), []
-        def expire():
-            expired.set()
-            if owned_socket:
-                with contextlib.suppress(OSError):
-                    owned_socket[0].shutdown(socket.SHUT_RDWR)
-        timer = threading.Timer(budget, expire)
+        # One absolute deadline bounds the whole request. The socket's own
+        # timeout is the only mechanism that reliably interrupts a blocked
+        # recv on macOS (neither close() nor SHUT_RDWR from another thread
+        # does), so the deadline IS the socket timeout; SC-004's
+        # shared-deadline observability comes from the budget cap at each
+        # admission and the latch checked between every request in
+        # _accept's wake-polled loop.
+        # Absolute deadline: the socket timeout is per-operation and never
+        # trips against a slow trickle (one byte inside every window), so a
+        # timer force-closes the connection at the budget. Between recv
+        # calls the closed fd surfaces immediately; a fully blocked recv
+        # is covered by the socket timeout.
+        closing = threading.Event()
+        def interrupt():
+            if not closing.is_set():
+                closing.set()
+                # SHUT_RDWR surfaces EOF to the next recv — the only
+                # reliable interrupt when bytes keep trickling in inside
+                # every timeout window. close() alone is a refcount
+                # decrement while the response file exists, so the fd
+                # would stay open and the buffered read would continue.
+                with contextlib.suppress(Exception):
+                    connection.sock.shutdown(socket.SHUT_RDWR)
+                with contextlib.suppress(Exception):
+                    connection.close()
+        timer = threading.Timer(budget, interrupt)
         timer.daemon = True
         timer.start()
+        connect_deadline = time.monotonic() + budget
         try:
             connection.connect()
-            owned_socket.append(connection.sock)
-            if expired.is_set():
-                raise Fault('postcheck_failed')
+            if time.monotonic() >= connect_deadline:
+                raise TimeoutError('request_budget')
             connection.request('POST' if payload is not None else 'GET', path,
                  body=json.dumps(payload).encode() if payload is not None else None, headers=headers)
             with connection.getresponse() as result:
                 if result.status != 200:
                     return result.status, {}
                 body = result.read(1024 * 1024 + 1)
-                if expired.is_set() or len(body) > 1024 * 1024:
+                if len(body) > 1024 * 1024:
                     raise Fault('postcheck_failed')
+                # A trickle can satisfy read() inside every timeout window
+                # yet outlive the budget before EOF; refuse results that
+                # landed after the absolute deadline.
+                if closing.is_set():
+                    raise TimeoutError('request_budget')
                 return result.status, json.loads(body)
         except Exception:
             raise Fault('postcheck_failed') from None
         finally:
             timer.cancel()
-            connection.close()
+            with contextlib.suppress(Exception):
+                connection.close()
 
     def _accept(self, port, guard, deadline, startup=False):
+        from .shutdown import ShutdownRequested
         while True:
             identity = guard()
             try:
                 ready = identity is not None and self._request(port, '/health/readiness')[0] == 200
             except Fault:
                 ready = False
+            except ShutdownRequested:
+                raise
             guard()
             if ready:
                 break
             if not startup or time.monotonic() >= deadline:
                 raise Fault('postcheck_failed')
-            time.sleep(.5)
+            # Wake-poll: sleep is bounded and observes the shared latch, so
+            # a shutdown request interrupts the wait immediately.
+            if self.shutdown.wait(0.5):
+                raise Fault('controller_stopping')
         results = {}
         for path in ('/health/liveliness', '/health/readiness'):
             guard()
@@ -458,31 +1386,93 @@ class Runtime:
         return self._accept(self.port, guard, time.monotonic(), startup=False)
 
     def rehearse(self):
+        from .shutdown import ShutdownRequested
+        self._admit_helper()
         port = self.policy['candidate_port']
-        if self._candidate is not None or self._listener(port) is not None:
+        if self._candidate is not None or self._cleanup_blocked:
+            raise Fault('candidate_cleanup_failed')
+        if self._listener(port) is not None:
             raise Fault('candidate_failed')
         argv = [*self.job['ProgramArguments'][:2], str(port)]
-        child = subprocess.Popen(argv, env=self.env, cwd=self.config, stdout=subprocess.DEVNULL,
-                                 stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, start_new_session=True)
-        self._candidate = child
-        birth = None
-        def guard():
-            if child.poll() is not None or _identity(child.pid) != birth:
-                raise Fault('candidate_failed')
-            listener = self._listener(port)
-            if listener is not None and listener != birth:
-                raise Fault('candidate_failed')
-            return listener
+        spawn_id = uuid.uuid4().hex
+        handle = self.recovery.spawn_intent(self._active_operation, spawn_id, 'candidate')
         try:
-            birth = _identity(child.pid)
+            permit = self.shutdown.commit('candidate')
+            self.shutdown.claim(permit)
+        except ShutdownRequested:
+            with contextlib.suppress(Exception):
+                self.recovery.mark_uncertain(handle)
+            raise Fault('controller_stopping') from None
+        child = None
+        journal = None
+        birth = None
+        interrupted = False
+        try:
+            child = subprocess.Popen(argv, env=self.env, cwd=self.config,
+                                     stdout=subprocess.DEVNULL,
+                                     stderr=subprocess.DEVNULL,
+                                     stdin=subprocess.DEVNULL, start_new_session=True)
+            try:
+                journal = _journal_identity(child.pid)
+                birth = {k: journal[k] for k in ('pid', 'uid', 'birth')}
+            except Fault:
+                if child.poll() is None:
+                    raise
+            if journal is not None:
+                self.recovery.spawn_owned(handle, journal)
+            self._candidate = child
+            def guard():
+                nonlocal interrupted
+                try:
+                    self.shutdown.checkpoint()
+                except ShutdownRequested:
+                    interrupted = True
+                    raise Fault('controller_stopping') from None
+                if child.poll() is not None or _identity(child.pid) != birth:
+                    raise Fault('candidate_failed')
+                listener = self._listener(port)
+                if listener is not None and listener != birth:
+                    raise Fault('candidate_failed')
+                return listener
             return self._accept(port, guard, time.monotonic()+180, startup=True)
         except Fault:
-            raise Fault('candidate_failed') from None
+            # A latched interruption is never disguised as a candidate
+            # business failure: it surfaces as the closed stopping code.
+            raise Fault('controller_stopping' if interrupted else 'candidate_failed') from None
+        except ShutdownRequested:
+            raise Fault('controller_stopping') from None
+        except Exception:
+            # Journal write or identity loss: never invent ownership/closure.
+            self._cleanup_blocked = True
+            with contextlib.suppress(Exception):
+                self.recovery.mark_uncertain(handle)
+            raise Fault('recovery_invalid') from None
         finally:
-            self._owned_stop(child, birth)
-            if self._listener(port) is not None:
-                raise Fault('candidate_cleanup_failed')
-            self._candidate = None
+            if child is not None:
+                try:
+                    self._owned_stop(child, birth)
+                finally:
+                    self._candidate = None
+            try:
+                if self._listener(port) is not None:
+                    self._cleanup_blocked = True
+                    raise Fault('candidate_cleanup_failed')
+            except Fault:
+                if not interrupted:
+                    raise
+            if journal is not None:
+                if self._cleanup_blocked:
+                    with contextlib.suppress(Exception):
+                        self.recovery.mark_uncertain(handle)
+                else:
+                    try:
+                        self.recovery.spawn_closed(handle, journal, cleanup_proven=True)
+                    except Exception:
+                        self._cleanup_blocked = True
+                        raise Fault('recovery_invalid') from None
+
+    def _optional_names(self):
+        return set(PROXY_OPTIONAL_INPUTS)
 
     def snapshot_lkg(self, path):
         if self._last_frozen is None:
@@ -495,6 +1485,22 @@ class Runtime:
                 if _regular(path/name) != fact:
                     raise ValueError('snapshot_changed')
                 manifest[name] = fact
+            # Optional native receipt: frozen presence/absence is preserved
+            # exactly — copied only when present, recorded absence otherwise.
+            # A receipt that is present now but was absent when frozen (or the
+            # reverse) is a presence-drift refusal, never a silent transition.
+            for name in PROXY_OPTIONAL_INPUTS:
+                fact = _native_receipt(self.config/'pin.lock', name)
+                frozen = self._last_proxy['optional/'+name] if self._last_proxy else None
+                if (fact is None) != (frozen is None):
+                    raise ValueError('optional_presence_changed')
+                if fact is not None:
+                    if fact != frozen:
+                        raise ValueError('optional_receipt_changed')
+                    shutil.copy2(self.config/name, path/name)
+                    if _regular(path/name) != fact:
+                        raise ValueError('snapshot_changed')
+                manifest[name] = fact
             atomic_json(path/'manifest.json', manifest)
             return {k: self._last_frozen[k] for k in ('asset_digest', 'runtime_digest')}
         except Exception:
@@ -504,12 +1510,26 @@ class Runtime:
         try:
             manifest = _read_json(path/'manifest.json')
             names = set(PROXY_INPUTS) | {self.label+'.plist', self.label+'.rotate.plist'}
-            if (set(manifest) != names or manifest != self._last_proxy
+            optional = self._optional_names()
+            frozen = self._last_proxy or {}
+            expected = {**{n: frozen[n] for n in names},
+                        **{n: frozen.get('optional/'+n) for n in optional}}
+            if (set(manifest) != names | optional or manifest != expected
                     or self._last_frozen is None or binding != {
-                        k: self._last_frozen[k] for k in ('asset_digest', 'runtime_digest')}):
+                    k: self._last_frozen[k] for k in ('asset_digest', 'runtime_digest')}):
                 raise ValueError('snapshot_invalid')
             if any(_regular(path/name) != manifest[name] for name in names):
                 raise ValueError('snapshot_invalid')
+            # Explicit absence: a receipt recorded absent in the manifest must
+            # be exactly absent on disk; a recorded fact must match bytes.
+            for name in optional:
+                recorded = manifest[name]
+                copy = path/name
+                if recorded is None:
+                    if copy.exists() or copy.is_symlink():
+                        raise ValueError('snapshot_invalid')
+                elif _regular(copy) != recorded:
+                    raise ValueError('snapshot_invalid')
         except Exception:
             raise Fault('lkg_invalid') from None
 
@@ -520,6 +1540,8 @@ class Runtime:
         self.validate_lkg(path, binding)
         manifest = _read_json(path/'manifest.json')
         for name, fact in manifest.items():
+            if fact is None:
+                continue
             temporary = self.config/('.'+name+'.rollback')
             if temporary.exists() or temporary.is_symlink():
                 raise Fault('lkg_invalid')
@@ -527,33 +1549,164 @@ class Runtime:
             if _regular(temporary) != fact:
                 raise Fault('lkg_invalid')
             os.replace(temporary, self.config/name)
+        # Exact presence/absence restore: a receipt recorded absent must
+        # already be exactly absent live; a stale receipt is never silently
+        # deleted to force success during legacy transition.
+        for name in self._optional_names():
+            live = self.config/name
+            if manifest[name] is None and (live.exists() or live.is_symlink()):
+                raise Fault('lkg_invalid')
         if self.freeze() != proof:
             raise Fault('lkg_invalid')
 
     def qualify(self, plan):
+        # deployment-root fix (A1): qualification validates the canary lane but
+        # restart admission also requires freeze()/check_gates() against
+        # the policy's deployment root. A policy whose deployment root
+        # lacks the fact closure freeze() reads (deploy.conf.sh,
+        # deployments/<name>/{overlay.yaml, credentials.toml, pin.lock},
+        # native receipts) can never prepare, so qualifying it produces
+        # a "qualified" controller that structurally cannot restart —
+        # exactly the gate-5 regression (deployment_root=~/.config/litellm
+        # qualified 2026-11-16, then all five prepares refused
+        # runtime_invalid/gate_failed). Probe the same fact sources
+        # freeze() reads BEFORE accepting the record: any miss refuses
+        # qualification_invalid, fail-closed. Read-only; no gate
+        # subprocesses (installer --verify, drift_check, preflight) run
+        # here — prepare/check_gates still owns those.
+        try:
+            _regular(self.deployment/'deploy.conf.sh')
+            deployment_dir = self.deployment/'deployments'/self.name
+            for closure in ('overlay.yaml', 'credentials.toml', 'pin.lock'):
+                _regular(deployment_dir/closure)
+            deployment_pin = deployment_dir/'pin.lock'
+            for name in PROXY_OPTIONAL_INPUTS:
+                _native_receipt(deployment_pin, name)
+            # installed-closure probe: binding_facts() digests the
+            # LOADED kit sources, so a record can bind a generation ahead of
+            # the deployed bundle — exactly the post-A1 regression (kit HEAD
+            # at 4ac18a04, installed runtime.py still ae25e913; every prepare
+            # refused controller_copy_changed under a "valid" record). The
+            # installed copies under controller_root must byte-match the
+            # loaded sources — the same comparison freeze() enforces at
+            # prepare — or qualification refuses, fail-closed: a record may
+            # never qualify a deployment axis it cannot actually restart.
+            for name in CONTROLLER_INPUTS:
+                copy = self.controller_root/name.removeprefix('core/')
+                if _regular(copy) != self._loaded_sources[name]:
+                    raise ValueError('controller_copy_changed')
+        except Exception:
+            raise Fault('qualification_invalid') from None
         try:
             record = _read_json(self.state/'qualification.json')
         except FileNotFoundError:
             raise Fault('qualification_missing') from None
+        from .shutdown import SHUTDOWN_CONTRACT
         try:
             own = process_identity(os.getpid())
-            job = self._job_state(self.policy['controller_label'])
+            expected = controller_job(self.policy, self.policy_path, self.python)
+            supervisor = Path.home()/'Library/LaunchAgents'/(self.policy['controller_label']+'.plist')
+            supervisor_fact = _regular(supervisor)
+            if (supervisor_fact['mode'] != 0o600 or supervisor.stat().st_uid != os.getuid()
+                    or supervisor.read_bytes() != plistlib.dumps(expected, sort_keys=True)):
+                raise ValueError('controller_supervision_invalid')
+            job = self._job_state(self.policy['controller_label'], expected=expected, expected_path=supervisor)
+            # Qualification v2: the closed key set gains exactly shutdown_contract.
+            # A version-1 record or any missing/extra field refuses; no
+            # automatic upgrade of legacy evidence is permitted.
             fields = {'version', 'operator_uid', 'controller_label', 'controller_identity',
                       'controller_digest', 'policy_digest', 'plist_digest', 'controller_epoch',
-                      'issued_at', 'expires_at', 'issued_monotonic', 'expires_monotonic', 'canary_evidence_digest'}
-            if (set(record) != fields or type(record['version']) is not int or record['version'] != 1
+                      'issued_at', 'expires_at', 'issued_monotonic', 'expires_monotonic',
+                      'canary_evidence_digest', 'shutdown_contract',
+                      'controller_plist_digest', 'controller_supervision'}
+            if (set(record) != fields or type(record['version']) is not int or record['version'] != 2
                     or type(record['operator_uid']) is not int):
                 raise ValueError('qualification_invalid')
+            # The shutdown contract is bound by canonical structured comparison,
+            # not a digest-shaped string: a new source/plist/schema is a new
+            # generation and never a reinterpretation of existing evidence.
+            if canonical_digest(record['shutdown_contract']) != canonical_digest(
+                    json.loads(json.dumps(dict(SHUTDOWN_CONTRACT)))):
+                raise ValueError('qualification_invalid')
             identity = {k: own[k] for k in ('pid', 'uid', 'birth')}
-            if (own['ppid'] != 1 or record['operator_uid'] != os.getuid() or not job or job['identity'] != identity
-                    or record['controller_identity'] != identity
+            # The record's controller identity is the same FULL process
+            # identity the producer's evidence/detail carry (pid, uid,
+            # ppid, pgid, birth); the live-controller check compares the
+            # kernel-observed pid/uid/birth projection against it.
+            if (own['ppid'] != 1 or record['operator_uid'] != os.getuid() or not job or not job.get('parity') or job['identity'] != identity
+                    or not isinstance(record['controller_identity'], dict)
+                    or set(record['controller_identity']) != {'pid', 'uid', 'ppid', 'pgid', 'birth'}
+                    or any(record['controller_identity'][k] != identity[k]
+                           for k in ('pid', 'uid', 'birth'))
                     or record['controller_label'] != self.policy['controller_label']
                     or record['controller_digest'] != plan['controller_digest']
                     or record['policy_digest'] != plan['policy_digest']
                     or record['plist_digest'] != _regular(self.plist)['sha256']
                     or record['controller_epoch'] != plan['controller_epoch']
+                    or record['controller_plist_digest'] != supervisor_fact['sha256']
+                    or canonical_digest(record['controller_supervision']) != canonical_digest(controller_supervision(expected))
                     or not re.fullmatch('[0-9a-f]{64}', record['canary_evidence_digest'])):
                 raise ValueError('qualification_invalid')
+            # The canary evidence is a referenced validated file, not a digest
+            # string: fixed path under canary/evidence/, owned regular 0600,
+            # hash-bound to this record. A sibling controller's evidence or a
+            # missing/unowned/replaced file never qualifies another identity.
+            evidence_path = self.state/'canary'/'evidence'/(record['canary_evidence_digest']+'.json')
+            evidence_fact = _regular(evidence_path)
+            if (evidence_fact['mode'] != 0o600 or evidence_path.stat().st_uid != os.getuid()
+                    or evidence_fact['sha256'] != record['canary_evidence_digest']):
+                raise ValueError('qualification_invalid')
+            evidence = _read_json(evidence_path)
+            # Evidence alone cannot create qualification: validate the closed
+            # v1 evidence structure and require the evidence scope exactly
+            # matching this runtime's class — a fixture runtime accepts only
+            # fixture/isolated-launchd records, and a production runtime
+            # accepts exclusively intended-controller evidence (plan §8/§9),
+            # so a fixture record can never masquerade as production
+            # qualification and intended-controller evidence never
+            # qualifies a fixture-scope runtime either.
+            accepted_scopes = (FIXTURE_EVIDENCE_SCOPES if self.fixture
+                               else {PRODUCTION_EVIDENCE_SCOPE})
+            if (not isinstance(evidence, dict) or set(evidence) != CANARY_EVIDENCE_KEYS
+                    or type(evidence['version']) is not int or evidence['version'] != 1
+                    or evidence['scope'] not in accepted_scopes
+                    or evidence['operator_uid'] != os.getuid()
+                    or not isinstance(evidence.get('checks'), dict)
+                    or set(evidence['checks']) != CANARY_CHECK_KEYS
+                    or any(value is not True for value in evidence['checks'].values())):
+                raise ValueError('qualification_invalid')
+            # The evidence binds THIS controller: identity, epoch and every
+            # digest binding must equal the operator record's, so a sibling
+            # controller's evidence never qualifies another identity.
+            if (canonical_digest(evidence['controller_identity']) != canonical_digest(record['controller_identity'])
+                    or evidence['controller_epoch'] != record['controller_epoch']
+                    or evidence['controller_digest'] != record['controller_digest']
+                    or evidence['policy_digest'] != record['policy_digest']
+                    or evidence['controller_plist_digest'] != record['controller_plist_digest']
+                    or canonical_digest(evidence['controller_supervision']) != canonical_digest(record['controller_supervision'])
+                    or canonical_digest(evidence['shutdown_contract']) != canonical_digest(record['shutdown_contract'])
+                    or not isinstance(evidence.get('incarnations'), list) or len(evidence['incarnations']) != 2
+                    or canonical_digest(evidence['incarnations'][0]) == canonical_digest(evidence['incarnations'][1])
+                    or not re.fullmatch('[0-9a-f]{64}', evidence['detail_digest'])
+                    or not re.fullmatch('[0-9a-f]{32}', evidence['nonce'])):
+                raise ValueError('qualification_invalid')
+            # The referenced detail is a validated fixed-path file, not a
+            # digest string: same ownership/mode/hash discipline as the
+            # evidence file, and its nonce/boot/identity/epoch bindings
+            # must equal the evidence envelope's (plan: closed detail).
+            detail_path = (self.state/'canary'/'detail'
+                           /(evidence['detail_digest']+'.json'))
+            detail_fact = _regular(detail_path)
+            if (detail_fact['mode'] != 0o600 or detail_path.stat().st_uid != os.getuid()
+                    or detail_fact['sha256'] != evidence['detail_digest']):
+                raise ValueError('qualification_invalid')
+            detail = _read_json(detail_path)
+            from .canary import validate_detail
+            validate_detail(detail, expected={
+                'nonce': evidence['nonce'],
+                'boot_identity': evidence['boot_identity'],
+                'controller_identity': evidence['controller_identity'],
+                'controller_epoch': evidence['controller_epoch']})
             for first, last, now in (('issued_at', 'expires_at', time.time()),
                                      ('issued_monotonic', 'expires_monotonic', time.monotonic())):
                 if not _finite(record[first]) or not _finite(record[last]) or not (

@@ -19,12 +19,11 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+sys.dont_write_bytecode = True
+from restart_control.runtime_identity import native_receipt_fact, read_pin, file_fact, PROXY_INPUTS
 
 REPO = Path(__file__).resolve().parent.parent
-MANAGED = ("config.rendered.yaml", "run-proxy-wrapper.sh", "check_patch_sentinel.py",
-           "check_pin.py", "parse_credentials.py", "rotate-logs.sh",
-           "aws-sso-cred-shim.sh", "harvest-filter-metrics.sh", "credentials.toml", "pin.lock", "check_credential_coverage.py",
-           "*.plist")
+MANAGED = (*PROXY_INPUTS, '*.plist')
 
 
 def sha256(path: Path) -> str:
@@ -32,8 +31,13 @@ def sha256(path: Path) -> str:
 
 
 def check_file(checks: list[dict], kind: str, target: Path, expected_bytes: bytes | None, label: str) -> None:
-    if not target.exists():
+    if target.is_symlink() or not target.is_file():
         checks.append({"kind": kind, "target": label, "status": "divergent", "detail": "missing"})
+        return
+    try:
+        file_fact(target)  # managed inputs must be regular single-link files
+    except (OSError, ValueError):
+        checks.append({"kind":kind,"target":label,"status":"divergent","detail":"invalid managed file type"})
         return
     actual = target.read_bytes()
     if expected_bytes is not None and actual != expected_bytes:
@@ -71,6 +75,23 @@ def main() -> int:
     deploy_name = env["LITELLM_DEPLOYMENT"]
     deploy_dir = root / "deployments" / deploy_name
 
+    # Strict metadata pairing is non-exemptible, including explicit absence.
+    states = []
+    if (config_dir/'restart_control').exists() or (config_dir/'restart_control').is_symlink():
+        checks.append({'kind':'helper-layout','target':'restart_control',
+                       'status':'divergent','detail':'unexpected installed nested helper layout'})
+    for pin in (deploy_dir/'pin.lock', config_dir/'pin.lock'):
+        try:
+            states.append(native_receipt_fact(pin))
+        except Exception:
+            checks.append({'kind':'native-receipt','target':str(pin.parent/'native-build.json'),
+                           'status':'divergent','detail':'invalid pin/receipt pairing'})
+    if len(states) == 2:
+        hashes = [fact['sha256'] if fact is not None else None for fact in states]
+        checks.append({'kind':'native-receipt','target':'native-build.json',
+                       'status':'conformant' if hashes[0] == hashes[1] else 'divergent',
+                       'detail':None if hashes[0] == hashes[1] else 'receipt bytes or presence differ'})
+
     # 1. rendered-vs-live for each managed file (glob patterns expand)
     exemptions = load_exemptions(root)
     managed_names: list[str] = []
@@ -81,7 +102,7 @@ def main() -> int:
             managed_names.append(name)
     for name in managed_names:
         label = str(config_dir / name)
-        if any(label.endswith(e) or e in label for e in exemptions):
+        if name not in ('pin.lock', 'runtime_identity.py') and any(label.endswith(e) or e in label for e in exemptions):
             checks.append({"kind": "exempt", "target": label, "status": "exempt", "reason": "enumerated in drift-exemptions.yaml"})
             continue
         expected = None
@@ -121,7 +142,7 @@ def main() -> int:
         elif name in ("credentials.toml", "pin.lock"):
             expected = (deploy_dir / name).read_bytes()
         else:
-            src = REPO / "core" / name
+            src = _core_file(REPO, name)
             expected = src.read_bytes() if src.exists() else None
         check_file(checks, "rendered-vs-live", config_dir / name, expected, label)
 
@@ -131,8 +152,8 @@ def main() -> int:
         for name in MANAGED:
             if "*" in name or name in ("config.rendered.yaml", "credentials.toml", "pin.lock"):
                 continue
-            mine = REPO / "core" / name
-            theirs = other / "core" / name
+            mine = _core_file(REPO, name)
+            theirs = _core_file(other, name)
             if not theirs.exists():
                 checks.append({"kind": "core-hash", "target": name, "status": "divergent", "detail": "missing in other repo"})
                 continue
@@ -141,8 +162,9 @@ def main() -> int:
             else:
                 checks.append({"kind": "core-hash", "target": name, "status": "conformant"})
         # 3. pin comparison
-        mine_pin = (deploy_dir / "pin.lock").read_text()
-        theirs_pin = (other / "deployments" / _other_deploy_name(other) / "pin.lock").read_text()
+        mine_pin = deploy_dir / "pin.lock"
+        theirs_pin = other / "deployments" / _other_deploy_name(other) / "pin.lock"
+        native_receipt_fact(theirs_pin)
         if _pin_identity(mine_pin) == _pin_identity(theirs_pin):
             checks.append({"kind": "pin", "target": "pin.lock", "status": "conformant"})
         else:
@@ -161,16 +183,19 @@ def _other_deploy_name(other: Path) -> str:
     raise ValueError("no deployment dir in other repo")
 
 
-def _pin_identity(pin_text: str) -> str:
-    import re
-    base = re.search(r'base_version\s*=\s*"([^"]+)"', pin_text)
-    tip = re.search(r'patch_tip\s*=\s*"([^"]+)"', pin_text)
-    return f"{base.group(1) if base else '?'}+{tip.group(1) if tip else '?'}"
+def _core_file(root, name):
+    return root/'core'/('restart_control/runtime_identity.py' if name == 'runtime_identity.py' else name)
+
+
+def _pin_identity(pin_path):
+    pin = read_pin(pin_path)
+    return {'base_version':pin['base_version'], 'patch_tip':pin['patch_tip'],
+            'native_artifact':pin.get('native_artifact')}
 
 
 if __name__ == "__main__":
     try:
         sys.exit(main())
     except Exception as exc:
-        print(f"internal error: {exc}", file=sys.stderr)
+        print("internal error: drift inputs invalid", file=sys.stderr)
         sys.exit(2)

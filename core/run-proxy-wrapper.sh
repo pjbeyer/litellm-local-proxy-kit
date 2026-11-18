@@ -25,6 +25,8 @@
 #
 # Exit codes: 78 = EX_CONFIG (launchd backs off; no hot-loop on bad config).
 set -euo pipefail
+# Preserve the frozen runtime cache evidence during helpers and proxy execution.
+export PYTHONDONTWRITEBYTECODE=1
 
 PREFLIGHT_ONLY=0
 ARG_PORT=""
@@ -118,12 +120,10 @@ while IFS=$'\t' read -r var ref required source; do
     # Deferred: all aws-sso-shim rows are satisfied by ONE shim run below.
     continue
   fi
-  if [ "$source" = "cli-token" ]; then
+  if [ "$source" = "flexai-token" ]; then
     # Closed argv, bounded resolution; stdout is consumed only by this shell.
-    # The resolver is a generic CLI token tool: `cli-token` executes
-    # `<bin> auth print-token` with fixed argv and a 30s bound; set
-    # CLI_TOKEN_BIN to the absolute path of the resolver binary.
-    cli_bin="${CLI_TOKEN_BIN:-$(command -v cli-token || true)}"
+    # Do not borrow the legacy upstream key: it lacks the MCP tool-call grant.
+    flexai_bin="${FLEXAI_BIN:-$(command -v flexai || true)}"
     if val="$(/usr/bin/python3 -c '
 import subprocess, sys
 try:
@@ -134,15 +134,15 @@ try:
     print(v)
 except (OSError, subprocess.SubprocessError):
     sys.exit(1)
-' "$cli_bin" 2>/dev/null)" && [ -n "$val" ]; then
+' "$flexai_bin" 2>/dev/null)" && [ -n "$val" ]; then
       export "$var=$val"
       note_resolved "$var"
-      log "resolved $var from cli-token (value-evidence ok)"
+      log "resolved $var from flexai-token (value-evidence ok)"
     elif [ "$required" = "1" ]; then
-      die "required credential $var from cli-token unresolvable — refusing to start"
+      die "required credential $var from flexai-token unresolvable — refusing to start"
     else
       unset "$var"
-      log "WARN (JUSTIFIED): optional credential $var from cli-token unresolvable"
+      log "WARN (JUSTIFIED): optional credential $var from flexai-token unresolvable"
     fi
     continue
   fi
@@ -258,6 +258,13 @@ log "classifier preflight OK: Jev classifier manifest row present"
 PROXY_PYTHON="${LITELLM_PROXY_PYTHON:?LITELLM_PROXY_PYTHON must point at the pinned build interpreter}"
 SENTINEL="${LITELLM_PATCH_SENTINEL:-args_already_complete}"
 MODULE="litellm.completion_extras.litellm_responses_transformation.transformation"
+# Every startup proves provenance BEFORE an import-based sentinel. --preflight
+# uses exactly this same proof; no unverified import serves as evidence.
+PIN_LOCK="$(dirname "$0")/pin.lock"
+[ -f "$PIN_LOCK" ] || die "startup requires the installed pin.lock"
+env -u PYTHONPATH -u PYTHONHOME "$PROXY_PYTHON" \
+  "$(dirname "$0")/check_pin.py" "$PIN_LOCK" \
+  || die "pinned-build provenance preflight FAILED"
 # Patch sentinel check lives in its own file: core/check_patch_sentinel.py
 # (avoids embedding python inside bash command substitution — shellcheck-safe).
 if ! env -u PYTHONPATH -u PYTHONHOME "$PROXY_PYTHON" \
@@ -270,11 +277,6 @@ log "patch assertion OK: sentinel '$SENTINEL' present in $MODULE"
 LITELLM_BIN="$(dirname "$PROXY_PYTHON")/litellm"
 [ -x "$LITELLM_BIN" ] || die "litellm launcher not found next to the pinned interpreter: $LITELLM_BIN"
 if [ "$PREFLIGHT_ONLY" = "1" ]; then
-  PIN_LOCK="$(dirname "$0")/pin.lock"
-  [ -f "$PIN_LOCK" ] || die "preflight requires the installed pin.lock"
-  env -u PYTHONPATH -u PYTHONHOME "$PROXY_PYTHON" \
-    "$(dirname "$0")/check_pin.py" "$PIN_LOCK" \
-    || die "pinned-build provenance preflight FAILED"
   log "preflight complete — no listener started and no process stopped"
   exit 0
 fi

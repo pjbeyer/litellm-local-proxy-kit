@@ -14,7 +14,7 @@ import uuid
 from pathlib import Path
 
 
-CODES = frozenset("invalid_request busy state_io approval_missing approval_invalid approval_stale plan_stale unknown_request replayed interrupted clock_invalid unmanaged_listener primary_changed gate_failed candidate_failed candidate_cleanup_failed lkg_invalid runtime_invalid qualification_missing qualification_invalid service_control_denied service_control_timeout postcheck_failed rollback_failed internal_error controller_unavailable foreign_peer socket_exists".split())
+CODES = frozenset("invalid_request busy state_io approval_missing approval_invalid approval_stale plan_stale unknown_request replayed interrupted clock_invalid unmanaged_listener ambiguous_listener primary_changed gate_failed candidate_failed candidate_cleanup_failed lkg_invalid runtime_invalid qualification_missing qualification_invalid service_control_denied service_control_timeout postcheck_failed rollback_failed internal_error controller_unavailable foreign_peer socket_exists controller_stopping recovery_invalid canary_binding_mismatch canary_arm_expired canary_identity_invalid canary_first_load_failed canary_exit_failed canary_keepalive_failed canary_cleanup_failed canary_shutdown_receipt_missing canary_shutdown_unresolved canary_job_absent".split())
 _ID = re.compile(r"[0-9a-f]{32}\Z")
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _APPROVAL_TIME = {"issued_at", "expires_at", "issued_monotonic", "expires_monotonic"}
@@ -46,13 +46,51 @@ def strict_json(raw):
         raise Fault("invalid_request") from None
 
 
-def canonical_digest(obj):
+def canonical_bytes(obj):
+    """The one canonical serialization: compact, sorted, no NaN, UTF-8.
+
+    Producer filenames, file bytes, qualification hash checks and scan
+    recomputation all use these exact bytes, so the on-disk hash equals
+    the canonical digest by construction.
+    """
     try:
-        data = json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                          allow_nan=False).encode("utf-8")
+        return json.dumps(obj, sort_keys=True, separators=(",", ":"),
+                          ensure_ascii=False, allow_nan=False).encode("utf-8")
     except (TypeError, ValueError, OverflowError):
         raise Fault("invalid_request") from None
-    return hashlib.sha256(data).hexdigest()
+
+def canonical_digest(obj):
+    return hashlib.sha256(canonical_bytes(obj)).hexdigest()
+
+
+# Transient atomic-rename temporary from atomic_json's staging step:
+# ".<final-name>.<32-hex>". atomic_json stages exactly this shape next to
+# the final file and renames it into place; a concurrent directory scan
+# can observe it mid-write. It is a dotfile by construction, uid-owned,
+# and disappears on rename or crash-cleanup — scanners treat a LIVE one
+# as "not yet" (bounded re-scan), and one that persists past the scan
+# window as a crashed-write uncertainty that blocks (never cleans).
+_ATOMIC_TEMP = re.compile(r"^\.([A-Za-z0-9._-]+)\.([0-9a-f]{32})$")
+
+
+def atomic_temp_name(name):
+    """True when name is an atomic_json in-flight temporary for a known file."""
+    match = _ATOMIC_TEMP.match(name or "")
+    if match is None:
+        return False
+    return match.group(1) in ("intent.json", "latch.json", "diagnostic.json",
+                              "mutation.json") or \
+        match.group(1).startswith("local.restart-canary.") or \
+        match.group(1).endswith(".plist") or \
+        _token_like(match.group(1))
+
+
+def _token_like(value):
+    from .recovery import _token, _ID
+    try:
+        return _token(value, _ID)
+    except Exception:
+        return False
 
 
 def _sync_fd(fd):
@@ -60,6 +98,14 @@ def _sync_fd(fd):
         fcntl.fcntl(fd, _SYNC)
     else:
         os.fsync(fd)
+
+def _sync_dir(path):
+    """Sync one directory and always close its descriptor (no leaks)."""
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        _sync_fd(fd)
+    finally:
+        os.close(fd)
 
 
 def _private_path(path, directory):
@@ -161,12 +207,51 @@ def _result(status, code=None, **fields):
     return value
 
 
+class FixtureLifecyclePort:
+    """Explicit test-only admission port; concrete adapter lives with fixtures."""
+
+    def __init__(self):
+        from .shutdown import Shutdown
+        self.shutdown = Shutdown()
+
+    def require_clear(self):
+        raise NotImplementedError
+
+    def bind_backend(self, backend):
+        raise NotImplementedError
+
+    def spawn_intent(self, ticket, spawn_id, purpose):
+        raise NotImplementedError
+
+    def spawn_owned(self, handle, identity):
+        raise NotImplementedError
+
+    def spawn_closed(self, handle, identity, *, cleanup_proven):
+        raise NotImplementedError
+
+    def mark_uncertain(self, handle):
+        raise NotImplementedError
+
+
 class Controller:
-    def __init__(self, state_dir, backend, uid=None, clock=time.time, monotonic=time.monotonic):
+    def __init__(self, state_dir, backend, uid=None, clock=time.time, monotonic=time.monotonic,
+                 *, shutdown=None, test_lifecycle=None):
+        from .recovery import RecoveryError, RecoveryStore
+        from .shutdown import Shutdown
+
+        if test_lifecycle is not None:
+            if (not isinstance(test_lifecycle, FixtureLifecyclePort)
+                    or getattr(backend, "fixture", False) is not True or shutdown is not None):
+                raise Fault("invalid_request")
+            shutdown = test_lifecycle.shutdown
+        if type(shutdown) is not Shutdown:
+            raise Fault("invalid_request")
+        self.shutdown = shutdown
+        self._backend_operation_live = False
         self.state_dir = private_dir(state_dir)
-        self.requests = private_dir(self.state_dir / "requests")
-        self.approvals = private_dir(self.state_dir / "approvals")
-        self.snapshots = private_dir(self.state_dir / "snapshots")
+        self.requests = self.state_dir / "requests"
+        self.approvals = self.state_dir / "approvals"
+        self.snapshots = self.state_dir / "snapshots"
         self.backend = backend
         self.uid = os.getuid() if uid is None else uid
         if type(self.uid) is not int or self.uid < 0 or not isinstance(backend.label, str):
@@ -177,15 +262,44 @@ class Controller:
         self._last_wall = None
         self._last_mono = None
         self._lock_path = self.state_dir / "controller.lock"
-        try:
-            fd = os.open(self._lock_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
-        except FileExistsError:
-            pass
-        except OSError:
-            raise Fault("state_io") from None
+        self._recovery_invalid = False
+        if test_lifecycle is not None:
+            self.recovery = test_lifecycle
+            self.requests = private_dir(self.requests)
+            self.approvals = private_dir(self.approvals)
+            self.snapshots = private_dir(self.snapshots)
+            test_lifecycle.bind_backend(backend)
+            try:
+                fd = os.open(self._lock_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+            except FileExistsError:
+                pass
+            except OSError:
+                raise Fault("state_io") from None
+            else:
+                os.close(fd)
+            _private_path(self._lock_path, False)
         else:
-            os.close(fd)
-        _private_path(self._lock_path, False)
+            try:
+                with os.scandir(self.state_dir) as scan:
+                    initialize = next(scan, None) is None
+                self.recovery = RecoveryStore(
+                    self.state_dir, read_json=_read_json, atomic_json=atomic_json,
+                    private_path=_private_path, private_dir=private_dir,
+                    sync_fd=_sync_fd, initialize=initialize)
+                if initialize:
+                    self.snapshots = private_dir(self.snapshots)
+                    fd = os.open(self._lock_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+                    os.close(fd)
+                if not _private_path(self.snapshots, True) or not _private_path(self._lock_path, False):
+                    raise RecoveryError()
+            except (OSError, RecoveryError, Fault):
+                self.recovery = None
+                self._recovery_invalid = True
+                return
+            try:
+                backend.bind_lifecycle(shutdown, self.recovery)
+            except Exception:
+                raise Fault("runtime_invalid") from None
 
     def _time(self):
         wall, mono = self.clock(), self.monotonic()
@@ -232,8 +346,8 @@ class Controller:
             raise Fault("internal_error")
         return value
 
-    def _freeze(self):
-        value = self._call("freeze")
+    def _freeze(self, *, reuse=False):
+        value = self._call("freeze_restart" if reuse else "freeze")
         if not _valid_freeze(value):
             raise Fault("runtime_invalid")
         return value
@@ -242,6 +356,12 @@ class Controller:
         atomic_json(self.requests / (plan["request_id"] + ".json"), plan)
 
     def _status(self):
+        if self._recovery_invalid:
+            return _result("blocked", "recovery_invalid")
+        try:
+            self.recovery.require_clear()
+        except Exception:
+            return _result("blocked", "recovery_invalid")
         recent = []
         try:
             paths = sorted(self.requests.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)[:10]
@@ -253,33 +373,122 @@ class Controller:
             raise Fault("state_io") from None
         return _result("ok", epoch=self.epoch, recent=recent)
 
+    def _admit(self):
+        """Latch admission between backend steps; never wrap the stop away."""
+        from .shutdown import ShutdownRequested
+        try:
+            self.shutdown.checkpoint()
+        except ShutdownRequested:
+            raise Fault("controller_stopping") from None
+
+    def _journal(self, name, *args, **kwargs):
+        """One closed mapping from journal failure to a recovery Fault."""
+        from .recovery import RecoveryError
+        try:
+            result = getattr(self.recovery, name)(*args, **kwargs)
+        except Fault:
+            raise
+        except RecoveryError:
+            raise Fault("recovery_invalid") from None
+        except Exception:
+            raise Fault("recovery_invalid") from None
+        # The store issues a new immutable ticket whenever it rewrites the
+        # active operation row (every phase write, same contract as
+        # canary_phase); the backend's in-memory operation context must
+        # carry the refreshed handle or its next admission refuses the
+        # stale handle by identity and fails the restart mid-flight.
+        if name == "phase" and self._backend_operation_live:
+            refresher = getattr(self.backend, "refresh_operation", None)
+            if refresher is not None and isinstance(result, object):
+                refresher(result)
+        elif name == "finish":
+            self._backend_operation_live = False
+        return result
+
+    def _begin_backend_operation(self, ticket):
+        """Give a lifecycle-aware backend the exact active journal context."""
+        self._backend_operation_live = True
+        starter = getattr(self.backend, "begin_operation", None)
+        if starter is None:
+            return
+        try:
+            starter(ticket)
+        except Fault:
+            raise
+        except Exception:
+            raise Fault("recovery_invalid") from None
+
     def _prepare(self):
         wall, mono = self._time()
         request_id = uuid.uuid4().hex
         before = None
+        ticket = None
         plan = {"request_id": request_id, "phase": "preparing", "controller_epoch": self.epoch,
                 "scope": "fixture" if getattr(self.backend, "fixture", False) else "production",
                 "shared_state_side_effects": not getattr(self.backend, "fixture", False)}
-        self._record(plan)
         try:
+            self._admit()
             before = self._inspect()
             if before["identity"]["uid"] != self.uid:
                 raise Fault("primary_changed")
+            facts = getattr(self.backend, "binding_facts", None)
+            if facts is not None:
+                facts = self._call("binding_facts")
+                if (not isinstance(facts, dict)
+                        or set(facts) != {"policy_digest", "controller_digest", "controller_plist_digest"}
+                        or not all(isinstance(facts[k], str) and _DIGEST.fullmatch(facts[k]) for k in facts)):
+                    raise Fault("runtime_invalid")
+            if facts is not None:
+                binding = {"request_id": request_id, "kind": "proxy",
+                           "controller_epoch": self.epoch,
+                           "policy_digest": facts["policy_digest"],
+                           "controller_digest": facts["controller_digest"],
+                           "controller_plist_digest": facts["controller_plist_digest"],
+                           "asset_digest": None, "runtime_digest": None}
+                # The preparing operation is durable before any helper can
+                # exist and before its request record: the store requires a
+                # request to be covered by an operation row.
+                ticket = self._journal("begin", binding, plan["scope"])
+                self._begin_backend_operation(ticket)
+            self._record(plan)
             frozen = self._freeze()
+            self._admit()
             self._call("check_gates")
             primary_checks = self._call("accept_primary", before["identity"])
-            candidate_checks = self._call("rehearse")
-            if not isinstance(primary_checks, dict) or not isinstance(candidate_checks, dict):
+            self._admit()
+            if not isinstance(primary_checks, dict):
                 raise Fault("candidate_failed")
-            binding = {"asset_digest": frozen["asset_digest"], "runtime_digest": frozen["runtime_digest"]}
+            binding2 = {"asset_digest": frozen["asset_digest"], "runtime_digest": frozen["runtime_digest"]}
+            # Bind the frozen digests BEFORE the candidate rehearsal: the
+            # plan forbids executing a candidate on a null (unfrozen)
+            # binding, and the recovery store refuses a candidate spawn
+            # while the operation binding's asset digest is still null.
+            # Probe children (runtime-proof/diagnostic) are all closed by
+            # now, satisfying bind_frozen's closure precondition.
+            if ticket is not None:
+                ticket = self._journal("bind_frozen", ticket,
+                                       frozen["asset_digest"], frozen["runtime_digest"])
+                # bind_frozen rewrote the operation row and issued a
+                # refreshed ticket; the backend's in-memory context must
+                # carry the new handle (same contract as canary_phase).
+                refresher = getattr(self.backend, "refresh_operation", None)
+                if refresher is not None and ticket is not None:
+                    refresher(ticket)
+            self._admit()
+            candidate_checks = self._call("rehearse")
+            if not isinstance(candidate_checks, dict):
+                raise Fault("candidate_failed")
             snapshot_path = self.snapshots / request_id
             private_dir(snapshot_path)
+            self._admit()
             lkg_binding = self._call("snapshot_lkg", snapshot_path)
-            if lkg_binding != binding:
+            if lkg_binding != binding2:
                 raise Fault("lkg_invalid")
+            self._admit()
             after = self._inspect()
             if after != before:
                 raise Fault("primary_changed")
+            self._admit()
             if self._freeze() != frozen:
                 raise Fault("plan_stale")
             if not before["managed"]:
@@ -287,11 +496,15 @@ class Controller:
             wall, mono = self._time()
             plan.update({"phase": "prepared", "uid": self.uid, "label": self.backend.label,
                          "original_identity": before["identity"], **frozen,
-                         "candidate_binding": binding, "lkg_binding": lkg_binding,
+                         "candidate_binding": binding2, "lkg_binding": lkg_binding,
                          "primary_checks": primary_checks, "candidate_checks": candidate_checks,
                          "prepared_at": wall, "prepared_monotonic": mono,
                          "expires_at": wall + 300, "expires_monotonic": mono + 300})
+            # The digests are already bound above; landing the prepared
+            # record against the frozen row keeps the store's prepared
+            # admission valid.
             self._record(plan)
+            self._journal("finish", ticket)
             return _result("prepared", **plan)
         except Fault as exc:
             if before is not None:
@@ -300,7 +513,21 @@ class Controller:
                 except Fault:
                     plan["original_preserved"] = False
             plan.update(phase="blocked", code=exc.code)
-            self._record(plan)
+            if ticket is not None:
+                # Only a journaled request may carry a durable blocked
+                # record: the store requires every request to be covered
+                # by an operation row, so recording a request that never
+                # reached `begin` would leave an orphan that permanently
+                # blocks recovery. The refusal result still carries the
+                # code to the caller.
+                self._record(plan)
+                # Zero-control interruption: close the preparing stage against
+                # the durable blocked request; a failed close leaves the row
+                # pending for operator reconciliation, never a silent retry.
+                with contextlib.suppress(Exception):
+                    self._journal("finish", ticket)
+                with contextlib.suppress(Exception):
+                    self._journal("end_operation", ticket)
             return _result("blocked", exc.code, request_id=request_id,
                            original_preserved=plan.get("original_preserved", False), scope=plan["scope"])
 
@@ -331,13 +558,15 @@ class Controller:
         plan["phase"] = phase
         self._record(plan)
 
-    def _manual(self, plan, code):
+    def _manual(self, plan, ticket, code):
         failed_phase = plan["phase"]
         plan.update(code=code, failed_phase=failed_phase)
         # A failed durable write cannot authorize another service-control call.
         # Preserve the previous on-disk uncertainty and report manual recovery.
         with contextlib.suppress(Fault):
             self._phase(plan, "manual_recovery_required")
+        with contextlib.suppress(Exception):
+            self._journal("phase", ticket, "manual_recovery_required")
         return _result("manual_recovery_required", code, request_id=plan["request_id"],
                        failed_phase=failed_phase, scope=plan["scope"])
 
@@ -364,24 +593,39 @@ class Controller:
             raise Fault("plan_stale")
         if request["asset_digest"] != plan.get("asset_digest"):
             raise Fault("plan_stale")
-        self._call("qualify", plan)
+        # A checked refusal (missing/invalid/stale approval) must not poison
+        # the durable prepared record: validate fully before any journal
+        # reopen; reopen then revalidates the unconsumed record itself.
         approval = self._approval(plan, wall, mono)
-        if self._freeze() != {k: plan[k] for k in ("asset_digest", "runtime_digest", "policy_digest", "controller_digest")}:
+        self._admit()
+        self._call("qualify", plan)
+        if self._freeze(reuse=True) != {k: plan[k] for k in ("asset_digest", "runtime_digest", "policy_digest", "controller_digest")}:
             raise Fault("plan_stale")
         current = self._inspect()
         if current["identity"] != plan["original_identity"] or not current["managed"]:
             raise Fault("primary_changed")
+        self._admit()
         self._call("check_gates")
         snapshot_path = self.snapshots / request_id
         self._call("validate_lkg", snapshot_path, plan["lkg_binding"])
         self._call("accept_primary", current["identity"])
         wall, mono = self._time()
         self._approval(plan, wall, mono)
-        if self._freeze() != {k: plan[k] for k in ("asset_digest", "runtime_digest", "policy_digest", "controller_digest")} or self._inspect() != current:
+        if self._freeze(reuse=True) != {k: plan[k] for k in ("asset_digest", "runtime_digest", "policy_digest", "controller_digest")} or self._inspect() != current:
             raise Fault("plan_stale")
+        self._admit()
         self._call("qualify", plan)
         wall, mono = self._time()
         self._approval(plan, wall, mono)
+        # Reopen the durable prepared operation as restart_pending under the
+        # mutation lock only after every read-only validation holds: from
+        # here a refusal is interruption, and the journal gates control.
+        ticket = self._journal("operation_ticket", request_id)
+        ticket = self._journal("reopen_restart", ticket)
+        self._begin_backend_operation(ticket)
+        # Arm the fence before the first primary-control commitment; sync the
+        # fence and the consumed approval before any control action.
+        self._journal("arm_mutation", ticket)
         consumed = self.approvals / (request_id + ".consumed")
         try:
             os.replace(approval, consumed)
@@ -393,39 +637,79 @@ class Controller:
         except OSError:
             raise Fault("state_io") from None
         self._phase(plan, "intent_consumed")
+        ticket = self._journal("phase", ticket, "intent_consumed")
+        committed = False
         try:
             self._phase(plan, "stopping")
+            permit = self._commit_control("service-stop")
+            ticket = self._journal("phase", ticket, "stopping",
+                                   committed_action=(self.shutdown, permit))
+            committed = True
+            self._admit()
             self._call("qualify", plan)
             wall, mono = self._time()
             self._approval(plan, wall, mono, consumed=True)
             self._call("stop")
             self._phase(plan, "starting")
+            ticket = self._journal("phase", ticket, "starting")
             self._call("start")
         except Fault as exc:
-            return self._manual(plan, exc.code)
+            return self._manual(plan, ticket, exc.code)
         try:
             self._phase(plan, "postchecking")
+            ticket = self._journal("phase", ticket, "postchecking")
             accepted = self._accept_started(plan["original_identity"])
             plan["started"] = accepted
             self._phase(plan, "restarted")
+            self._finish_accepted(ticket, plan, "restarted")
             return _result("restarted", request_id=request_id, checks=accepted.get("checks", {}), scope=plan["scope"])
         except Fault as exc:
             if exc.code in {"service_control_denied", "service_control_timeout", "state_io"}:
-                return self._manual(plan, exc.code)
+                return self._manual(plan, ticket, exc.code)
         try:
             self._phase(plan, "rollback_stopping")
+            if not committed:
+                permit = self._commit_control("service-stop")
+                ticket = self._journal("phase", ticket, "rollback_stopping",
+                                       committed_action=(self.shutdown, permit))
+            else:
+                ticket = self._journal("phase", ticket, "rollback_stopping")
             self._call("stop")
             self._phase(plan, "rollback_restoring")
+            ticket = self._journal("phase", ticket, "rollback_restoring")
             self._call("restore_lkg", snapshot_path, plan["lkg_binding"])
             self._phase(plan, "rollback_starting")
+            ticket = self._journal("phase", ticket, "rollback_starting")
             self._call("start")
             self._phase(plan, "rollback_postchecking")
+            ticket = self._journal("phase", ticket, "rollback_postchecking")
             accepted = self._accept_started(plan["original_identity"])
             plan["rollback"] = accepted
             self._phase(plan, "rolled_back")
+            self._finish_accepted(ticket, plan, "rolled_back")
             return _result("rolled_back", request_id=request_id, checks=accepted.get("checks", {}), scope=plan["scope"])
         except Fault as exc:
-            return self._manual(plan, exc.code)
+            return self._manual(plan, ticket, exc.code)
+
+    def _commit_control(self, purpose):
+        """One-permit commitment for the first primary control action."""
+        from .shutdown import ShutdownRequested
+        try:
+            return self.shutdown.commit(purpose)
+        except ShutdownRequested:
+            raise Fault("controller_stopping") from None
+
+    def _finish_accepted(self, ticket, plan, terminal):
+        """Close the journaled restart and clear the fence after acceptance.
+
+        RecoveryStore.phase() rejects terminal phases by design; the accepted
+        terminal transition is finish()'s alone: it rechecks the complete
+        engine request, the consumed approval and closed children before
+        clearing the fence.
+        """
+        plan["phase"] = terminal
+        self._record(plan)
+        self._journal("finish", ticket)
 
     def handle(self, request):
         if not isinstance(request, dict) or type(request.get("op")) is not str:
@@ -444,7 +728,18 @@ class Controller:
         try:
             if op == "status":
                 return self._status()
+            if self._recovery_invalid:
+                raise Fault("recovery_invalid")
             with self._locked():
+                from .shutdown import ShutdownRequested
+                try:
+                    self.shutdown.checkpoint()
+                except ShutdownRequested:
+                    raise Fault("controller_stopping") from None
+                try:
+                    self.recovery.require_clear()
+                except Exception:
+                    raise Fault("recovery_invalid") from None
                 try:
                     return self._prepare() if op == "prepare" else self._restart(request)
                 finally:

@@ -11,7 +11,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from restart_control.engine import Fault, _read_json, canonical_digest, private_dir, atomic_json
-from restart_control.runtime import POLICY_FIELDS
+from restart_control.runtime import POLICY_FIELDS, controller_job
 from restart_control.runtime_identity import CONTROLLER_INPUTS, file_fact
 
 
@@ -46,13 +46,7 @@ def install(policy_path, verify=False):
         if p.is_symlink():
             raise Fault('state_io')
     plist_path = Path.home()/'Library/LaunchAgents'/(label+'.plist')
-    data = plistlib.dumps({'Label': label,
-        'ProgramArguments': [python, '-I', str(destination/'restart_controller.py'), '--policy', str(policy_path), 'serve'],
-        'WorkingDirectory': str(destination), 'RunAtLoad': True, 'KeepAlive': True,
-        'ThrottleInterval': 30, 'ExitTimeOut': 1000,
-        'EnvironmentVariables': {'HOME': str(Path.home()),
-            'PATH': '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin'},
-        'StandardOutPath': '/dev/null', 'StandardErrorPath': '/dev/null'}, sort_keys=True)
+    data = plistlib.dumps(controller_job(policy, policy_path, python), sort_keys=True)
     sources = {name: file_fact(kit/name) for name in CONTROLLER_INPUTS}
     receipt = {'version': 1, 'policy_digest': canonical_digest(policy), 'sources': sources}
     if verify:

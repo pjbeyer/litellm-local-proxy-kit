@@ -14,17 +14,17 @@ def manifest(tmp_path, extra=''):
     p.write_text('[[credential]]\nenv_var = "LOCAL_KEY"\n'
                  'op_ref = "op://fixture/item/credential"\nrequired = true\n'
                  '[[credential]]\nenv_var = "RELAY_KEY"\n'
-                 'source = "cli-token"\nrequired = true\n' + extra)
+                 'source = "flexai-token"\nrequired = true\n' + extra)
     return p
 
 
-def test_parser_accepts_closed_cli_source(tmp_path):
+def test_parser_accepts_closed_flexai_source(tmp_path):
     r = subprocess.run([sys.executable, str(CORE / 'parse_credentials.py'), str(manifest(tmp_path))], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
-    assert 'RELAY_KEY\t-\t1\tcli-token' in r.stdout
+    assert 'RELAY_KEY\t-\t1\tflexai-token' in r.stdout
 
 
-def test_parser_rejects_cli_op_ref(tmp_path):
+def test_parser_rejects_flexai_op_ref(tmp_path):
     r = subprocess.run([sys.executable, str(CORE / 'parse_credentials.py'), str(manifest(tmp_path, 'op_ref = "op://fixture/other/credential"\n'))], capture_output=True, text=True)
     assert r.returncode != 0
 
@@ -37,11 +37,15 @@ def test_parser_rejects_cli_op_ref(tmp_path):
     ('printf "op://fixture/unresolved\\n"', 78),
     ('printf "line1\\nline2\\n"', 78),
 ])
-def test_preflight_cli_value_evidence(tmp_path, command, expected, port_args):
+def test_preflight_flexai_value_evidence(tmp_path, command, expected, port_args):
     # This fake launcher records ANY launch, so --preflight must never reach it.
     launch = tmp_path / 'launched'
     python = tmp_path / 'python'
-    python.write_text('#!/bin/sh\nexit 0\n')
+    cache_flag = tmp_path / 'cache-flag'
+    python.write_text(f'''#!/bin/sh
+printf '%s\\n' "${{PYTHONDONTWRITEBYTECODE-unset}}" >> "{cache_flag}"
+exit 0
+''')
     python.chmod(0o755)
     litellm = tmp_path / 'litellm'
     litellm.write_text(f'#!/bin/sh\ntouch "{launch}"\n')
@@ -49,9 +53,9 @@ def test_preflight_cli_value_evidence(tmp_path, command, expected, port_args):
     op = tmp_path / 'op'
     op.write_text('#!/bin/sh\nprintf "fixture-master-value\\n"\n')
     op.chmod(0o755)
-    cli = tmp_path / 'cli'
-    cli.write_text('#!/bin/sh\n[ "$*" = "auth print-token" ] || exit 2\n' + command + '\n')
-    cli.chmod(0o755)
+    flexai = tmp_path / 'flexai'
+    flexai.write_text('#!/bin/sh\n[ "$*" = "auth print-token" ] || exit 2\n' + command + '\n')
+    flexai.chmod(0o755)
     config = tmp_path / 'config.yaml'
     config.write_text('general_settings:\n  master_key: os.environ/LOCAL_KEY\nrelay: os.environ/RELAY_KEY\n')
     env = {
@@ -59,7 +63,7 @@ def test_preflight_cli_value_evidence(tmp_path, command, expected, port_args):
         'TMPDIR': os.environ['TMPDIR'],
         'OP_SERVICE_ACCOUNT_TOKEN': 'fixture-service-account',
         'LITELLM_DEPLOYMENT': 'test', 'OP_BIN': str(op),
-        'CLI_TOKEN_BIN': str(cli), 'CREDENTIALS_MANIFEST': str(manifest(tmp_path)),
+        'FLEXAI_BIN': str(flexai), 'CREDENTIALS_MANIFEST': str(manifest(tmp_path)),
         'LITELLM_PROXY_CONFIG': str(config), 'LITELLM_PROXY_PYTHON': str(python),
     }
     installed = tmp_path / 'installed'
@@ -74,6 +78,7 @@ def test_preflight_cli_value_evidence(tmp_path, command, expected, port_args):
     assert 'fixture-master-value' not in r.stdout + r.stderr
     if expected == 0:
         assert 'preflight complete' in r.stdout
+        assert set(cache_flag.read_text().splitlines()) == {'1'}
 
 
 def test_unknown_wrapper_argument_refused():

@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python stdlib, existing pinned proxy Python/PyYAML, Unix sockets/flock, Apple libproc/getpeereid and fixed launchctl argv.
 
-**Design gate:** `restart-controller.md` SHA-256 `0b76bc483186e49b246e761350811a262f3934aa5336b469857d71b6c53e4e84`; trust/operations/release lenses completed. The remaining release-lens item is the explicit CT-005 implementation obligation to fix manifest ambiguity, not a new contract gap. Prior budget overruns remain disclosed in the review evidence.
+**Original design gate (before the authorized qualification-binding follow-up):** `restart-controller.md` SHA-256 `0b76bc483186e49b246e761350811a262f3934aa5336b469857d71b6c53e4e84`; trust/operations/release lenses completed. The remaining release-lens item is the explicit CT-005 implementation obligation to fix manifest ambiguity, not a new contract gap. Prior budget overruns remain disclosed in the review evidence.
 
 ## Task A — unique manifest before resolution
 

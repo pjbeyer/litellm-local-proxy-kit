@@ -39,7 +39,7 @@
 
 ### Provider validation — not run
 
-The public kit deliberately contains no 1Password references or provider-account mapping. No unrelated workstation configuration was searched for credentials. Consequently, read-only provider catalog checks and all cloud request classes remain unvalidated.
+The public kit deliberately contains no 1Password references or provider-account mapping. No unrelated Hermes or Flex configuration was searched for credentials. Consequently, read-only provider catalog checks and all cloud request classes remain unvalidated.
 
 ## Teardown verification
 

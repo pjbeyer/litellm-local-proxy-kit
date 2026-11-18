@@ -14,8 +14,8 @@ use this guide to bypass a workstation's operator/EDR approval boundary.
   label/port, pinned Python interpreter and Keychain service/account names.
 - `credentials.toml` contains **credential sources and references only**, never
   values. Sources are `op` (1Password `op_ref`), `aws-sso-shim` (the documented
-  embedding-filter degrade path), and `cli-token` (the closed, 30-second
-  `<resolver> auth print-token` form for a scoped MCP relay key). Non-`op`
+  embedding-filter degrade path), and `flexai-token` (the closed, 30-second
+  `flexai auth print-token` resolver for a scoped MCP relay key). Non-`op`
   sources forbid `op_ref`; no arbitrary command source is accepted.
   A login-Keychain item holds the bootstrap service-account token. The wrapper
   resolves credentials in memory, fails closed when required credentials are

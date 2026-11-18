@@ -19,11 +19,17 @@ from unittest import mock
 
 import pytest
 
+# Helper/candidate tests spawn a real subprocess helper that records its kernel
+# identity; it cannot inherit the parent-stub on Linux.
+DARWIN_ONLY = pytest.mark.skipif(sys.platform != "darwin",
+                                 reason="real helper subprocess reads the darwin kernel identity")
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'core'))
 from restart_control.engine import Fault, atomic_json
 from restart_control.runtime import Runtime
 from restart_control.runtime_identity import KIT_INPUTS, PROXY_INPUTS, file_fact, source_facts
+from restart_lifecycle_adapter import FixtureLifecycleAdapter
 
 
 @pytest.fixture
@@ -168,6 +174,9 @@ def runtime(private_root):
     (deployment/'deploy.conf.sh').write_text('fixture deployment\n')
     for name in ('overlay.yaml', 'credentials.toml', 'pin.lock'):
         (deployment/'deployments/fixture'/name).write_text('fixture source\n')
+    legacy_pin = 'base_version = "1.2.3"\npatch_tip = "'+'0'*40+'"\n'
+    (config/'pin.lock').write_text(legacy_pin)
+    (deployment/'deployments/fixture/pin.lock').write_text(legacy_pin)
     state = private_root/'state'
     policy = {'version': 1, 'kit_root': str(kit), 'deployment_root': str(deployment),
               'plist': str(config/(label+'.plist')), 'auto_plist': str(auto),
@@ -178,8 +187,13 @@ def runtime(private_root):
     atomic_json(policy_path, policy)
     with mock.patch.dict(os.environ, {'OP_SERVICE_ACCOUNT_TOKEN': 'fixture-only',
                                      'PYTHONPATH': 'fixture-only', 'PYTHONHOME': 'fixture-only'}):
-        obj = Runtime(policy_path)
-    obj._capture = mock.Mock(return_value=json.dumps({'runtime_digest': 'a'*64}).encode())
+        class FixtureRuntime(Runtime):
+            # The offline fixture runtime class: qualification accepts
+            # only fixture/isolated-launchd evidence scopes here, never
+            # intended-controller (production) evidence.
+            fixture = True
+        obj = FixtureRuntime(policy_path, test_lifecycle=FixtureLifecycleAdapter(namespace='restart_control'))
+    obj.run_proof_worker = mock.Mock(return_value=json.dumps({'runtime_digest': 'a'*64}).encode())
     return obj
 
 
@@ -230,7 +244,7 @@ def test_runtime_drift_refuses_restore_without_writes(runtime):
     path.mkdir(mode=0o700)
     binding = runtime.snapshot_lkg(path)
     old = (runtime.config/'run-proxy-wrapper.sh').read_bytes()
-    runtime._capture.return_value = json.dumps({'runtime_digest': 'b'*64}).encode()
+    runtime.run_proof_worker.return_value = json.dumps({'runtime_digest': 'b'*64}).encode()
     with pytest.raises(Fault, match='lkg_invalid'):
         runtime.restore_lkg(path, binding)
     assert (runtime.config/'run-proxy-wrapper.sh').read_bytes() == old
@@ -271,7 +285,7 @@ def test_installer_owned_layout_and_isolated_daemon_status(runtime, private_root
 
 
 def test_fast_candidate_exit_is_reaped_and_allows_later_helpers(runtime):
-    del runtime._capture  # exercise the real fixed helper, not the fixture seam
+    del runtime.run_proof_worker  # exercise the real fixed helper, not the fixture seam
     runtime._listener = lambda _: None
     def gone(_):
         runtime._candidate.wait(timeout=5)
@@ -284,8 +298,9 @@ def test_fast_candidate_exit_is_reaped_and_allows_later_helpers(runtime):
     assert runtime._capture([sys.executable, '-c', 'print("fixture-ok")']) == b'fixture-ok\n'
 
 
+@DARWIN_ONLY
 def test_helper_stdout_is_bounded_during_capture(runtime):
-    del runtime._capture
+    del runtime.run_proof_worker
     children = []
     original = subprocess.Popen
     def retained(*args, **kwargs):
@@ -302,32 +317,6 @@ def test_helper_stdout_is_bounded_during_capture(runtime):
     assert time.monotonic()-started < 5
     assert len(children) == 1 and children[0].poll() is not None
     assert not runtime._cleanup_blocked
-
-
-@pytest.mark.parametrize('variant', ['wrong_uid', 'absent_daemon', 'boolean_version', 'wrong_epoch'])
-def test_operator_qualification_binding_refuses_invalid_evidence(runtime, variant):
-    frozen = runtime.freeze()
-    plan = dict(frozen, controller_epoch='a'*32)
-    identity = {'pid': os.getpid(), 'uid': os.getuid(), 'birth': [1, 1]}
-    now, mono = time.time(), time.monotonic()
-    record = {'version': 1, 'operator_uid': os.getuid(),
-       'controller_label': runtime.policy['controller_label'], 'controller_identity': identity,
-       'controller_digest': plan['controller_digest'], 'policy_digest': plan['policy_digest'],
-       'plist_digest': file_fact(runtime.plist)['sha256'], 'controller_epoch': plan['controller_epoch'],
-       'issued_at': now-1, 'expires_at': now+60, 'issued_monotonic': mono-1,
-       'expires_monotonic': mono+60, 'canary_evidence_digest': 'b'*64}
-    # Explicit fake launchd/kernel qualification context, never a live claim.
-    with mock.patch('restart_control.runtime.process_identity', return_value={**identity, 'ppid': 1}), \
-         mock.patch.object(runtime, '_job_state', return_value={'identity': identity}) as job:
-        atomic_json(runtime.state/'qualification.json', record)
-        runtime.qualify(plan)  # green fixture control
-        if variant == 'wrong_uid': record['operator_uid'] += 1
-        elif variant == 'absent_daemon': job.return_value = None
-        elif variant == 'boolean_version': record['version'] = True
-        else: record['controller_epoch'] = 'c'*32
-        atomic_json(runtime.state/'qualification.json', record)
-        with pytest.raises(Fault, match='qualification_invalid'):
-            runtime.qualify(plan)
 
 
 def test_missing_qualification_is_a_gate(runtime):
@@ -444,3 +433,51 @@ def test_pending_bootstrap_then_first_incarnation_is_accepted(runtime, http_chil
     accepted = runtime.accept_started()
     assert accepted['identity'] == identity
     assert json.loads((runtime.state/'bootstrap.json').read_text())['identity'] == identity
+
+
+def test_not_found_signature_on_stderr_classifies_absence(runtime):
+    """launchctl's not-found text is on stderr; absence must classify.
+
+    Live gate-4 finding: launchctl print writes 'Could not find
+    service ...' to STDERR (with a leading 'Bad request.' line), while
+    _observe returned only stdout — so every real 113 carried an empty
+    payload, the signature check missed, and the lane recorded
+    unmanaged_listener instead of proven absence. The print
+    observation must include stderr in the returned bytes.
+    """
+    def pipe_with(blob):
+        read_end, write_end = os.pipe()
+        os.write(write_end, blob)
+        os.close(write_end)
+        return read_end
+
+    class FakeChild:
+        def __init__(self):
+            self.stdout = os.fdopen(pipe_with(b''), 'rb')
+            self.stderr = os.fdopen(pipe_with(
+                b'Bad request.\nCould not find service '
+                b'"fixture.local.proxy" in domain for '
+                b'user gui: %d\n' % os.getuid()), 'rb')
+            self.returncode = 113
+        def poll(self):
+            return 0
+        def wait(self, timeout=None):
+            return 0
+
+    created = []
+
+    def fake_popen(argv, **kwargs):
+        created.append(list(argv))
+        return FakeChild()
+
+    with mock.patch('restart_control.runtime.subprocess.Popen',
+                    side_effect=fake_popen):
+        state = runtime._job_state(runtime.label,
+                                   expected=mock.Mock(
+                                       ProgramArguments=['/bin/x'],
+                                       EnvironmentVariables={},
+                                       ThrottleInterval=30),
+                                   expected_path=runtime.plist)
+    assert created and created[0][:3] == ['/bin/launchctl', 'print',
+                                          'gui/%d/' % os.getuid() + runtime.label]
+    assert state is None  # classified absence, not unmanaged_listener

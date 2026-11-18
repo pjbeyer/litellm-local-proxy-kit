@@ -77,8 +77,12 @@ production use; a Hermes-owned background process does not satisfy that gate.
   the resolved interpreter
   hash, imported package root and distribution metadata, verified Git HEAD, and
   actual tracked package-file blob hashes compared with that HEAD. Refuse any
-  untracked or ignored Python source/native extension under that package; every
-  active-tag bytecode file must map to a verified tracked source and its code
+  untracked or ignored Python source/native extension under that package, except
+  the sole optional verified-build-bound artifact defined in
+  [native runtime artifact binding](native-runtime-artifact-contract.md). Its
+  strict pin/receipt, actual source/blob/ABI and native inventory checks run
+  before any package import; receipt bytes or explicit absence join all frozen
+  installed/deployment/LKG inputs. Every active-tag bytecode file must map to a verified tracked source and its code
   object must equal a fresh same-interpreter compilation (unknown cache forms
   block). Reject unverifiable caches rather than clearing them automatically.
   A clean `git diff` or existing version/tip check alone is insufficient.
@@ -142,8 +146,19 @@ production use; a Hermes-owned background process does not satisfy that gate.
   is issued by this implementation session. Qualification is a separate
   operator-issued 0600 regular, non-symlink record under the private state root:
   version, operator UID, controller label/PID/birth, controller/policy/proxy-plist
-  digests, issued/expiry times (at most 24 hours), and a digest of the operator's
-  real controller-context canary bootstrap/KeepAlive/bootout evidence. Require
+  digests, exact generated controller-plist digest and controller supervision
+  dictionary (`KeepAlive`, `ThrottleInterval`, `RunAtLoad`, `ExitTimeOut`),
+  issued/expiry times (at most 24 hours), and a digest of the operator's
+  real controller-context canary bootstrap/KeepAlive/bootout evidence. The
+  installer and qualification verifier must share one generated controller
+  definition. Qualification requires an owned 0600 regular non-symlink
+  controller plist matching that definition and available loaded controller
+  executable, argv, source path, working-directory, environment and throttle
+  parity; matching PID/birth alone is insufficient. Launchd's matching
+  `XPC_SERVICE_NAME` may be present in the loaded environment; other unexpected
+  explicit environment fields block. The trusted operator evidence binds the
+  supervision fields that launchctl does not expose. Old records without these
+  bindings fail closed and are never automatically upgraded. Require
   current UID, exact bindings, nonfuture issuance, unexpired record, controller
   PPID 1 and a launchd controller-label PID/birth match. Missing/stale/unverifiable
   qualification blocks; no RPC can create it. The operator is the trusted issuer
@@ -232,6 +247,10 @@ Kit source paths:
 - `core/restart_control/runtime.py`
 - `core/restart_control/runtime_identity.py`
 - `core/restart_control/process_identity.py`
+- `core/restart_control/canary.py`
+- `core/restart_control/startup.py`
+- `core/restart_control/shutdown.py`
+- `core/restart_control/recovery.py`
 
 Reject additional executable/source helpers under `core/` (excluding bytecode
 cache directories); adding one requires updating this registry and review.
@@ -246,12 +265,19 @@ Installed proxy paths, relative to the verified config directory:
 - `pin.lock`
 - `check_patch_sentinel.py`
 - `check_pin.py`
+- `runtime_identity.py` (flat copy of the registered runtime identity source)
 - `check_credential_coverage.py`
 - `aws-sso-cred-shim.sh`
 - `rotate-logs.sh`
 - `harvest-filter-metrics.sh`
 - `<verified-label>.plist`
 - `<verified-label>.rotate.plist`
+
+Optional installed proxy input: `native-build.json`, adjacent to `pin.lock`.
+Require explicit absence when no native table exists; otherwise require its
+strict paired bytes. The same fixed optional receipt joins the selected
+deployment inputs. Every mixed state refuses; apply never deletes stale native
+evidence to force a legacy transition.
 
 Also hash the separate auto-load plist copy, deployment `deploy.conf.sh`, selected
 `deployments/<verified-deployment>/overlay.yaml`, `credentials.toml`, `pin.lock`,

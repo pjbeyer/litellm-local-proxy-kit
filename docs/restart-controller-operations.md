@@ -1,14 +1,22 @@
 # Restart controller operations (macOS)
 
-**Release posture: validation draft, not production-qualified.** A follow-up
-review found an unresolved release blocker: qualification does not yet compare
-the loaded controller job's arguments/plist/supervision with the generated
-controller definition. PID/birth agreement alone is insufficient for release.
-Until fixed, do not activate this draft or issue production qualification/approval
-records. The correction must be authorized, implemented and independently verified.
+**Release posture: validation draft, not production-qualified.** Qualification
+checks the generated controller plist and available loaded executable, arguments,
+source path, working directory, environment and throttle settings, not just
+PID/birth agreement. Operator evidence separately binds supervision fields that
+launchctl cannot expose. Source verification is not live platform qualification:
+activation, evidence issuance and production interruption remain operator gates.
 The executable contract is [restart-controller.md](restart-controller.md). Installation does not
 activate a job, qualify a platform, grant approval, or take over a bridge.
 This is accident prevention for trusted same-user automation, not OS isolation.
+
+The [cap-aware shutdown amendment](restart-controller-shutdown-contract.md) is
+now **offline-implemented** (plan T001–T025 executed and test-verified offline),
+but it is still **not deployed and not platform-qualified**: no live canary has
+been run, no controller generation has been activated, and no qualification has
+been issued. Behavior proven by the offline suite must not be read as evidence
+about this host's live launchd behavior. Live activation, the isolated-canary
+lane and production handoff remain separate operator gates.
 
 ## Provision and install
 
@@ -66,13 +74,29 @@ The operator-issued `qualification.json` is a 0600 regular, non-symlink file und
 
 - `version`, `operator_uid`, `controller_label`, `controller_identity`.
 - `controller_digest`, `policy_digest`, `plist_digest`, `controller_epoch`.
+- `controller_plist_digest`: SHA-256 of the exact generated controller plist.
+- `controller_supervision`: exact `KeepAlive`, `ThrottleInterval`, `RunAtLoad` and
+  `ExitTimeOut` dictionary from that generated definition.
 - `issued_at`, `expires_at`, `issued_monotonic`, `expires_monotonic`.
 - `canary_evidence_digest`: SHA-256 of the reviewed real canary evidence.
 
 Bind the current daemon epoch, exact source/policy/proxy-plist digests, dynamic
 UID and kernel PID/microsecond birth identity. Both lifetimes are at most 24
 hours. The controller must have PPID 1 and match its loaded launchd label's
-PID/birth. Missing or unverifiable qualification keeps restart disabled.
+PID/birth. The controller's unique top-level loaded `exit timeout` must also
+exactly match the generated `ExitTimeOut`; missing, duplicate, nested-only,
+malformed or clamped observations refuse. A configured long timeout is not
+proof that the platform supplies that shutdown grace period. Do not lower the
+expected timeout merely to qualify a host while request/drain bounds remain
+longer. Extra explicit environment remains rejected except the matching
+`XPC_SERVICE_NAME`; unexplained platform logging settings are not silently
+whitelisted. The controller plist must be an owned 0600 regular non-symlink file
+matching the definition shared by installer and verifier. Available loaded fields
+must agree; only launchd's matching `XPC_SERVICE_NAME` is allowed as additional
+explicit environment metadata. The operator's real canary evidence binds the
+unexposed supervision fields to this loaded generation. Missing, stale or legacy
+qualification records without the new bindings keep restart disabled; they are
+never automatically upgraded.
 Do not manufacture qualification from a design review or mocked success.
 
 Initial proxy activation also needs an operator-issued `bootstrap.json` binding
@@ -118,12 +142,27 @@ restarts of the controller, clock regression and source/policy/runtime drift
 invalidate outstanding intent. Do not retry an interrupted or consumed request.
 A new prepare is not permission to ignore an uncertain previous operation.
 
+## Runtime cache and native-artifact evidence
+
+The managed installer and proxy wrapper force `PYTHONDONTWRITEBYTECODE=1` before
+Python helpers or proxy execution. This prevents those entrypoints from rewriting
+the frozen cache evidence; it neither repairs existing caches nor disables their
+verification. Preserve and reconcile pre-existing mismatches separately.
+
+An editable Rust/Maturin build can leave a Git-ignored native extension next to
+tracked Python source. Matching a local Cargo output or a wheel's own metadata is
+not independent provenance. The current contract still rejects untracked native
+code. Do not remove native capability or whitelist an observed hash to force a
+pass. Any artifact-binding extension requires an explicit reviewed contract change
+and verified build inputs before installation or live qualification.
+
 ## Failure handling
 
 - `runtime_invalid`: preserve runtime/cache evidence. Verify the deployed pin,
   tracked blobs, distribution mapping and active-tag bytecode. Do not clear or
   rebuild caches automatically to make the gate green.
-- `unmanaged_listener`/`primary_changed`: preserve the listener. Reconcile birth,
+- `unmanaged_listener`/`ambiguous_listener`/`primary_changed`: preserve the
+  listener. Reconcile birth,
   label, loaded policy and trusted bootstrap receipt; never kill by name or port.
 - `candidate_cleanup_failed`: stop work and reconcile the retained owned child
   and process group. There is no SIGKILL escalation or arbitrary cleanup command.
@@ -133,6 +172,101 @@ A new prepare is not permission to ignore an uncertain previous operation.
   phase. Never assume the original process still serves or repeat consumed intent.
 - `rolled_back`: current-generation LKG configuration was restored and accepted;
   this is not recovery of a previous software release or DB/cache/spend state.
+- `controller_stopping`: the shutdown latch is set; work admission and further
+  primary control are refused until restart. This is a clean stop, not a failure.
+- `recovery_invalid`: the durable journal/namespace state is inconsistent or a
+  consumed canary scope lacks coherent terminal evidence. Preserve everything;
+  reconcile per "Recovery reconciliation" below. Never delete state to clear it.
+- `canary_*` (`canary_binding_mismatch`, `canary_arm_expired`,
+  `canary_identity_invalid`, `canary_first_load_failed`,
+  `canary_exit_failed`, `canary_keepalive_failed`, `canary_cleanup_failed`,
+  `canary_shutdown_receipt_missing`, `canary_shutdown_unresolved`,
+  `canary_job_absent`): the startup canary lane refused; the scope retains
+  its arm, receipts and a durable `diagnostic.json`. Read the diagnostic,
+  reconcile the scope (any live canary worker is
+  `local.restart-canary.<nonce>` under launchd, never the proxy), then
+  re-arm once the cause is fixed. A refused lane never emits evidence.
+
+## Startup canary: arm and worker boundaries
+
+The amendment adds an operator-armed startup canary lane, run only inside a
+normal `serve` after runtime/identity verification and before RPC admission:
+
+- `arm-canary` (operator CLI, no service control, no credentials): writes one
+  0600 `canary/intent.json` envelope binding the CURRENT policy/controller
+  digests, generated controller plist digest, kernel boot identity and a
+  300-second dual-clock lifetime. One arm at a time; any pending or consumed
+  uncertainty refuses. The nonce derives the disposable label
+  `local.restart-canary.<nonce>` and the private scope
+  `state_dir/canary/<nonce>/`.
+- On the next `serve`, the arm is consumed (atomic rename into its scope) and
+  the lane runs the bounded sequence: derived canary plist → bootstrap →
+  first incarnation (runs 1) → cooperative exit-marker exit → KeepAlive second
+  distinct birth (runs 2) → bootout → proven shutdown receipt → proven
+  absence. Evidence and detail records are written only after successful
+  cleanup; every step is fixed-argv launchctl through the tracked runner.
+- Exactly two worker incarnations exist per scope; a third refuses. Workers
+  run with no Runtime, no HTTP, no credentials, and die cooperatively through
+  the shared latch within the 50-second budget — never signal escalation.
+- No arm means zero canary activity. A blocked lane leaves the journal blocked,
+  the scope retained and `status` read-only; the serve process keeps running.
+
+## Qualification schema v2
+
+`qualification.json` (v2) gains exactly two fields over v1 —
+`shutdown_contract` (the exact contract dict, compared structurally) and
+`controller_plist_digest` (SHA-256 of the generated controller plist) — and
+`canary_evidence_digest` now names a validated evidence FILE at
+`state_dir/canary/evidence/<digest>.json` (0600, owned, hash-bound), not a
+free string. The evidence file must be a closed v1 evidence envelope in
+fixture or isolated-launchd scope whose identity/epoch/digest/supervision/
+contract bindings equal the record's; two incarnations with distinct births;
+all producer checks true. Legacy v1 qualification records refuse — there is no
+automatic upgrade. Evidence alone never creates qualification; qualification
+alone never activates a generation.
+
+## Recovery reconciliation
+
+`recovery_invalid` and consumed canary scopes are reconciled, never cleaned
+silently. The bounded state root (`state_dir`) carries: requests, approvals
+(including `.consumed` markers), the recovery journal (operations, spawns,
+fence), and `canary/` (arms, scopes, evidence, detail). Reconciliation rules:
+
+1. Every pending/prepared request needs an explicit operator disposition:
+   expire it (wait past the deadline), or complete it through the fixed
+   client after fresh approval. Never delete request or approval records.
+2. A retained operation/fence row (uncertain outcome) means an interrupted
+   mutation: inspect the last durable phase and reconcile the primary
+   manually. The fence is cleared only by a completed `finish` or a
+   documented manual recovery; never by unlinking `mutation.json`.
+3. A consumed canary scope without coherent terminal evidence (omitted
+   detail, mismatched boot/generation, sibling evidence) blocks a new arm
+   until the scope is reconciled: capture the diagnostic, decide disposition
+   per the canary boundaries above, and archive the scope with the operator's
+   recorded decision. No automatic root-switch or silent archive.
+4. Spawn/child rows: a closed row is history; an owned row means a live child
+   claimed by the journal — reconcile by exact kernel identity
+   (pid + microsecond birth + uid), never by name or port.
+
+## Predecessor-state audit and activation gates
+
+Before selecting a fresh state root or arming the first canary of a new
+generation, produce the bounded hash-pinned predecessor-state inventory
+(plan T026): every pending/prepared request, consumed approval, operation/
+fence row, spawn/child record and consumed canary scope, each with a
+disposition and the operator's reconciliation decision. Unknown, truncated or
+unreconciled state blocks packet readiness — no automatic root-switch.
+
+Activation is a sequence of separate owner gates, in order: (1) offline
+acceptance (T025) — complete suite, mutation battery, reviews, all green;
+(2) the predecessor-state audit above; (3) the immutable candidate-generation
+activation packet (reviewed digests, bounded arm lifetime, derived scope,
+expected observations) — preparation evidence only, never execution; (4) the
+owner's explicit authorization of the real isolated-canary lane; (5) only
+then, the owner's authorization of the intended controller generation.
+Skipping a gate or bundling authorizations is not permitted; a refusal at
+any gate stops the sequence without a fallback mechanism.
+
 
 ## Verification boundary
 

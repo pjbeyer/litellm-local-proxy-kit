@@ -7,8 +7,8 @@ spec 015 in its owning workspace. Tracking remains in the external tracker.
 
 ## Requirements
 
-- CR-001: `source = "cli-token"` is a closed credential source, not an
-  arbitrary command specification. It executes `<resolver> auth print-token` with a
+- CR-001: `source = "flexai-token"` is a closed credential source, not an
+  arbitrary command specification. It executes `flexai auth print-token` with a
   30-second timeout, accepts only a successful nonempty single-line credential,
   and never prints the resolved value. Required resolution failure exits 78.
   `op_ref` is forbidden for this source. The scoped relay key is not replaced
@@ -84,11 +84,9 @@ it does not waive controller, candidate, handoff or rollback acceptance.
   sandboxing, a capability boundary, or a complete restart controller.
 
 The optional implementation and installation/rollback guide live in
-[`integrations/hermes/proxy-lifecycle-guard`](../integrations/hermes/proxy-lifecycle-guard/README.md),
-including the rev-3 refusal-category reference (one category + stable
-LGV code per decision, plugin-emitted log lines) and the full honest-boundary
-enumeration. Production restart remains separately gated; guard installation
-must not stop or replace the currently serving bridge.
+[`integrations/hermes/proxy-lifecycle-guard`](../integrations/hermes/proxy-lifecycle-guard/README.md).
+Production restart remains separately gated; guard installation must not stop
+or replace the currently serving bridge.
 
 ## Delivery status
 
