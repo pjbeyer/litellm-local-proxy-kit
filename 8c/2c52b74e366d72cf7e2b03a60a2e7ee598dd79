@@ -1,0 +1,26 @@
+tests/test_restart_runtime.py
+  s_fa8397285f8e39::t_9294f953f64a53 32
+  s_fa8397285f8e39::t_00990381634a1b 298
+  s_fa8397285f8e39::t_8a9983b637f6a6 297
+  s_fa8397285f8e39::t_21b2bccb28fba5 34
+  s_fa8397285f8e39::t_1fc9d767cfe945 290-296,299-323
+  s_fa8397285f8e39::t_3e073b88060bd9 324-325
+core/restart_control/runtime.py
+  s_fa8397285f8e39::t_da8301806e1cd7 1125-1140,1144-1146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "8c2c52b74e366d72cf7e2b03a60a2e7ee598dd79",
+  "prompts": {},
+  "sessions": {
+    "s_fa8397285f8e39": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261115_071947_efc532",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
