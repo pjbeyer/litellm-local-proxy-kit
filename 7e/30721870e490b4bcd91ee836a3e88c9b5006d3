@@ -1,0 +1,19 @@
+docs/evidence/2026-11-18-first-controlled-restart-ecbc7d89.md
+  s_fa8397285f8e39::t_ce6f6620db3bad 1-46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "7e30721870e490b4bcd91ee836a3e88c9b5006d3",
+  "prompts": {},
+  "sessions": {
+    "s_fa8397285f8e39": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261115_071947_efc532",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
