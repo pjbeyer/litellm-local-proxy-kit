@@ -439,8 +439,15 @@ from pathlib import Path as _P
 DRIVER = _P(__file__).resolve().parent / "crash_driver.py"
 
 
+@unittest.skipIf(sys.platform != "darwin",
+                 "crash driver binds the darwin process-identity ABI")
 class CrashRecoveryTest(unittest.TestCase):
-    """Fresh controllers must refuse globally over crashed journal state."""
+    """Fresh controllers must refuse globally over crashed journal state.
+
+    The crash driver forces real process death through a subprocess that
+    records its kernel identity — bindable only on darwin (the proc_bsdinfo
+    ABI). Skip off-darwin: the subprocess cannot inherit the conftest stub.
+    """
 
     def setUp(self):
         base = _P(os.environ.get("TMPDIR") or tempfile.gettempdir())

@@ -407,7 +407,6 @@ ARM_BINDINGS = {"policy_digest": DIGEST, "controller_digest": DIGEST,
                 "controller_plist_digest": DIGEST}
 
 
-@DARWIN_ONLY
 def test_arm_canary_creates_exclusive_private_envelope(tmp_path):
     record = canary.arm_canary(tmp_path, ARM_BINDINGS)
     root = tmp_path/"canary"
@@ -421,7 +420,6 @@ def test_arm_canary_creates_exclusive_private_envelope(tmp_path):
         canary.arm_canary(tmp_path, ARM_BINDINGS)
 
 
-@DARWIN_ONLY
 def test_arm_refuses_existing_uncertainty(tmp_path):
     canary.arm_canary(tmp_path, ARM_BINDINGS)
     # Any consumed scope present (even without evidence) blocks a new arm.
@@ -440,7 +438,6 @@ def test_arm_rejects_incomplete_bindings(tmp_path):
             canary.arm_canary(tmp_path, bad)
 
 
-@DARWIN_ONLY
 def test_consume_arm_moves_envelope_into_scope_once(tmp_path):
     record = canary.arm_canary(tmp_path, ARM_BINDINGS)
     consumed = canary.consume_arm(tmp_path, operator_uid=os.getuid())
@@ -453,7 +450,6 @@ def test_consume_arm_moves_envelope_into_scope_once(tmp_path):
         canary.consume_arm(tmp_path, operator_uid=os.getuid())
 
 
-@DARWIN_ONLY
 def test_consume_arm_refuses_when_scope_is_dirty(tmp_path):
     record = canary.arm_canary(tmp_path, ARM_BINDINGS)
     scope = tmp_path/"canary"/record["nonce"]
@@ -469,6 +465,7 @@ def test_arm_bindings_equal_runtime_binding_facts(runtime, private_root):
     assert arm_bindings(runtime.policy_path) == runtime.binding_facts()
 
 
+@DARWIN_ONLY
 def test_cli_arm_canary_against_installed_layout(runtime, private_root):
     """The real entrypoint arms once and refuses pending uncertainty."""
     import subprocess
@@ -529,6 +526,7 @@ def _consumed_scope(tmp_path, nonce=NONCE):
     return scope
 
 
+@DARWIN_ONLY
 def test_worker_records_identity_and_exits_on_marker(tmp_path):
     """A real retained child records its true kernel identity and obeys
     the one-time cooperative exit marker."""
@@ -596,6 +594,7 @@ def test_worker_refuses_absent_scope_without_creating_it(tmp_path):
     assert not (tmp_path/'canary').exists()
 
 
+@DARWIN_ONLY
 def test_canary_worker_shutdown_deadline(tmp_path):
     """SIGTERM latches the shared 50s budget; the worker exits cooperatively."""
     import signal

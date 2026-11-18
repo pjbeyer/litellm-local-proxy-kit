@@ -5,17 +5,11 @@ import importlib.util
 import json
 import os
 import fcntl
-import sys
 from pathlib import Path
 import threading
 import time
 
 import pytest
-
-# The canary arm/consume path binds the kernel bootsessionuuid — a darwin-only
-# primitive by contract — so those paths cannot run on other platforms.
-DARWIN_ONLY = pytest.mark.skipif(sys.platform != "darwin",
-                                 reason="canary arm/consume binds the darwin kernel boot identity")
 
 from core.restart_control import engine
 
@@ -3127,7 +3121,6 @@ def _arm_state(tmp_path):
     return state, arm
 
 
-@DARWIN_ONLY
 def test_pending_arm_admits_only_its_own_canary_begin(tmp_path):
     """A pending arm must not block begin() of ITS OWN platform-canary
     operation (real store, no fixture port) — the lane journals the
@@ -3149,7 +3142,6 @@ def test_pending_arm_admits_only_its_own_canary_begin(tmp_path):
         journal.begin(other, "fixture")
 
 
-@DARWIN_ONLY
 def test_canary_lane_journal_phases_over_real_store(tmp_path):
     """begin → canary_phase → (arm consumed) → spawn admission all run on
     the real store while the lane owns the namespace; a foreign proxy
@@ -3187,7 +3179,6 @@ def test_canary_lane_journal_phases_over_real_store(tmp_path):
     assert terminal.request_id == arm["nonce"]
 
 
-@DARWIN_ONLY
 def test_terminal_write_survives_runtime_context_release(tmp_path):
     """Live gate-4 finding: run() releases the runtime operation context
     (real end_operation clears the store's active ticket) BEFORE the
@@ -3233,7 +3224,6 @@ def test_terminal_write_survives_runtime_context_release(tmp_path):
     reloaded.require_clear()
 
 
-@DARWIN_ONLY
 def test_inventory_waits_out_worker_latch_staging_temp(tmp_path):
     """Live gate-4 finding (attempt 7): spawn_closed's clear-view scan
     raced the worker's SIGTERM latch write — atomic_json's staging temp
