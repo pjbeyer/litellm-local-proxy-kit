@@ -169,8 +169,11 @@ class InterruptionMatrixTest(unittest.TestCase):
             self.assertFalse(child.alive(),
                              "helper candidate was not self-cleaned")
         # The preparing journal row was durably closed, never left pending.
+        # bind_frozen precedes the rehearsal (candidate spawns only on
+        # bound digests), so a latch inside the helper still leaves the
+        # frozen transition durably recorded before the closed finish.
         adapter = rig.controller.recovery
-        self.assertEqual(adapter.transitions, ["begin", "finish"])
+        self.assertEqual(adapter.transitions, ["begin", "frozen", "finish"])
         self.assertIsNone(adapter.active)
         record = rig.record({"request_id": result["request_id"]})
         self.assertEqual(record["phase"], "blocked")

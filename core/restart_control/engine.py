@@ -442,10 +442,28 @@ class Controller:
             self._call("check_gates")
             primary_checks = self._call("accept_primary", before["identity"])
             self._admit()
-            candidate_checks = self._call("rehearse")
-            if not isinstance(primary_checks, dict) or not isinstance(candidate_checks, dict):
+            if not isinstance(primary_checks, dict):
                 raise Fault("candidate_failed")
             binding2 = {"asset_digest": frozen["asset_digest"], "runtime_digest": frozen["runtime_digest"]}
+            # Bind the frozen digests BEFORE the candidate rehearsal: the
+            # plan forbids executing a candidate on a null (unfrozen)
+            # binding, and the recovery store refuses a candidate spawn
+            # while the operation binding's asset digest is still null.
+            # Probe children (runtime-proof/diagnostic) are all closed by
+            # now, satisfying bind_frozen's closure precondition.
+            if ticket is not None:
+                ticket = self._journal("bind_frozen", ticket,
+                                       frozen["asset_digest"], frozen["runtime_digest"])
+                # bind_frozen rewrote the operation row and issued a
+                # refreshed ticket; the backend's in-memory context must
+                # carry the new handle (same contract as canary_phase).
+                refresher = getattr(self.backend, "refresh_operation", None)
+                if refresher is not None and ticket is not None:
+                    refresher(ticket)
+            self._admit()
+            candidate_checks = self._call("rehearse")
+            if not isinstance(candidate_checks, dict):
+                raise Fault("candidate_failed")
             snapshot_path = self.snapshots / request_id
             private_dir(snapshot_path)
             self._admit()
@@ -468,13 +486,9 @@ class Controller:
                          "primary_checks": primary_checks, "candidate_checks": candidate_checks,
                          "prepared_at": wall, "prepared_monotonic": mono,
                          "expires_at": wall + 300, "expires_monotonic": mono + 300})
-            # Freeze both digests once while the on-disk request is still
-            # the minimal preparing record, then land the prepared record
-            # against the frozen row: the production store admits a
-            # prepared request only after the binding freeze, and
-            # bind_frozen itself validates the minimal preparing record.
-            ticket = self._journal("bind_frozen", ticket,
-                                   frozen["asset_digest"], frozen["runtime_digest"])
+            # The digests are already bound above; landing the prepared
+            # record against the frozen row keeps the store's prepared
+            # admission valid.
             self._record(plan)
             self._journal("finish", ticket)
             return _result("prepared", **plan)
