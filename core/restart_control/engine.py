@@ -345,8 +345,8 @@ class Controller:
             raise Fault("internal_error")
         return value
 
-    def _freeze(self):
-        value = self._call("freeze")
+    def _freeze(self, *, reuse=False):
+        value = self._call("freeze_restart" if reuse else "freeze")
         if not _valid_freeze(value):
             raise Fault("runtime_invalid")
         return value
@@ -585,7 +585,7 @@ class Controller:
         approval = self._approval(plan, wall, mono)
         self._admit()
         self._call("qualify", plan)
-        if self._freeze() != {k: plan[k] for k in ("asset_digest", "runtime_digest", "policy_digest", "controller_digest")}:
+        if self._freeze(reuse=True) != {k: plan[k] for k in ("asset_digest", "runtime_digest", "policy_digest", "controller_digest")}:
             raise Fault("plan_stale")
         current = self._inspect()
         if current["identity"] != plan["original_identity"] or not current["managed"]:
@@ -597,7 +597,7 @@ class Controller:
         self._call("accept_primary", current["identity"])
         wall, mono = self._time()
         self._approval(plan, wall, mono)
-        if self._freeze() != {k: plan[k] for k in ("asset_digest", "runtime_digest", "policy_digest", "controller_digest")} or self._inspect() != current:
+        if self._freeze(reuse=True) != {k: plan[k] for k in ("asset_digest", "runtime_digest", "policy_digest", "controller_digest")} or self._inspect() != current:
             raise Fault("plan_stale")
         self._admit()
         self._call("qualify", plan)

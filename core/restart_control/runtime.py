@@ -206,6 +206,7 @@ class Runtime:
             self._key = None
             self._operation_started = None
             self._last_runtime = None
+            self._last_observed = None
             self._last_frozen = None
             self._candidate = None
             self._cleanup_blocked = False
@@ -1111,7 +1112,7 @@ class Runtime:
                 managed = False
         return {'identity': identity, 'managed': managed}
 
-    def freeze(self):
+    def freeze(self, *, reuse=False):
         try:
             if canonical_digest(_read_json(self.policy_path)) != self.policy_digest:
                 raise ValueError('policy_changed')
@@ -1140,17 +1141,42 @@ class Runtime:
                 inputs['deployment/'+name] = _native_receipt(deployment_pin, name)
             exemptions = self.deployment/'drift-exemptions.yaml'
             inputs['drift-exemptions.yaml'] = _regular(exemptions) if exemptions.exists() else None
-            proof = json.loads(self.run_proof_worker())
-            runtime_digest = proof['runtime_digest']
-            full = {'kit': facts, 'proxy': proxy, 'inputs': inputs,
-                    'policy_digest': self.policy_digest, 'runtime_digest': runtime_digest,
-                    'controller': controller}
+            observed = {'kit': facts, 'proxy': proxy, 'inputs': inputs,
+                        'policy_digest': self.policy_digest, 'controller': controller}
+            if reuse and self._last_runtime is not None and self._last_observed == observed:
+                # Call-site-gated restart revalidation. A prepare-stage freeze
+                # already proved the worker-derived runtime digest under an
+                # open journal operation; a restart's pre-intent freeze runs
+                # with no active operation, and T004 admits no child intent
+                # outside a nonterminal operation, so a proof spawn here is
+                # structurally impossible (it latches cleanup uncertainty and
+                # refuses as recovery_invalid under freeze's catch-all).
+                # Equivalence is not assumed: the cached digest is carried
+                # forward ONLY when every re-observed byte-level input
+                # (kit facts, proxy receipts, deployment closure, policy
+                # digest, controller copies) equals the exact input set whose
+                # runtime proof was accepted at prepare. Any drift takes the
+                # worker path, which under T004 refuses and latches cleanup
+                # uncertainty — fail-closed, never a stale-digest pass.
+                runtime_digest = self._last_runtime
+            else:
+                proof = json.loads(self.run_proof_worker())
+                runtime_digest = proof['runtime_digest']
+            full = dict(observed, runtime_digest=runtime_digest)
             frozen = {'asset_digest': canonical_digest(full), 'runtime_digest': runtime_digest,
                       'policy_digest': self.policy_digest, 'controller_digest': canonical_digest(controller)}
-            self._last_runtime, self._last_frozen, self._last_proxy = runtime_digest, frozen, proxy
+            self._last_runtime, self._last_observed, self._last_frozen, self._last_proxy = (
+                runtime_digest, observed, frozen, proxy)
             return frozen
         except Exception:
             raise Fault('runtime_invalid') from None
+
+    def freeze_restart(self):
+        """Restart-stage revalidation: reuse the prepare-stage proof digest
+        when every observed byte-level input matches (T004 admits no child
+        intent outside a nonterminal operation, so a proof spawn is
+        structurally impossible in a restart's pre-intent stage)."""
+        return self.freeze(reuse=True)
 
     def check_gates(self):
         from .shutdown import ShutdownRequested
