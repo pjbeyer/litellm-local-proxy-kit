@@ -247,6 +247,7 @@ class Controller:
         if type(shutdown) is not Shutdown:
             raise Fault("invalid_request")
         self.shutdown = shutdown
+        self._backend_operation_live = False
         self.state_dir = private_dir(state_dir)
         self.requests = self.state_dir / "requests"
         self.approvals = self.state_dir / "approvals"
@@ -384,16 +385,29 @@ class Controller:
         """One closed mapping from journal failure to a recovery Fault."""
         from .recovery import RecoveryError
         try:
-            return getattr(self.recovery, name)(*args, **kwargs)
+            result = getattr(self.recovery, name)(*args, **kwargs)
         except Fault:
             raise
         except RecoveryError:
             raise Fault("recovery_invalid") from None
         except Exception:
             raise Fault("recovery_invalid") from None
+        # The store issues a new immutable ticket whenever it rewrites the
+        # active operation row (every phase write, same contract as
+        # canary_phase); the backend's in-memory operation context must
+        # carry the refreshed handle or its next admission refuses the
+        # stale handle by identity and fails the restart mid-flight.
+        if name == "phase" and self._backend_operation_live:
+            refresher = getattr(self.backend, "refresh_operation", None)
+            if refresher is not None and isinstance(result, object):
+                refresher(result)
+        elif name == "finish":
+            self._backend_operation_live = False
+        return result
 
     def _begin_backend_operation(self, ticket):
         """Give a lifecycle-aware backend the exact active journal context."""
+        self._backend_operation_live = True
         starter = getattr(self.backend, "begin_operation", None)
         if starter is None:
             return
