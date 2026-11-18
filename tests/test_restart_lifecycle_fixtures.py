@@ -24,6 +24,7 @@ import tempfile
 import threading
 import time
 import unittest
+from conftest import REQUIRES_REAL_MAC
 import urllib.error
 import urllib.request
 import uuid
@@ -492,6 +493,7 @@ class FixtureRig:
 
 @unittest.skipIf(sys.platform != "darwin",
                  "genuine birth/PID observation requires the darwin process ABI")
+@REQUIRES_REAL_MAC
 class RestartLifecycleFixtureTest(unittest.TestCase):
     """Fixture-scope lifecycle regressions: real HTTP children, real UDS, fake launchctl."""
 

@@ -14,6 +14,8 @@ control after the latch.
 import contextlib
 import sys
 import unittest
+from conftest import REQUIRES_REAL_MAC
+
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -42,6 +44,7 @@ def _latch_on_phase(rig, phase_name):
 
 @unittest.skipIf(sys.platform != "darwin",
                  "genuine birth/PID observation requires the darwin process ABI")
+@REQUIRES_REAL_MAC
 class InterruptionMatrixTest(unittest.TestCase):
     """Inject the shutdown latch at every named lifecycle boundary."""
 
@@ -441,6 +444,7 @@ DRIVER = _P(__file__).resolve().parent / "crash_driver.py"
 
 @unittest.skipIf(sys.platform != "darwin",
                  "crash driver binds the darwin process-identity ABI")
+@REQUIRES_REAL_MAC
 class CrashRecoveryTest(unittest.TestCase):
     """Fresh controllers must refuse globally over crashed journal state.
 

@@ -30,7 +30,9 @@ marked DARWIN_ONLY (skip) in their test files.
 Set RC_FORCE_NON_DARWIN=1 to simulate the non-darwin path on a darwin host.
 """
 
+import ctypes
 import os
+import re
 import sys
 import pathlib
 
@@ -43,6 +45,41 @@ if _CORE not in sys.path:
     sys.path.insert(0, _CORE)
 
 _FAKE_BOOT = "c0ffeec0-ffee-c0ff-eec0-ffeec0ffeec0"
+
+
+def real_mac_available() -> bool:
+    """True when the host exposes the darwin kernel bootsessionuuid (a physical
+    Mac or a VM that preserves it). GitHub-hosted macOS VMs do not, so the
+    darwin-only subprocess tests cannot pass there.
+    """
+    if sys.platform != "darwin":
+        return False
+    try:
+        call = ctypes.CDLL(None, use_errno=True).sysctlbyname
+        call.argtypes = [ctypes.c_char_p, ctypes.c_void_p,
+                         ctypes.POINTER(ctypes.c_size_t), ctypes.c_void_p,
+                         ctypes.c_size_t]
+        call.restype = ctypes.c_int
+        buffer = ctypes.create_string_buffer(37)
+        size = ctypes.c_size_t(37)
+        ctypes.set_errno(0)
+        result = call(b"kern.bootsessionuuid", buffer, ctypes.byref(size),
+                      None, 0)
+        if (type(result) is not int or result != 0 or ctypes.get_errno()
+                or size.value != 37 or buffer.raw[36] != 0
+                or b"\0" in buffer.raw[:36]):
+            return False
+        value = buffer.raw[:36].decode("ascii")
+        return bool(re.fullmatch(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-"
+                                 r"[0-9a-fA-F]{12}", value)
+                and int(value.replace("-", ""), 16) != 0)
+    except Exception:
+        return False
+
+
+REQUIRES_REAL_MAC = pytest.mark.skipif(
+    sys.platform == "darwin" and not real_mac_available(),
+    reason="requires a physical Mac (kern.bootsessionuuid absent on CI VMs)")
 
 
 def _boot():
