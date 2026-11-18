@@ -1,0 +1,19 @@
+docs/evidence/2026-11-17-8c5e0f06-reissue.sh
+  s_fa8397285f8e39::t_11c2895023fbf0 1-69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "e44b4410fea31525560fec5eb0c925ca83c3f0b5",
+  "prompts": {},
+  "sessions": {
+    "s_fa8397285f8e39": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261115_071947_efc532",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
