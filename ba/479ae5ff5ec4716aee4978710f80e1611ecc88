@@ -1,0 +1,19 @@
+.github/workflows/tests.yml
+  s_fa8397285f8e39::t_7517494c4dd73c 32-35,37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "ba479ae5ff5ec4716aee4978710f80e1611ecc88",
+  "prompts": {},
+  "sessions": {
+    "s_fa8397285f8e39": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261115_071947_efc532",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
