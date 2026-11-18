@@ -1,10 +1,10 @@
-# lpkit-976 V&V Record — 2026-11-17 (spec-reconciliation session)
+# the stale-bundle defect V&V Record — 2026-11-17 (spec-reconciliation session)
 
 Independent of the filing session. Every claim checked against live state (journal, qualification record, launchd, digests, installer source).
 
 ## Verdict
 
-**VALID in substance — all operative claims verified live. One direction correction (D1) and one confirmation note (N1). Remediation shape is code-consistent and supersedes the generic items in my lpkit-fhz reopen with a concrete install sequence.**
+**VALID in substance — all operative claims verified live. One direction correction (D1) and one confirmation note (N1). Remediation shape is code-consistent and supersedes the generic items in my the deployment-root defect reopen with a concrete install sequence.**
 
 ## Verified against live state
 
@@ -12,7 +12,7 @@ Independent of the filing session. Every claim checked against live state (journ
 - **Prepare refusal `b232826…`**: present in requests (`runtime_invalid`) and journal (`blocked`/`blocked`, pcc false), binding policy `c6b3ec0f` (corrected policy). Live refusal under a *valid* policy and *valid* qualification — confirmed.
 - **Current qualification record**: epoch `a565bda2`, pid 9952, issued 11-16 22:46:58, expires 11-17 04:46, binds policy `c6b3ec0f` + controller_digest `dd74e980`. Controller now runs=5, PID 9952. (This is a second reissue — see N1.)
 - **Installer is install-only, cannot update in place**: `install_restart_controller.py` L59 raises `state_io` if destination or plist exists; only verification of an existing install (L53–56) is supported. So the refresh must change `controller_root`, which changes `policy_digest`, and the policy edit must precede the fresh install — 976's sequencing note is code-verified and is a real operational constraint my reopen record did not carry.
-- Consequence claim (every prepare refuses `controller_copy_changed`; A1 probe cannot run because the serving bundle predates it) — matches my independent finding and reproduction from the lpkit-fhz reopen V&V.
+- Consequence claim (every prepare refuses `controller_copy_changed`; A1 probe cannot run because the serving bundle predates it) — matches my independent finding and reproduction from the the deployment-root defect reopen V&V.
 
 ## D1 — direction correction (narrative only, same trap)
 
@@ -20,11 +20,11 @@ Independent of the filing session. Every claim checked against live state (journ
 
 ## N1 — double reissue observed
 
-Two qualification reissues 8 minutes apart: 22:38 (epoch `d8566aa4`, pid 2357 — cited in the lpkit-fhz remediation comment) and 22:46 (epoch `a565bda2`, pid 9952 — current, cited by 976 as "22:44"). Both bind `dd74e980` + `c6b3ec0f`, so neither changes the picture; noted so the record count is honest (the archived-qualification dir should hold the superseded one).
+Two qualification reissues 8 minutes apart: 22:38 (epoch `d8566aa4`, pid 2357 — cited in the the deployment-root defect remediation comment) and 22:46 (epoch `a565bda2`, pid 9952 — current, cited by 976 as "22:44"). Both bind `dd74e980` + `c6b3ec0f`, so neither changes the picture; noted so the record count is honest (the archived-qualification dir should hold the superseded one).
 
 ## Cross-reference disposition (owner decision, not taken by V&V)
 
-`lpkit-976` and the reopened `lpkit-fhz` (deployment-axis follow-up items 1–3 in the 2026-11-17 fhz-remediation V&V record) cover the same defect. 976 is the more operative tracker: it carries the concrete install sequence and the policy-before-install constraint. Recommend: work 976 as the remediation tracker; close `lpkit-fhz` when 976 lands (its code-axis A1 fix is already verified; only the shared deployment axis remains), rather than carrying both in parallel. The hardening item (qualify() should compare `controller_digest` against the INSTALLED bundle closure — the bundle-axis twin of A1) belongs to whichever tracker survives and should not be dropped in the consolidation.
+`the stale-bundle defect` and the reopened `the deployment-root defect` (deployment-axis follow-up items 1–3 in the 2026-11-17 fhz-remediation V&V record) cover the same defect. 976 is the more operative tracker: it carries the concrete install sequence and the policy-before-install constraint. Recommend: work 976 as the remediation tracker; close `the deployment-root defect` when 976 lands (its code-axis A1 fix is already verified; only the shared deployment axis remains), rather than carrying both in parallel. The hardening item (qualify() should compare `controller_digest` against the INSTALLED bundle closure — the bundle-axis twin of A1) belongs to whichever tracker survives and should not be dropped in the consolidation.
 
 ## G7 posture (unchanged from reopen)
 

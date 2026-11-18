@@ -23,7 +23,7 @@ a `Fault`, which IS an `Exception`. freeze() therefore:
 
 - **masked the real refusal code** (`candidate_cleanup_failed` →
   `runtime_invalid`), exactly the same defect class as the
-  `ambiguous_listener` taxonomy bug (`lpkit-976`), and
+  `ambiguous_listener` taxonomy bug (`the stale-bundle defect`), and
 - left `_cleanup_blocked = True` latched in the daemon process — a sticky
   in-memory flag that is only ever reset at Runtime construction, permanently
   refusing every future prepare/rehearse in that process

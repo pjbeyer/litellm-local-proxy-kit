@@ -1560,7 +1560,7 @@ class Runtime:
             raise Fault('lkg_invalid')
 
     def qualify(self, plan):
-        # lpkit-fhz (A1): qualification validates the canary lane but
+        # deployment-root fix (A1): qualification validates the canary lane but
         # restart admission also requires freeze()/check_gates() against
         # the policy's deployment root. A policy whose deployment root
         # lacks the fact closure freeze() reads (deploy.conf.sh,
@@ -1582,7 +1582,7 @@ class Runtime:
             deployment_pin = deployment_dir/'pin.lock'
             for name in PROXY_OPTIONAL_INPUTS:
                 _native_receipt(deployment_pin, name)
-            # lpkit-976 (installed-closure probe): binding_facts() digests the
+            # installed-closure probe: binding_facts() digests the
             # LOADED kit sources, so a record can bind a generation ahead of
             # the deployed bundle — exactly the post-A1 regression (kit HEAD
             # at 4ac18a04, installed runtime.py still ae25e913; every prepare

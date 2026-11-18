@@ -1,6 +1,6 @@
 # Gate 4 owner landing — isolated-canary lane activation (Option A)
 
-**Session worktree:** `~/Projects/pjbeyer/litellm-local-proxy-shutdown`
+**Session worktree:** `<worktree>`
 (branch `feat/controller-shutdown`, HEAD `354e07f`, clean, pushed).
 **Owner approval on record:** "A" (full staged transition) + "Approved to
 proceed" + "Commit and push your work / Authorized to proceed with all".
@@ -12,7 +12,7 @@ outside the model tool context. This file is the exact command sequence.
 ## What is already prepared (agent-side, verified)
 
 - Staged v2 policy at
-  `/Users/pjbeyer/.hermes/cache/scratch/policy-v2-final.json` (0600):
+  `~/.hermes/cache/scratch/policy-v2-final.json` (0600):
   `kit_root` → the reviewed worktree (HEAD `354e07f`, git-clean),
   `controller_root` → `~/.local/share/litellm/restart-controller-f7cf523`
   (fresh bundle dir; legacy `restart-controller-aee69ab` untouched until
@@ -49,26 +49,26 @@ mv ~/Library/LaunchAgents/ai.litellm.restart-controller.plist ~/Library/LaunchAg
 
 # 3. Install the new generation (copies reviewed sources; NEVER activates).
 env PYTHONDONTWRITEBYTECODE=1 \
-  /Users/pjbeyer/.local/share/litellm/runtimes/verified-7897e75e79cf-20261103T022910Z/python-env/bin/python \
-  /Users/pjbeyer/Projects/pjbeyer/litellm-local-proxy-shutdown/core/install_restart_controller.py \
-  --policy /Users/pjbeyer/.hermes/cache/scratch/policy-v2-final.json
+  ~/.local/share/litellm/runtimes/verified-7897e75e79cf-20261103T022910Z/python-env/bin/python \
+  <worktree>/core/install_restart_controller.py \
+  --policy ~/.hermes/cache/scratch/policy-v2-final.json
 #   expect: {"status": "installed", "activation": "not_performed", "qualification": "operator_required"}
 
 # 4. Verify installed bytes match the kit (fail-closed comparison).
 env PYTHONDONTWRITEBYTECODE=1 \
-  /Users/pjbeyer/.local/share/litellm/runtimes/verified-7897e75e79cf-20261103T022910Z/python-env/bin/python \
-  /Users/pjbeyer/Projects/pjbeyer/litellm-local-proxy-shutdown/core/install_restart_controller.py \
-  --policy /Users/pjbeyer/.hermes/cache/scratch/policy-v2-final.json --verify
+  ~/.local/share/litellm/runtimes/verified-7897e75e79cf-20261103T022910Z/python-env/bin/python \
+  <worktree>/core/install_restart_controller.py \
+  --policy ~/.hermes/cache/scratch/policy-v2-final.json --verify
 #   expect: {"status": "verified", "activation": "not_performed"}
 
 # 5. Swap the LIVE policy to v2 (atomic replace, keep 0600).
 cp ~/.config/litellm-restart-controller/policy.json ~/.config/litellm-restart-controller/policy.json.retired-20261115
-cp /Users/pjbeyer/.hermes/cache/scratch/policy-v2-final.json ~/.config/litellm-restart-controller/policy.json
+cp ~/.hermes/cache/scratch/policy-v2-final.json ~/.config/litellm-restart-controller/policy.json
 chmod 600 ~/.config/litellm-restart-controller/policy.json
 
 # 6. ARM the canary (300 s window starts NOW — run step 7 immediately).
 env PYTHONDONTWRITEBYTECODE=1 \
-  /Users/pjbeyer/.local/share/litellm/runtimes/verified-7897e75e79cf-20261103T022910Z/python-env/bin/python \
+  ~/.local/share/litellm/runtimes/verified-7897e75e79cf-20261103T022910Z/python-env/bin/python \
   ~/.local/share/litellm/restart-controller-f7cf523/restart_controller.py \
   --policy ~/.config/litellm-restart-controller/policy.json arm-canary
 

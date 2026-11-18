@@ -1,4 +1,4 @@
-# lpkit-fhz Remediation V&V — 2026-11-17 (spec-reconciliation session)
+# the deployment-root defect Remediation V&V — 2026-11-17 (spec-reconciliation session)
 
 Independent of the implementation session. Every claim checked against live state and replicated by direct computation/execution.
 
@@ -25,4 +25,4 @@ Independent of the implementation session. Every claim checked against live stat
 1. Install a new controller bundle generation from the fixed kit (the established install flow), retire/`f7cf523` as `aee69ab` was retired, kickstart the controller.
 2. Reissue qualification bound to the **installed** generation's closure digest (and fresh epoch/identity).
 3. Consider hardening (same latent-trap class): qualify()/freeze() should compare the record's `controller_digest` against the **installed bundle's** closure, not the kit's, so a kit-bundle skew can never be qualified again. This is the bundle-axis twin of A1.
-4. Reopen `lpkit-fhz` (or file the follow-up under it) until the installed generation matches the qualified generation — the close reason's "requalification" claim is true of the policy axis only.
+4. Reopen `the deployment-root defect` (or file the follow-up under it) until the installed generation matches the qualified generation — the close reason's "requalification" claim is true of the policy axis only.

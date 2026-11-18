@@ -5,7 +5,7 @@ Audience: Phil (operator). Every launchctl/policy-edit/file-issuance step below 
 
 ## Why a second refresh
 
-The `lpkit-976` prepare failures surfaced as `internal_error`, which masked
+The `the stale-bundle defect` prepare failures surfaced as `internal_error`, which masked
 their real name: the daemon's `_listener` probe observed a transient
 two-pid lsof reading on :4000 (the established proxy connection plus a
 second short-lived pid, e.g. the diagnostic sampler itself) and raised
@@ -58,19 +58,19 @@ mv ~/Library/LaunchAgents/ai.litellm.restart-controller.plist ~/Library/LaunchAg
 ```
 
 3. Edit `~/.config/litellm-restart-controller/policy.json`:
-   `controller_root` → `/Users/pjbeyer/.local/share/litellm/restart-controller-5d93309`
+   `controller_root` → `~/.local/share/litellm/restart-controller-5d93309`
    (only that one field; digest becomes `f288e664…`)
 
 4. Fresh install from the kit (creates bundle + supervisor plist, verifies bytes):
 
 ```sh
-/Users/pjbeyer/Projects/work/flex-ai-litellm-local-proxy/.venv-tests/bin/python -B /Users/pjbeyer/Projects/pjbeyer/litellm-local-proxy-shutdown/core/install_restart_controller.py --policy ~/.config/litellm-restart-controller/policy.json
+~/Projects/work/flex-ai-litellm-local-proxy/.venv-tests/bin/python -B <worktree>/core/install_restart_controller.py --policy ~/.config/litellm-restart-controller/policy.json
 ```
 
    Expect `{"status": "installed", ...}`. Then verify:
 
 ```sh
-/Users/pjbeyer/Projects/work/flex-ai-litellm-local-proxy/.venv-tests/bin/python -B /Users/pjbeyer/Projects/pjbeyer/litellm-local-proxy-shutdown/core/install_restart_controller.py --policy ~/.config/litellm-restart-controller/policy.json --verify
+~/Projects/work/flex-ai-litellm-local-proxy/.venv-tests/bin/python -B <worktree>/core/install_restart_controller.py --policy ~/.config/litellm-restart-controller/policy.json --verify
 ```
 
    Expect `{"status": "verified", ...}`.
@@ -85,7 +85,7 @@ launchctl bootstrap gui/502 ~/Library/LaunchAgents/ai.litellm.restart-controller
    chat round-trip; the lane runs at serve boot):
 
 ```sh
-/Users/pjbeyer/Projects/work/flex-ai-litellm-local-proxy/.venv-tests/bin/python -B /Users/pjbeyer/Projects/pjbeyer/litellm-local-proxy-shutdown/core/restart_controller.py --policy ~/.config/litellm-restart-controller/policy.json arm-canary && launchctl kickstart -k gui/502/ai.litellm.restart-controller && echo ARM-AND-KICKSTART-DONE
+~/Projects/work/flex-ai-litellm-local-proxy/.venv-tests/bin/python -B <worktree>/core/restart_controller.py --policy ~/.config/litellm-restart-controller/policy.json arm-canary && launchctl kickstart -k gui/502/ai.litellm.restart-controller && echo ARM-AND-KICKSTART-DONE
 ```
 
 Then tell the session: it polls the lane to `canary_passed`, reads the new

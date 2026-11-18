@@ -13,7 +13,7 @@ never executed).
 Landing command (run outside the agent, from any directory):
 
 ```sh
-mkdir -p ~/.hermes/cache/scratch && tail -n +25 /Users/pjbeyer/Projects/pjbeyer/litellm-local-proxy-shutdown/docs/handoffs/2026-11-11-t009-correction-prompt-owner-landing.md > ~/.hermes/cache/scratch/t009-owned-stop-correction-prompt.txt
+mkdir -p ~/.hermes/cache/scratch && tail -n +25 <worktree>/docs/handoffs/2026-11-11-t009-correction-prompt-owner-landing.md > ~/.hermes/cache/scratch/t009-owned-stop-correction-prompt.txt
 ```
 
 After you land it, the corrective-generation step can resume through its

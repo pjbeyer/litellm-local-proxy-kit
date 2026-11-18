@@ -5,9 +5,9 @@ Read-only recurring monitor (recurring-signal-monitor pattern): verifies the
 deployed guard still (a) exists with correct owner-only permissions,
 (b) passes its own integrity digest, (c) vetoes a recognized lifecycle command
 on a branch that cannot execute, (d) allows a read-only diagnostic, and
-(e) routes shape-class envelopes correctly (lpkit-9df): decode-fail and
+(e) routes shape-class envelopes correctly (the tracked defect): decode-fail and
 non-canonical key shapes must surface as SHAPE_ENVELOPE (LGV-020 corrective
-routing, lpkit-1cz / amendment 3a), and a canonical relay envelope must pass.
+routing, the tracked defect / amendment 3a), and a canonical relay envelope must pass.
 Fail-closed: any probe step that cannot be proven healthy is an alert.
 Silent-on-success: empty stdout when everything passes.
 
@@ -48,7 +48,7 @@ STATE_FILE = os.path.join(STATE_DIR, "probe_history.jsonl")
 VETO_PROBE = "if false; then lsof -t -iTCP:4000 | xargs kill -9; fi"
 ALLOW_PROBE = "echo healthy"
 
-# Shape-class probes (lpkit-9df). All are non-executable by construction:
+# Shape-class probes (the tracked defect). All are non-executable by construction:
 # the decode-fail payload fails json.loads inside the guard before any
 # command could run; the relay envelope targets a nonexistent tool_id so
 # the aggregator would refuse it anyway; the guard's decision is what we
@@ -64,7 +64,7 @@ def _probe_eval(command: str, tool_name: str = "terminal",
                 args: dict = None) -> str:
     """Run guard.evaluate() in a subprocess; return the decision category.
 
-    tool_name/args let shape-class probes (lpkit-9df) evaluate
+    tool_name/args let shape-class probes (the tracked defect) evaluate
     tool_call envelopes instead of only terminal commands; the
     subprocess contract (PROBE_ERROR prefix, ALLOW on None) is
     unchanged.
@@ -191,7 +191,7 @@ def run_watch() -> int:
 
         veto = _probe_eval(VETO_PROBE) if os.path.isdir(DEPLOY_DIR) else None
         allow = _probe_eval(ALLOW_PROBE) if os.path.isdir(DEPLOY_DIR) else None
-        # Shape-class probes (lpkit-9df): non-executable by construction.
+        # Shape-class probes (the tracked defect): non-executable by construction.
         decode_fail = _probe_eval(
             "", tool_name="tool_call",
             args={"calls": DECODE_FAIL_PROBE}) if os.path.isdir(DEPLOY_DIR) else None
@@ -223,12 +223,12 @@ def run_watch() -> int:
             failures.append(
                 "shape-class regression: decode-fail envelope did not route to "
                 "SHAPE_ENVELOPE (decision=%s) — LGV-020 corrective routing "
-                "absent (lpkit-1cz class)" % sanitize_markdown(str(decode_fail)))
+                "absent (the tracked defect class)" % sanitize_markdown(str(decode_fail)))
         if noncanonical is not None and noncanonical != "SHAPE_ENVELOPE":
             failures.append(
                 "shape-class regression: non-canonical key shape did not route "
                 "to SHAPE_ENVELOPE (decision=%s) — amendment 3a enforcement "
-                "absent (lpkit-6u6 class)" % sanitize_markdown(str(noncanonical)))
+                "absent (the tracked defect class)" % sanitize_markdown(str(noncanonical)))
         if relay_allow is not None and relay_allow != "ALLOW":
             failures.append(
                 "false positive: canonical relay envelope refused "
@@ -260,7 +260,7 @@ def _self_test() -> int:
         if verb in ALLOW_PROBE:
             ok = False
 
-    # Shape probes (lpkit-9df) must be non-destructive: the decode-fail
+    # Shape probes (the tracked defect) must be non-destructive: the decode-fail
     # payload is a non-decoding string (never executes), the relay targets
     # a nonexistent tool_id, and neither carries a live kill-family verb
     # in an executable position (they sit inside guard inputs only).

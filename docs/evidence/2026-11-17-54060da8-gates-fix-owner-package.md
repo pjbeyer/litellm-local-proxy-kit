@@ -36,12 +36,12 @@ mv ~/.local/share/litellm/restart-controller-8c5e0f06 ~/.local/share/litellm/res
 ```
 
 3. Policy edit: `controller_root` →
-   `/Users/pjbeyer/.local/share/litellm/restart-controller-54060da8`
+   `~/.local/share/litellm/restart-controller-54060da8`
 
 4. Install + verify:
 
 ```sh
-/Users/pjbeyer/Projects/work/flex-ai-litellm-local-proxy/.venv-tests/bin/python -B /Users/pjbeyer/Projects/pjbeyer/litellm-local-proxy-shutdown/core/install_restart_controller.py --policy ~/.config/litellm-restart-controller/policy.json && /Users/pjbeyer/Projects/work/flex-ai-litellm-local-proxy/.venv-tests/bin/python -B /Users/pjbeyer/Projects/pjbeyer/litellm-local-proxy-shutdown/core/install_restart_controller.py --policy ~/.config/litellm-restart-controller/policy.json --verify
+~/Projects/work/flex-ai-litellm-local-proxy/.venv-tests/bin/python -B <worktree>/core/install_restart_controller.py --policy ~/.config/litellm-restart-controller/policy.json && ~/Projects/work/flex-ai-litellm-local-proxy/.venv-tests/bin/python -B <worktree>/core/install_restart_controller.py --policy ~/.config/litellm-restart-controller/policy.json --verify
 ```
 
 5. Bootstrap:
@@ -53,7 +53,7 @@ launchctl bootstrap gui/502 ~/Library/LaunchAgents/ai.litellm.restart-controller
 6. Arm + kickstart ONE paste:
 
 ```sh
-/Users/pjbeyer/Projects/work/flex-ai-litellm-local-proxy/.venv-tests/bin/python -B /Users/pjbeyer/Projects/pjbeyer/litellm-local-proxy-shutdown/core/restart_controller.py --policy ~/.config/litellm-restart-controller/policy.json arm-canary && launchctl kickstart -k gui/502/ai.litellm.restart-controller && echo ARM-AND-KICKSTART-DONE
+~/Projects/work/flex-ai-litellm-local-proxy/.venv-tests/bin/python -B <worktree>/core/restart_controller.py --policy ~/.config/litellm-restart-controller/policy.json arm-canary && launchctl kickstart -k gui/502/ai.litellm.restart-controller && echo ARM-AND-KICKSTART-DONE
 ```
 
 7. Session verifies canary; hands you the reissue one-liner (archive name

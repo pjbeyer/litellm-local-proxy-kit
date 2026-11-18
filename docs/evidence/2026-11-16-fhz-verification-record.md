@@ -1,4 +1,4 @@
-# lpkit-fhz V&V Record — 2026-11-16 (spec-reconciliation session)
+# the deployment-root defect V&V Record — 2026-11-16 (spec-reconciliation session)
 
 Reviewer: independent of the filing session. Every claim checked against live state (policy file, journal rows, source code, offline digest/drift_check replication) — not the filer's self-report.
 
@@ -12,7 +12,7 @@ Live policy `~/.config/litellm-restart-controller/policy.json` sets `deployment_
 
 - `runtime.py freeze()` (L1114) requires under `deployment_root`: `deploy.conf.sh`, `deployments/<name>/{overlay.yaml, credentials.toml, pin.lock}`. `~/.config/litellm` has **no `deployments/` dir** (live-verified) → prepare cannot ever pass → refusals `runtime_invalid` are structural, not flaky.
 - `check_gates()` (L1155) runs `drift_check.py --deployment-root <deployment_root>` → same root failure.
-- **qualify() gap CONFIRMED:** `qualify()` (L1521–1639) exercises only canary/policy/plist/supervision/contract binding — zero freeze/check_gates/deployment validation. So qualification v2 (my G6 anchor) passed while prepare was structurally broken. `lpkit-fhz` is a genuine escaped defect of the qualification scope, not a filer error.
+- **qualify() gap CONFIRMED:** `qualify()` (L1521–1639) exercises only canary/policy/plist/supervision/contract binding — zero freeze/check_gates/deployment validation. So qualification v2 (my G6 anchor) passed while prepare was structurally broken. `the deployment-root defect` is a genuine escaped defect of the qualification scope, not a filer error.
 
 ## Evidence claims — all verified
 
@@ -30,7 +30,7 @@ Live policy `~/.config/litellm-restart-controller/policy.json` sets `deployment_
 ## Addition for remediation (new, from this V&V)
 
 - **A1:** `qualify()` should bind `policy_digest` against a validated deployment root — or run a prepare-gate dry probe — before issuing/renewing a qualification record. The gap that let this escape (qualify passes while freeze is broken) should close with this remediation, not just the policy edit. File as part of the remediation, not a separate issue.
-- **A2:** The owner package's "step 1 root-cause: managed-file drift" (check_pin/runtime_identity Nov-2 bytes fixed session-side via installer apply) is in the owner package but **not in the lpkit-fhz body** — carry it into the remediation record so the fix is documented in the durable tracker.
+- **A2:** The owner package's "step 1 root-cause: managed-file drift" (check_pin/runtime_identity Nov-2 bytes fixed session-side via installer apply) is in the owner package but **not in the the deployment-root defect body** — carry it into the remediation record so the fix is documented in the durable tracker.
 
 ## Remediation sketch — validated end-to-end
 

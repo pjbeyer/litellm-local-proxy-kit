@@ -154,7 +154,7 @@ fd4fc795f9013577   5072  restart_control/wire.py
 - R1 complete pending owner eyes; commits are local-only (no push authority —
   conservative profile; `bd dolt push`/`git push` require explicit approval).
 - R2 (T009 completion) remains **BLOCKED** on owner disposition of
-  `lpkit-yt5.1` (preserved guard refusals + source-data signal-veto).
+  `the yt5.1 refusal review` (preserved guard refusals + source-data signal-veto).
   Nothing downstream (R3–R7) was started.
 - T026 owner packet can be assembled from this inventory: predecessor state is
   clean; the legacy bundle + stale kit_root pointer are the two reconciliation

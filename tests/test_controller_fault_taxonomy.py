@@ -43,5 +43,5 @@ def test_every_raised_fault_code_is_declared():
 
 def test_ambiguous_listener_is_a_declared_code():
     # Regression: runtime._listener raises ambiguous_listener for a multi-pid
-    # lsof reading; engine used to coerce it to internal_error (lpkit-976).
+    # lsof reading; engine used to coerce it to internal_error (the stale-bundle defect).
     assert "ambiguous_listener" in CODES

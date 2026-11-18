@@ -3,12 +3,12 @@
 # copies NOTHING from the previous record except provenance values verified live.
 python3 - <<'EOF'
 import json, os, subprocess, sys, time
-sys.path.insert(0, "/Users/pjbeyer/.local/share/litellm/restart-controller-761fdf29")
+sys.path.insert(0, "~/.local/share/litellm/restart-controller-761fdf29")
 from restart_control.process_identity import process_identity
 
 STATE = os.path.expanduser("~/.local/state/litellm/rc-v2")
-BUNDLE = "/Users/pjbeyer/.local/share/litellm/restart-controller-761fdf29"
-POLICY = "/Users/pjbeyer/.config/litellm-restart-controller/policy.json"
+BUNDLE = "~/.local/share/litellm/restart-controller-761fdf29"
+POLICY = "~/.config/litellm-restart-controller/policy.json"
 
 # 1. Live daemon incarnation (self-locating; never fabricate)
 pid = int(subprocess.check_output(["pgrep", "-f", "restart_controller.py.*serve"]).split()[0])

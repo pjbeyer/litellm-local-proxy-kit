@@ -25,8 +25,8 @@ e4b530bc, 3dc014af, 8ca36e1a)
 
 ## Owner actions (in order)
 1. Edit policy.json (owner-domain file):
-     deployment_root: /Users/pjbeyer/.config/litellm
-       → /Users/pjbeyer/Projects/work/flex-ai-litellm-local-proxy
+     deployment_root: ~/.config/litellm
+       → ~/Projects/work/flex-ai-litellm-local-proxy
    New policy_digest (canonical json): c6b3ec0f8b8b1ea833b47a5702718979e28a3e5d55e1ba5accfd8c40965dff92
 2. Restart the controller daemon (boot-only policy load):
      launchctl kickstart -k gui/$UID/ai.litellm.restart-controller

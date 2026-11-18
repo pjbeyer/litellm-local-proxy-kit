@@ -77,20 +77,20 @@ mv ~/Library/LaunchAgents/ai.litellm.restart-controller.plist ~/Library/LaunchAg
 ```
 
 3. Edit `~/.config/litellm-restart-controller/policy.json`:
-   `controller_root` → `/Users/pjbeyer/.local/share/litellm/restart-controller-ad0bbcb0`
+   `controller_root` → `~/.local/share/litellm/restart-controller-ad0bbcb0`
    (only that one field; tell the session — it computes the new policy digest
    and gives you the exact `qualification.json` field values for step 8).
 
 4. Fresh install from the kit (creates bundle + supervisor plist, verifies bytes):
 
 ```sh
-/Users/pjbeyer/Projects/work/flex-ai-litellm-local-proxy/.venv-tests/bin/python -B /Users/pjbeyer/Projects/pjbeyer/litellm-local-proxy-shutdown/core/install_restart_controller.py --policy ~/.config/litellm-restart-controller/policy.json
+~/Projects/work/flex-ai-litellm-local-proxy/.venv-tests/bin/python -B <worktree>/core/install_restart_controller.py --policy ~/.config/litellm-restart-controller/policy.json
 ```
 
    Expect `{"status": "installed", ...}`. Then verify:
 
 ```sh
-/Users/pjbeyer/Projects/work/flex-ai-litellm-local-proxy/.venv-tests/bin/python -B /Users/pjbeyer/Projects/pjbeyer/litellm-local-proxy-shutdown/core/install_restart_controller.py --policy ~/.config/litellm-restart-controller/policy.json --verify
+~/Projects/work/flex-ai-litellm-local-proxy/.venv-tests/bin/python -B <worktree>/core/install_restart_controller.py --policy ~/.config/litellm-restart-controller/policy.json --verify
 ```
 
    Expect `{"status": "verified", ...}`.
@@ -105,7 +105,7 @@ launchctl bootstrap gui/502 ~/Library/LaunchAgents/ai.litellm.restart-controller
    chat round-trip; the lane runs at serve boot):
 
 ```sh
-/Users/pjbeyer/Projects/work/flex-ai-litellm-local-proxy/.venv-tests/bin/python -B /Users/pjbeyer/Projects/pjbeyer/litellm-local-proxy-shutdown/core/restart_controller.py --policy ~/.config/litellm-restart-controller/policy.json arm-canary && launchctl kickstart -k gui/502/ai.litellm.restart-controller && echo ARM-AND-KICKSTART-DONE
+~/Projects/work/flex-ai-litellm-local-proxy/.venv-tests/bin/python -B <worktree>/core/restart_controller.py --policy ~/.config/litellm-restart-controller/policy.json arm-canary && launchctl kickstart -k gui/502/ai.litellm.restart-controller && echo ARM-AND-KICKSTART-DONE
 ```
 
 7. Initial proxy handoff receipt (NEW step; owner-issued). After the daemon

@@ -5,7 +5,7 @@ untouched by every step. Stop on any nonzero exit or refusal code; paste
 output back to the session.
 
 PY=~/.local/share/litellm/runtimes/verified-7897e75e79cf-20261103T022910Z/python-env/bin/python
-KIT=/Users/pjbeyer/Projects/pjbeyer/litellm-local-proxy-shutdown
+KIT=<worktree>
 STAGED=~/.hermes/cache/scratch/policy-new-gen.json
 POLICY=~/.config/litellm-restart-controller/policy.json
 

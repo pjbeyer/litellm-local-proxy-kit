@@ -30,5 +30,5 @@ One-line pool edit in deployments/work/overlay.yaml (drop openai/gpt-6.1-sol) ->
 apply -> the same kickstart command. ~1 minute end to end.
 
 ## Note on the controller track
-This manual restart is independent of lpkit-976 (controller bundle refresh). The canary goes
+This manual restart is independent of the stale-bundle defect (controller bundle refresh). The canary goes
 live either way; the controller work continues separately whenever you pick it up.

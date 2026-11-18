@@ -1,7 +1,7 @@
 # Run as operator (owner). Copies every other binding from the existing record.
 python3 - <<'EOF'
 import json, os, sys, time
-sys.path.insert(0, "/Users/pjbeyer/.local/share/litellm/restart-controller-f7cf523")
+sys.path.insert(0, "~/.local/share/litellm/restart-controller-f7cf523")
 from restart_control.process_identity import process_identity
 # Find the live daemon: the pid serving 'serve' under our label.
 import subprocess
@@ -13,8 +13,8 @@ rec = {**prev,
                                "ppid": ident["ppid"], "pgid": ident["pgid"],
                                "birth": list(ident["birth"])},
        "controller_epoch": json.loads(subprocess.check_output(
-           ["python3", "/Users/pjbeyer/.local/share/litellm/restart-controller-f7cf523/restart_controller.py",
-            "--policy", "/Users/pjbeyer/.config/litellm-restart-controller/policy.json", "status"]))["epoch"]}
+           ["python3", "~/.local/share/litellm/restart-controller-f7cf523/restart_controller.py",
+            "--policy", "~/.config/litellm-restart-controller/policy.json", "status"]))["epoch"]}
 now = time.time(); mono = time.monotonic()
 rec.update(issued_at=now, expires_at=now+21600,
            issued_monotonic=mono, expires_monotonic=mono+21600)

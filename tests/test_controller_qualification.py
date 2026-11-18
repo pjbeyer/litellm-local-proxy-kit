@@ -297,11 +297,11 @@ def test_identical_repeated_environment_value_is_not_ambiguous(context):
 
 # -- T015: qualification v2 shutdown-contract and evidence bindings -----------
 
-# -- lpkit-fhz (A1): qualification structurally refuses a deployment root
+# -- deployment-root fix (A1): qualification structurally refuses a deployment root
 # freeze() cannot close against ------------------------------------------------
 
 def test_qualify_refuses_deployment_root_without_freeze_closure(context):
-    """Live gate-5 regression (lpkit-fhz): the 2026-11-16 policy pointed
+    """Live gate-5 regression (the deployment-root defect): the 2026-11-16 policy pointed
     deployment_root at ~/.config/litellm, which lacks deploy.conf.sh and the
     deployments/<name>/ fact closure freeze() reads. qualify() accepted the
     record anyway (canary lane only), then every prepare refused
@@ -323,7 +323,7 @@ def test_qualify_refuses_deployment_root_without_freeze_closure(context):
 
 
 def test_qualify_refuses_stale_installed_controller_bundle(context):
-    """Live lpkit-976 regression: kit HEAD carried the A1 fix while the
+    """Live the stale-bundle defect regression: kit HEAD carried the A1 fix while the
     DEPLOYED bundle (controller_root) stayed at pre-A1 bytes, so the
     reissued record bound controller_digest dd74e980 (kit-HEAD closure)
     for a bundle actually serving ae25e913 — every prepare refused
