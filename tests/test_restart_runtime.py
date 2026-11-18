@@ -19,6 +19,11 @@ from unittest import mock
 
 import pytest
 
+# Helper/candidate tests spawn a real subprocess helper that records its kernel
+# identity; it cannot inherit the parent-stub on Linux.
+DARWIN_ONLY = pytest.mark.skipif(sys.platform != "darwin",
+                                 reason="real helper subprocess reads the darwin kernel identity")
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'core'))
 from restart_control.engine import Fault, atomic_json
@@ -293,6 +298,7 @@ def test_fast_candidate_exit_is_reaped_and_allows_later_helpers(runtime):
     assert runtime._capture([sys.executable, '-c', 'print("fixture-ok")']) == b'fixture-ok\n'
 
 
+@DARWIN_ONLY
 def test_helper_stdout_is_bounded_during_capture(runtime):
     del runtime.run_proof_worker
     children = []
