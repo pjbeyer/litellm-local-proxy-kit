@@ -21,14 +21,17 @@ import pytest
 
 # Helper/candidate tests spawn a real subprocess helper that records its kernel
 # identity; it cannot inherit the parent-stub on Linux.
-DARWIN_ONLY = pytest.mark.skipif(sys.platform != "darwin",
-                                 reason="real helper subprocess reads the darwin kernel identity")
+from conftest import REQUIRES_REAL_MAC
+from conftest import real_mac_available
+
+DARWIN_ONLY = pytest.mark.skipif(not real_mac_available(),
+                                 reason="binds the darwin kernel boot identity (real Mac required)")
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'core'))
-from restart_control.engine import Fault, atomic_json
+from restart_control.engine import Fault, atomic_json, private_dir
 from restart_control.runtime import Runtime
-from restart_control.runtime_identity import KIT_INPUTS, PROXY_INPUTS, file_fact, source_facts
+from restart_control.runtime_identity import KIT_INPUTS, PROXY_INPUTS, CONTROLLER_INPUTS, file_fact, source_facts
 from restart_lifecycle_adapter import FixtureLifecycleAdapter
 
 
@@ -284,6 +287,42 @@ def test_installer_owned_layout_and_isolated_daemon_status(runtime, private_root
     assert not endpoint.exists()
 
 
+def test_freeze_compares_installed_closure_not_live_kit_head(runtime, private_root):
+    """lpkit-j4z: an installed bundle must be validated against its
+    install.json `sources` closure snapshot, NOT against live kit HEAD bytes.
+    A stale bundle (installed from an older kit) still validates when its
+    copies match the receipt; a bundle that genuinely diverges from its own
+    receipt still refuses controller_copy_changed."""
+    bundle = private_root / "installed"
+    private_dir(bundle)
+    (bundle / "restart_control").mkdir(mode=0o700)
+    sources = {}
+    for name in CONTROLLER_INPUTS:
+        target = bundle / name.removeprefix("core/")
+        if name == "core/restart_control/runtime.py":
+            # Simulate a stale bundle: this installed copy differs from the
+            # current kit HEAD bytes (a later kit commit advanced HEAD).
+            target.write_bytes((runtime.kit / name).read_bytes() + b"# stale\n")
+        else:
+            shutil.copy2(runtime.kit / name, target)
+        sources[name] = file_fact(target)
+    # The receipt records the byte closure actually installed.
+    atomic_json(bundle / "install.json", {"version": 1, "sources": sources})
+    runtime.controller_root = bundle
+
+    # Pre-fix this refused controller_copy_changed (bundle != kit HEAD). With
+    # the fix freeze() validates against install.json.sources and passes.
+    frozen = runtime.freeze()
+    assert set(frozen) == {"asset_digest", "runtime_digest", "policy_digest",
+                           "controller_digest"}
+
+    # A bundle that diverges from its own receipt still refuses: patch one
+    # installed copy, leave the receipt untouched.
+    (bundle / "restart_control" / "canary.py").write_text("// tampered\n")
+    with pytest.raises(Fault, match="runtime_invalid"):
+        runtime.freeze()
+
+
 def test_fast_candidate_exit_is_reaped_and_allows_later_helpers(runtime):
     del runtime.run_proof_worker  # exercise the real fixed helper, not the fixture seam
     runtime._listener = lambda _: None
@@ -374,6 +413,7 @@ def http_child(private_root):
         proc.stdin.close(); proc.stdout.close()
 
 
+@REQUIRES_REAL_MAC
 def test_real_fixture_http_acceptance_without_bodies_or_proxy_inheritance(runtime, http_child):
     proc, port = http_child()
     runtime.policy['candidate_port'] = port
@@ -388,12 +428,14 @@ def test_real_fixture_http_acceptance_without_bodies_or_proxy_inheritance(runtim
     assert 'fixture-http' not in json.dumps(checks)
 
 
+@REQUIRES_REAL_MAC
 def test_http_redirect_is_refused_before_forwarding_auth(runtime, http_child):
     _, port = http_child('redirect', 'http://127.0.0.1:1/credential-should-not-be-forwarded')
     runtime.policy['candidate_port'] = port
     assert runtime._request(port, '/v1/models', 'fixture-http') == (302, {})
 
 
+@REQUIRES_REAL_MAC
 def test_absolute_http_deadline_stops_trickled_headers(runtime, http_child):
     _, port = http_child('slow')
     runtime.policy['candidate_port'] = port
@@ -419,6 +461,7 @@ def test_bootstrap_respawn_or_loaded_policy_mismatch_fails_before_http(runtime, 
         runtime.accept_started()
 
 
+@REQUIRES_REAL_MAC
 def test_pending_bootstrap_then_first_incarnation_is_accepted(runtime, http_child):
     proc, port = http_child()
     runtime.port = port
