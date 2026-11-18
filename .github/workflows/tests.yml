@@ -29,13 +29,13 @@ jobs:
       - name: Offline test suite
         # The controller's privacy validator refuses symlinked ancestors and
         # some tests index TMPDIR directly; macOS runners symlink /var and
-        # Linux runners leave TMPDIR unset. Point TMPDIR at a real directory
-        # inside the workspace on every OS.
+        # Linux runners leave TMPDIR unset. Point TMPDIR at a SHORT, real,
+        # already-existing runner-local dir: the controller nests temp paths
+        # under it, and a long worktree path pushes nested UNIX sockets past
+        # the 104-char AF_UNIX limit (AF_UNIX path too long).
         env:
-          TMPDIR: ${{ github.workspace }}/.tmp-tests
+          TMPDIR: ${{ runner.temp }}
         run: |
-          mkdir -p "$TMPDIR"
-          chmod 700 "$TMPDIR"
           .venv-tests/bin/python -m pytest -q tests
 
   hygiene-scan:
