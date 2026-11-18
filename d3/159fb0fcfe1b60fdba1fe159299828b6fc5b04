@@ -1,0 +1,19 @@
+docs/evidence/2026-11-16-manual-restart-runbook.md
+  s_9e4265bd7a8616::t_91ae7a2c4a085d 1-34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "d3159fb0fcfe1b60fdba1fe159299828b6fc5b04",
+  "prompts": {},
+  "sessions": {
+    "s_9e4265bd7a8616": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261025_190959_3828d0",
+        "model": "glm-5.3-flash"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
