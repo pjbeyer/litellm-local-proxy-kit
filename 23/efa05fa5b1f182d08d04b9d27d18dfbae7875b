@@ -1,0 +1,19 @@
+docs/evidence/2026-11-18-9bfb768e-manual-recovery-disposition.md
+  s_fa8397285f8e39::t_2e6a0d4cde80f3 1-74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "23efa05fa5b1f182d08d04b9d27d18dfbae7875b",
+  "prompts": {},
+  "sessions": {
+    "s_fa8397285f8e39": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261115_071947_efc532",
+        "model": "deepseek-v4-flash-0731"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
