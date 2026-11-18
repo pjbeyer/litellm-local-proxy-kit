@@ -1,0 +1,24 @@
+tests/conftest.py
+  s_fa8397285f8e39::t_da1de7864b4a73 11-12,24-25,35,39-40,44
+  s_fa8397285f8e39::t_18e94990d340fd 5-10,13-23,26-30,41-43,48,52,57-64,76-88,95-120
+tests/test_controller_canary_negatives.py
+  s_fa8397285f8e39::t_50abaa3b02a17f 19,22-26,181,208,230,260,282,316,354
+tests/test_controller_startup.py
+  s_fa8397285f8e39::t_df361b4e938413 19-23,292,395
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "359bfe1059dad0a662084e593ff3f15197d8d70a",
+  "prompts": {},
+  "sessions": {
+    "s_fa8397285f8e39": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261115_071947_efc532",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
