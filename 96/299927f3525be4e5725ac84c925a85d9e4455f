@@ -1,0 +1,41 @@
+integrations/hermes/proxy-lifecycle-guard/guard.py
+  s_c3bcb9d054962a::t_1e99f8b7ba8602 2878-2882,2885,2891-2915,2917-2925,2930-2932,2937-2939,2943-2953,2955,2962,2966-2968,2990-2991,2993-2994,3006-3009,3017-3021
+  s_c3bcb9d054962a::t_048c1ce6d33731 2874-2877
+  s_c3bcb9d054962a::t_83bdb4846323bd 2826-2869,2940-2942,2954,2961,2963-2965,2969-2973,2978-2989,2992,2995-3005,3011-3016
+  s_c3bcb9d054962a::t_c543a3287db9e5 2916,2926-2929,2933-2936
+  s_c3bcb9d054962a::t_978536be84e385 3113-3121,3123-3124,3126-3128
+  s_c3bcb9d054962a::t_c1734a38463a69 2870-2873,2883-2884,2886-2890
+  s_c3bcb9d054962a::t_6decc874f55668 2974-2975
+  s_c3bcb9d054962a::t_5b7ed43aa0f84d 2976-2977
+  s_c3bcb9d054962a::t_1ad4d7a103e89a 2956
+  s_c3bcb9d054962a::t_6d9f5a72becb7e 3022
+  s_c3bcb9d054962a::t_ca77bb99971eef 3129
+  s_c3bcb9d054962a::t_36a2bb8c95fbf2 2805-2824
+integrations/hermes/proxy-lifecycle-guard/README.md
+  s_c3bcb9d054962a::t_8e7edf5af57594 29-35
+tests/test_guard_prose_and_vars.py
+  s_c3bcb9d054962a::t_d5b9aedcde44d0 107-112,116
+tests/test_guard_code_data_vs_execution.py
+  s_c3bcb9d054962a::t_45a8bf26b06c44 55
+  s_c3bcb9d054962a::t_ec1d8841fca898 52,54
+  s_c3bcb9d054962a::t_1e4ba54c40ef0c 1-51,53,56-121
+tests/test_guard_quotation_fp.py
+  s_c3bcb9d054962a::t_632c485bf8afcf 36
+  s_c3bcb9d054962a::t_eb58a62f9a212b 37-42,48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "96299927f3525be4e5725ac84c925a85d9e4455f",
+  "prompts": {},
+  "sessions": {
+    "s_c3bcb9d054962a": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261114_154648_59b3af",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
