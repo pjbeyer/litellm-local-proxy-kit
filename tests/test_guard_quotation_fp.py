@@ -10,6 +10,7 @@ Two FP classes from real session refusals:
   directory pass on every surface; writes (open with writing mode,
   pathlib write family, redirect) still veto.
 Offline: payloads are NEVER executed."""
+import os
 import shlex
 
 import pytest
@@ -18,7 +19,10 @@ from test_guard_quoted_control_flow import scope  # noqa: F401
 from test_lifecycle_guard import FIXTURE_PORT
 
 MSG2 = "Small message.\n\nCloses litest-6c5."
-READ_PATH = "/Users/pjbeyer/.hermes/plugins/proxy-lifecycle-guard/guard.py"
+# Publication hygiene: no absolute workstation paths in the tree. The
+# deployed plugin path is composed from $HOME at runtime.
+READ_PATH = os.path.expanduser(
+    "~/.hermes/plugins/proxy-lifecycle-guard/guard.py")
 
 
 @pytest.mark.parametrize("code", [
@@ -83,15 +87,15 @@ def test_deployed_directory_reads_pass(scope, code):
 
 @pytest.mark.parametrize("code", [
     "f = open(" + repr(READ_PATH) + ", 'w')\nf.write('x')\nf.close()",
-    "f = open('/Users/pjbeyer/.hermes/plugins/"
-    "proxy-lifecycle-guard/x.log', 'a')\nf.write('x')",
-    "f = open('/Users/pjbeyer/.hermes/plugins/"
-    "proxy-lifecycle-guard/x.new', mode='x')",
+    "f = open(os.path.expanduser('~/.hermes/plugins/"
+    "proxy-lifecycle-guard/x.log'), 'a')\nf.write('x')",
+    "f = open(os.path.expanduser('~/.hermes/plugins/"
+    "proxy-lifecycle-guard/x.new'), mode='x')",
     "from pathlib import Path\n"
     "Path(" + repr(READ_PATH) + ").write_text('x')",
     "from pathlib import Path\n"
-    "Path('/Users/pjbeyer/.hermes/plugins/"
-    "proxy-lifecycle-guard/x.b').write_bytes(b'x')",
+    "Path(os.path.expanduser('~/.hermes/plugins/"
+    "proxy-lifecycle-guard/x.b')).write_bytes(b'x')",
 ])
 def test_deployed_directory_writes_still_veto(scope, code):
     evaluate, _, _ = scope

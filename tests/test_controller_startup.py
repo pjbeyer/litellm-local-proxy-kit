@@ -18,8 +18,11 @@ import pytest
 
 # Canary-lane tests spawn a real worker subprocess that reads the darwin kernel
 # boot identity; it cannot inherit the parent-stub on Linux.
-DARWIN_ONLY = pytest.mark.skipif(sys.platform != "darwin",
-                                 reason="canary lane binds the darwin kernel boot identity")
+from conftest import REQUIRES_REAL_MAC
+from conftest import real_mac_available
+
+DARWIN_ONLY = pytest.mark.skipif(not real_mac_available(),
+                                 reason="binds the darwin kernel boot identity (real Mac required)")
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'core'))
@@ -354,6 +357,7 @@ def test_full_pass_lane_with_real_worker_children(runtime, private_root):
     assert (scope/'latch.json').exists()
 
 
+@REQUIRES_REAL_MAC
 def test_refused_bootstrap_blocks_without_retry(runtime, private_root):
     """A refused bootstrap leaves canary_blocked, one call, no retry."""
     arm = _arm(runtime)

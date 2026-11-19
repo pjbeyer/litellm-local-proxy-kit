@@ -8,13 +8,14 @@ Finding B: kill payloads fed to stdin-consuming interpreters
 -e interpreter programs, heredoc interpreter bodies) veto, mirroring
 the F-007 xargs precedent; benign shapes stay allowed.
 Offline: payloads are NEVER executed."""
+import os
 import shlex
 
 import pytest
 
 from test_guard_quoted_control_flow import scope  # noqa: F401
 
-PDIR = "/Users/pjbeyer/.hermes/plugins/proxy-lifecycle-guard/guard.py"
+PDIR = os.path.expanduser("~/.hermes/plugins/proxy-lifecycle-guard/guard.py")
 PDIRE = "~/.hermes/plugins/proxy-lifecycle-guard/__pycache__/"
 K = "pkill -f lit" + "ellm"
 

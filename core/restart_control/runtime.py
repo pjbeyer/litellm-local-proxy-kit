@@ -1122,10 +1122,28 @@ class Runtime:
                     or (self.config/'credentials.toml').read_bytes() != self._manifest_blob):
                 raise ValueError('controller_generation_changed')
             controller = {}
+            # lpkit-j4z: a later kit HEAD commit must NOT invalidate the
+            # installed bundle. The installed-closure snapshot is the
+            # install.json receipts `sources` map (written at install time);
+            # compare the live controller copies against IT, not against live
+            # kit HEAD facts. Fall back to kit facts only where there is no
+            # install receipt (fixture/dev runs where controller_root ==
+            # kit/core): there the copies ARE the kit bytes.
+            installed_sources = None
+            receipt_path = self.controller_root / "install.json"
+            try:
+                receipt = _read_json(receipt_path)
+                if isinstance(receipt, dict) and isinstance(
+                        receipt.get("sources"), dict):
+                    installed_sources = receipt["sources"]
+            except FileNotFoundError:
+                pass
             for name in CONTROLLER_INPUTS:
                 copy = self.controller_root/name.removeprefix('core/')
                 fact = _regular(copy)
-                if fact != facts[name]:
+                expected = (installed_sources.get(name)
+                            if installed_sources is not None else facts[name])
+                if fact != expected:
                     raise ValueError('controller_copy_changed')
                 controller[name] = fact
             proxy: dict[str, object] = {name: _regular(self.config/name) for name in

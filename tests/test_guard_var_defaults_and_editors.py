@@ -18,6 +18,8 @@ pipeline stage (FR-011): echo x | rm <plugin> no longer escapes.
 Non-plugin in-place edits are out of scope (allow).
 
 Offline: payloads are NEVER executed."""
+import os
+
 import pytest
 
 from test_lifecycle_guard import (FIXTURE_PID, write_policy)  # noqa: F401
@@ -104,7 +106,7 @@ def test_uy4_unresolvable_stays_refused(scope, command):
     assert evaluate(command) is not None
 
 
-PLUGIN = "/Users/pjbeyer/.hermes/plugins/proxy-lifecycle-guard"
+PLUGIN = os.path.expanduser("~/.hermes/plugins/proxy-lifecycle-guard")
 
 
 @pytest.mark.parametrize("command", [

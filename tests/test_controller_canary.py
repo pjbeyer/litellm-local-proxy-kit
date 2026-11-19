@@ -18,8 +18,11 @@ import pytest
 
 # The canary arm/consume path binds the kernel bootsessionuuid — a darwin-only
 # primitive by contract — so those paths cannot run on other platforms.
-DARWIN_ONLY = pytest.mark.skipif(sys.platform != "darwin",
-                                 reason="canary arm/consume binds the darwin kernel boot identity")
+from conftest import REQUIRES_REAL_MAC
+from conftest import real_mac_available
+
+DARWIN_ONLY = pytest.mark.skipif(not real_mac_available(),
+                                 reason="binds the darwin kernel boot identity (real Mac required)")
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'core'))

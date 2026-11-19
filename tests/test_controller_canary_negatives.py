@@ -21,8 +21,11 @@ import pytest
 
 # Canary-lane tests spawn a real double-forked worker subprocess that reads the
 # darwin kernel boot identity; it cannot inherit the parent-stub.
-DARWIN_ONLY = pytest.mark.skipif(sys.platform != "darwin",
-                                 reason="canary lane binds the darwin kernel boot identity")
+from conftest import REQUIRES_REAL_MAC
+from conftest import real_mac_available
+
+DARWIN_ONLY = pytest.mark.skipif(not real_mac_available(),
+                                 reason="binds the darwin kernel boot identity (real Mac required)")
 
 from restart_control.engine import Fault, atomic_json
 from restart_control import canary
