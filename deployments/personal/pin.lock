@@ -1,17 +1,46 @@
 # pin.lock — personal deployment (PinnedBuild, spec 015 data-model)
 #
-# The personal deployment initially runs the SAME patched build family
-# (one shared artifact per research R4); its config surface differs
-# (oMLX + free-cloud), not the patch. Drift check compares both pins.
-base_version = "1.103.0"
+# OWNER DECISION (2026-11-18): option A — upgrade the shared runtime to the
+# v1.110.0-ports build. Supersedes the 2026-11-16 shared 1.106.2 pin.
+# Previous pin kept for provenance:
+#   base_version 1.106.2, base_ref 49943cd52e (v1.106.2 tag),
+#   patch_branch pin/v1.106.2-ports, patch_tip 7897e75e79,
+#   artifact 1a79db7bd86050d8c208fd1d722959ec80f3b18bd2a8f80ac82c4cbd1eb707e9.
+# This pin adopts the stream-index fix (upstream b3c0f3457d in v1.110.0) and the
+# provider-metadata AttributeError (fixed by upstream restructuring; old port
+# b3ce9c4c3a is superseded and NOT carried). The Responses-bridge ports
+# {a45fd07d5e, aa41d4030f, c20800d0ab} carry forward as {0602a92971,
+# bdb71b31be, 89cb4042af}. Deferred (owner, 2026-11-18): router effort clamp
+# (7897e75e79 — upstream 1.110.0 clamps declared providers but
+# forwards unknown-alias efforts) and MCP tools/list TTL cache + cooldown
+# (688802e7c3).
+base_version = "1.110.0"                       # pip dist-info version of the editable source build
 base_upstream = "BerriAI/litellm"
-base_ref = "fba00f508"
-patch_branch = "fix/responses-falsy-argument-delta"
+base_ref = "096ff01681"                        # v1.110.0 tag
+patch_branch = "pin/v1.110.0-ports"
 patch_remote = "https://github.com/pjbeyer/litellm.git"
+source_worktree = "~/Projects/pjbeyer/litellm-wt-1100"
+# Every patch commit the deployment depends on (cover all, not one module):
+# Cherry-picked onto v1.110.0: original commit subjects retained; hashes are the
+# ported ones on pin/v1.110.0-ports (rebases produce new hashes).
 patch_commits = [
-    "a01ac33996",  # treat empty or absent stream deltas as no-op frames (hlite-qmb)
-    "1da7971bf3",  # stop duplicating arguments already sent on output_item.added
-    "fffbc4be45",  # stop assigning provider metadata as an attribute on a dict
+    "0602a92971",  # treat empty or absent stream deltas as no-op frames (port of a45fd07d5e; still absent upstream in 1.110.0)
+    "bdb71b31be",  # stop duplicating arguments already sent on output_item.added (port of aa41d4030f; still absent upstream)
+    "89cb4042af",  # test(responses_bridge): pin exactly-once streamed tool-call arguments (port of c20800d0ab)
 ]
-patch_tip = "fffbc4be45"
-sentinel = "args_already_complete"  # patch-introduced per-stream state (1da7971bf3); positive assertion target
+patch_tip = "89cb4042af"
+sentinel = "args_already_complete"  # patch-introduced per-stream state (aa41d4030f, exactly-once tool-call args)
+# Venv notes (2026-11-18): deps from litellm[proxy,extra_proxy]==1.110.0 plus
+# the load-bearing semantic-router==0.1.15 delta (<1.0 pin is
+# load-bearing for the embedding filter's index contract) and pytest tooling.
+# Shared 1.106.2-era deltas (langchain-protocol, voyageai, mistralai, cohere,
+# opentelemetry exporters, pillow) were [proxy]-extra era packages; re-added
+# only if a live consumer proves it needs them.
+
+[native_artifact]
+version = 1
+path = "litellm/rust_bridge/_native.abi3.so"
+sha256 = "2f49070e45842e2174ecd943c0f1d34eb6d8b7a90d3c9600a1368677a04a0ab0"
+source_tree = "f238d64ea450599e509aa7d96a039ce039138e79"
+receipt_sha256 = "33265b5d43edb3da4a2ff1835b15725a7f22b1a9f7f7cf87af914dc86d783e86"
+baseline_pin_digest = "ffc4afcf63f47dd49a1e1828b41f099d2211219b2363b266e838fcfa18ee5a88"
