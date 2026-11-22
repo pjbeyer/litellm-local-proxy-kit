@@ -1942,69 +1942,142 @@ def _strip_shell_comments(text):
     return "".join(out)
 
 
-def _resolve_default_expansion(raw_value):
-    """lpkit-ebr: resolve an assignment value that is exactly ONE
-    ${NAME:-default} / ${NAME-default} expansion (optionally
-    quoted), using the hf5 allowlist rules ($HOME only; any other
-    variable unprovable). Returns the resolved literal or None."""
+# The HOME grammar is deliberately narrower than shell expansion. Unsafe or
+# ambiguous bindings are represented by None and may never inherit HOME.
+_HOME_MAX_CHARS = 4096
+_LITERAL_PATH = re.compile(r"[A-Za-z0-9_./@:+-]+\Z")
+
+
+def _resolve_home_path(value, env):
+    """Resolve exactly one leading HOME expansion into a bounded literal."""
+    if value.startswith("${HOME}/"):
+        suffix = value[len("${HOME}"):]
+    elif value.startswith("$HOME/"):
+        suffix = value[len("$HOME"):]
+    else:
+        return None
+    home = env.get("HOME") if "HOME" in env else os.environ.get("HOME")
+    if (type(home) is not str or not home or len(home) > _HOME_MAX_CHARS
+            or not _LITERAL_PATH.fullmatch(home)):
+        return None
+    result = home + suffix
+    if len(result) > _HOME_MAX_CHARS or not _LITERAL_PATH.fullmatch(result):
+        return None
+    return result
+
+
+def _resolve_default_expansion(raw_value, env=None):
+    """Resolve an exact default expression; single quotes never expand."""
+    env = env if env is not None else {}
     v = raw_value
-    if v[:1] in ('"', "'") and v[-1:] == v[:1] and len(v) >= 2:
+    if v.startswith("'"):
+        return None
+    if v.startswith('"') and v.endswith('"') and len(v) >= 2:
         v = v[1:-1]
-    if not (v.startswith("${") and v.endswith("}")):
+    match = re.fullmatch(r"\$\{([A-Za-z_]\w*)(:-|-)(.+)\}", v)
+    if not match:
         return None
-    inner = v[2:-1]
-    sep = None
-    if ":-" in inner:
-        sep = ":-"
-    elif "-" in inner and ":" not in inner:
-        sep = "-"
-    if sep is None:
+    name, _, default = match.groups()
+    # HOME-bearing defaults use the shared rule even when another binding
+    # could suppress them; this preserves the existing conservative refusal.
+    if default.startswith(('$HOME/', '${HOME}/')):
+        resolved = _resolve_home_path(default, env)
+    elif len(default) <= _HOME_MAX_CHARS and _LITERAL_PATH.fullmatch(default):
+        resolved = default
+    else:
         return None
-    nm, _, dflt = inner.partition(sep)
-    if not (nm and re.fullmatch(r"[A-Za-z_]\w*", nm) and dflt
-            and "`" not in dflt
-            and not dflt.startswith("~")):
+    if resolved is None:
         return None
-    cand = dflt.replace("${HOME}", "\x00")
-    cand = cand.replace("$HOME", "\x00")
-    if "$" in cand.replace("\x00", ""):
-        return None  # non-allowlisted variable
-    home = os.environ.get("HOME")
-    if not home or any(c in home for c in ' \t\n;$`"\\' + "'"):
-        return None  # HOME unset/unsafe
-    cand = cand.replace("\x00", home)
-    if not re.fullmatch(r"[A-Za-z0-9_./@:+-]+", cand):
+    # Inherited arbitrary variables are outside the bounded model; a
+    # missing same-payload binding cannot prove the default is selected.
+    if name not in env and name in os.environ:
         return None
-    return cand
+    if name in env:
+        return env[name]
+    return resolved
 
 
 def _collect_literal_vars(text):
-    """Map NAME -> simple literal value for visible assignments.
+    """Collect bounded leading assignments; preserve unresolved shadows.
 
-    Only simple single/double-quoted or bare-word literal values are
-    collected (NAME="literal", NAME='literal', NAME=word). Any
-    substitution, concatenation, or interpolation in the value makes
-    the variable UNRESOLVED (excluded) — resolution must be analysis,
-    not a hole (lpkit-5ix). EXCEPTION (lpkit-ebr): an assignment
-    whose value is exactly ONE ${NAME:-default} expansion (optionally
-    quoted) resolves via the hf5 allowlist rules and stores the
-    RESOLVED default, so the later command-position "$NAME" lookup
-    succeeds; unresolvable defaults keep the variable out of the map
-    (FR-006 refuse). Bounded to 32 entries."""
+    Only a unique simple-literal assignment in the unconditional leading
+    prefix is usable. HOME is separately checked for unsafe or ambiguous
+    mentions. Unresolved/duplicate bindings stay present as None, so they
+    can never silently fall back to an inherited value or written default.
+    At most 32 assignment matches are admitted.
+    """
     env = {}
-    for m in re.finditer(
-            r"(?:^|[\n;|&])([A-Za-z_]\w*)=(\"[^\"]*\"|'[^']*'"
-            r"|[A-Za-z0-9_./@-]+)", text):
-        if len(env) >= 32:
+    # The only provable bindings are standalone assignments in the leading
+    # unconditional prefix; later or conditional words remain unresolved.
+    leading = re.compile(
+        r'''[ \t\r]*[A-Za-z_]\w*=(?:"[^"]*"|'[^']*'|[^\s;|&]+)[ \t\r]*(?:;|\n)[ \t\r]*''')
+    cursor = 0
+    while True:
+        prefix = leading.match(text, cursor)
+        if prefix is None:
+            break
+        cursor = prefix.end()
+    # Assignment-like words outside the existing separator-led model cannot
+    # be trusted as bindings; remember them as unresolved instead of
+    # inheriting HOME. The bounded subset below may replace this marker.
+    home_mentions = list(re.finditer(r"(?<![A-Za-z0-9_])HOME=", text))
+    if home_mentions:
+        env["HOME"] = None
+    # Detect even empty or dynamic HOME assignments, and never silently
+    # fall through to the inherited value on ambiguity or truncation.
+    home_bindings = list(re.finditer(
+        r'''(?:^|[\n;|&])\s*HOME=("[^"]*"|'[^']*'|[^\s;|&]*)''',
+        text))
+    if home_bindings:
+        # Take the entire shell word, including quoted spaces; a mixed or
+        # incomplete word is not a simple binding.
+        home = None
+        # A binding in the leading unconditional prefix is visible to
+        # every later command; control flow and quoted lookalikes are not.
+        if (len(home_bindings) == 1 and len(home_mentions) == 1
+                and home_bindings[0].end() <= cursor):
+            match = home_bindings[0]
+            raw = match.group(1)
+            remainder = text[match.end():].lstrip(' \t\r')
+            standalone = not remainder or remainder[0] in '\n;|&'
+            if standalone:
+                if raw[:1] in ('"', "'") and raw[-1:] == raw[:1]:
+                    raw = raw[1:-1]
+                if (raw and len(raw) <= _HOME_MAX_CHARS
+                        and _LITERAL_PATH.fullmatch(raw)):
+                    home = raw
+        env["HOME"] = home
+    count = 0
+    assignment_names = set()
+    assignment_pattern = re.compile(
+        r'''(?:^|[\n;|&])\s*([A-Za-z_]\w*)=("[^"]*"|'[^']*'|[^\s;|&]*)''')
+    for m in assignment_pattern.finditer(text):
+        count += 1
+        if count > 32:
+            env["HOME"] = None
             break
         name, raw = m.group(1), m.group(2)
+        if name == "HOME":
+            continue
+        if name in assignment_names:
+            env[name] = None
+            continue
+        assignment_names.add(name)
+        env[name] = None
+        if m.end() > cursor:
+            continue
+        remainder = text[m.end():].lstrip(' \t\r')
+        if remainder and remainder[0] not in '\n;|&':
+            continue
         if raw[:1] in ('"', "'"):
             value = raw[1:-1]
-            if "$" in value or "`" in value or "\\" in value:
-                # lpkit-ebr: a single ${NAME:-default} expansion in an
-                # assignment value resolves (hf5 allowlist); other
-                # interpolation stays unresolvable
-                resolved = _resolve_default_expansion(raw)
+            if raw.startswith("'"):
+                # Literal dollar/escape characters cannot be treated as an
+                # expansion or as a statically safe executable.
+                if not _LITERAL_PATH.fullmatch(value):
+                    continue
+            elif "$" in value or "`" in value or "\\" in value:
+                resolved = _resolve_default_expansion(raw, env)
                 if resolved is not None:
                     env[name] = resolved
                 continue
@@ -2012,7 +2085,8 @@ def _collect_literal_vars(text):
             if not re.fullmatch(r"[A-Za-z0-9_./@-]+", raw):
                 continue
             value = raw
-        env[name] = value
+        if value:
+            env[name] = value
     return env
 
 
@@ -2113,88 +2187,50 @@ def _analyze_chunk(chunk, policy, get_snapshot, depth=0, env=None):
     # assignment is visible (env may be empty).
     if env is not None:
         stage_list = _split_segments(chunk, ("|",), limit=MAX_STAGES)
-        if stage_list:
-            head_words = stage_list[0].strip().split()
-            if head_words:
-                raw = head_words[0]
-                # bare and quoted forms: $X, "$X", '${X}'
-                if raw.startswith('"') and raw.endswith('"'):
-                    var = raw[1:-1]
-                elif raw.startswith("'") and raw.endswith("'"):
-                    var = raw[1:-1]
-                elif raw.startswith("$") and len(raw) > 1:
-                    var = raw
-                else:
-                    var = None
-                if var:
-                    var = var.lstrip("$").lstrip("{").rstrip("}")
-                    # lpkit-uy4: ${NAME:-default} / ${NAME-default} in
-                    # command position resolves against the WRITTEN
-                    # default when the default is a statically
-                    # analyzable simple literal. The shell substitutes
-                    # the default whenever the variable is unset/empty
-                    # (:-) or unset (-); a value present in the env
-                    # could differ, so resolution is ANALYSIS, not a
-                    # hole: the substituted text is re-analyzed in
-                    # full, and any signal intent in the default (or
-                    # the remaining payload) still vetoes. A default
-                    # that is not a simple literal (nested expansion,
-                    # command substitution, empty) is unprovable and
-                    # stays refused (FR-006).
-                    resolved_default = None
-                    if ":-" in var or ("-" in var and ":" not in var):
-                        sep = ":-" if ":-" in var else "-"
-                        _nm, _, _dflt = var.partition(sep)
-                        if (_nm and re.fullmatch(
-                                r"[A-Za-z_]\w*", _nm) and _dflt
-                                and "`" not in _dflt
-                                and not _dflt.startswith("~")):
-                            # lpkit-hf5: ONE level of allowlisted env
-                            # resolution inside the written default.
-                            # $HOME is deterministic for the owning
-                            # user (the guard itself resolves its own
-                            # paths from os.environ["HOME"]), so
-                            # ${VAR:-$HOME/...} resolves against it.
-                            # Any other variable in the default is
-                            # unprovable and stays refused (FR-006).
-                            # Resolution is ANALYSIS: the substituted
-                            # text is re-analyzed in full below, so
-                            # signal intent under a $HOME default
-                            # still vetoes.
-                            cand = _dflt.replace("${HOME}", "\x00")
-                            cand = cand.replace("$HOME", "\x00")
-                            if "$" in cand.replace("\x00", ""):
-                                cand = None  # non-allowlisted var
-                            else:
-                                home = os.environ.get("HOME")
-                                if not home or any(
-                                        c in home for c in ' \t\n;$`"\\'+"'"):
-                                    cand = None  # HOME unset/unsafe
-                                else:
-                                    cand = cand.replace("\x00", home)
-                            if cand is not None and re.fullmatch(
-                                    r"[A-Za-z0-9_./@:+-]+", cand):
-                                resolved_default = cand
-                            elif (cand is None and "$" not in _dflt
-                                  and "`" not in _dflt
-                                  and re.fullmatch(
-                                      r"[A-Za-z0-9_./@:+-]+", _dflt)):
-                                resolved_default = _dflt
-                        var = _nm
-                    if resolved_default is not None or var in env:
-                        # env literal wins (shell precedence: an
-                        # assigned value suppresses the default)
-                        value = env.get(var, resolved_default)
-                        resolved = " ".join(
-                            [value] + head_words[1:])
-                        _analyze_shell_text(
-                            resolved, policy, get_snapshot, depth + 1)
-                        for stage in stage_list[1:]:
-                            if stage.strip():
-                                _analyze_chunk(
-                                    stage.strip(), policy, get_snapshot,
-                                    depth + 1, env)
-                        return
+        if len(stage_list) >= MAX_STAGES:
+            raise _Block()
+        changed = False
+        rebuilt = []
+        for stage in stage_list:
+            stage = stage.strip()
+            match = re.match(r"(\S+)(.*)", stage, re.DOTALL)
+            if not match:
+                rebuilt.append(stage)
+                continue
+            raw, remainder = match.groups()
+            # shlex removes quote provenance; only exact unquoted or wholly
+            # double-quoted command words may be expanded here.
+            if raw.startswith("'") or raw.startswith("\\"):
+                rebuilt.append(stage)
+                continue
+            word = raw[1:-1] if raw.startswith('"') and raw.endswith('"') else raw
+            value = None
+            eligible = False
+            if word.startswith(('$HOME/', '${HOME}/')):
+                eligible = True
+                value = _resolve_home_path(word, env)
+            elif word.startswith('${') and word.endswith('}') and (
+                    ':-' in word or '-' in word):
+                eligible = True
+                value = _resolve_default_expansion(word, env)
+            elif re.fullmatch(r"\$(?:[A-Za-z_]\w*|\{[A-Za-z_]\w*\})", word):
+                name = word[2:-1] if word.startswith('${') else word[1:]
+                if name in env:
+                    eligible = True
+                    value = env[name]
+            if eligible:
+                if (type(value) is not str or not value
+                        or len(value) > _HOME_MAX_CHARS
+                        or not _LITERAL_PATH.fullmatch(value)):
+                    raise _Block()
+                stage = value + remainder
+                changed = True
+            rebuilt.append(stage)
+        if changed:
+            _analyze_shell_text(' | '.join(rebuilt), policy, get_snapshot,
+                                depth + 1, _literal_env=env)
+            return
+
     # F-017: mutation of the guard's own deployed plugin directory (or
     # self-disable/uninstall through the runtime CLI) vetoes
     low_chunk = chunk.lower()
@@ -2275,6 +2311,10 @@ def _analyze_chunk(chunk, policy, get_snapshot, depth=0, env=None):
             tokens = _strip_wrappers(tokens)
             if not tokens:
                 continue
+            # A wrapper or inline assignment must not hide an unresolved
+            # executable after the pre-shlex resolution pass.
+            if tokens[0].startswith(("$", "`")):
+                raise _Block()
             verb = tokens[0].rsplit("/", 1)[-1].lower()
             rest = tokens[1:]
             if verb == "eval":
@@ -2580,7 +2620,7 @@ def _full_text_kill_intent(text, policy):
     return _FULL_TEXT_INTENT_RE.search(text.lower()) is not None
 
 
-def _analyze_shell_text(text, policy, get_snapshot, depth=0):
+def _analyze_shell_text(text, policy, get_snapshot, depth=0, _literal_env=None):
     if depth > MAX_TOOL_CALL_DEPTH:
         raise _Block()
     if not isinstance(text, str):
@@ -2730,7 +2770,7 @@ def _analyze_shell_text(text, policy, get_snapshot, depth=0):
     # lpkit-5ix: simple literal assignments visible in this payload
     # back command-position variable resolution; anything else stays
     # unresolvable (FR-006).
-    env = _collect_literal_vars(text)
+    env = _collect_literal_vars(text) if _literal_env is None else _literal_env
     for substitution in _command_substitutions(text):
         _analyze_shell_text(substitution, policy, get_snapshot, depth + 1)
     chunks = _split_segments(text, _CHUNK_SEPS)

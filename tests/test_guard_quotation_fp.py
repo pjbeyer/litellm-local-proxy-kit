@@ -58,19 +58,20 @@ def test_terminal_quoted_newline_commit_passes(scope):
     assert evaluate(command) is None
 
 
-def test_byte_exact_invalid_python_newline_refuses_bound_not_veto(scope):
+def test_byte_exact_invalid_python_newline_refuses_shape_not_veto(scope):
     # The byte-exact class from the real refusal: a raw newline inside
     # a single-quoted Python string is invalid Python. It cannot be
-    # statically proven safe, so it stays REFUSED — but with the
-    # corrective bound category, never a lifecycle VETO signature.
+    # statically proven safe, so it stays REFUSED — with the corrective
+    # shape category (IR-008: under-cap syntax failures are shape
+    # defects, not size defects), never a lifecycle VETO signature.
     evaluate, _, _ = scope
     code = (
         "t('git commit -m ' + '\"Small message.\n"
         "\nCloses litest-6c5.\"', 'commit')")
     decision = evaluate("python3 -c " + shlex.quote(code))
     assert decision is not None
-    assert decision["category"] == "BOUND_SIZE"
-    assert decision["log_code"] == "LGV-010"
+    assert decision["category"] == "SHAPE_ENVELOPE"
+    assert decision["log_code"] == "LGV-020"
 
 
 @pytest.mark.parametrize("code", [

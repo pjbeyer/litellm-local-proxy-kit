@@ -1,0 +1,27 @@
+{
+  "provenance": "synthetic; not a historical replay",
+  "purpose": "IR-007 direct HOME falsification under the fixture-only scope; this does not replay the stopped historical diagnostic",
+  "baseline_source_sha256": "9427cde6b95b8feaf4b04459dbeed6566499d80fbe83e968f8d210466817de4e",
+  "adapter_sha256": "01d8478cd53213cdf410692551829b3f52951a0a132d76c5838d965778a9c43e",
+  "scope_fixture_sha256": "2f55bddb61fb97d112dc48d6cfbbc00528204c6cb78479696ea48cce3677ffea",
+  "policy_fixture_sha256": "7b616e08b2e20d0c77201b4e411e18ef0d1c5aec41cb77b75f9fe90f12d7c64f",
+  "runtime": "CPython 3.14.10, pytest 9.2.0; fresh imported guard; XDG_STATE_HOME and TMPDIR redirected to resolved disposable scratch paths",
+  "tool": "terminal",
+  "argument_key": "command",
+  "relevant_environment": {"HOME": "delta", "PY": "unset", "P": "unset"},
+  "payload_encoding": "utf-8",
+  "payload_utf8_hex": "24484f4d452f62696e2f707974686f6e33202d6320227072696e7428312922",
+  "payload_sha256": "4a00b36d06345e94d86e18955f3566836290e2ad98251b33e25162b674bbda5d",
+  "policy_sha256": "51d14b07294a4f4105cf64ba9ffb43ce0ab475b16cbee375ab637ee182f6f059",
+  "policy": {
+    "schema_version": 1,
+    "protected_port": 4000,
+    "protected_labels": ["example.litellm"],
+    "protected_session_handles": ["fixture-session"],
+    "bounds": {"input_text_bytes": 262144, "max_chunks": 512, "max_depth": 8, "discovery_timeout_ms": 2000, "max_snapshot_pids": 256},
+    "refusal_vocabulary_version": 1
+  },
+  "discovery": {"pids": [4711], "pgids": [4711], "comms": ["litellm"], "args": ["litellm --port 4000"]},
+  "delta": {"element": "environment.HOME", "before": "/fixture/home", "after": ""},
+  "candidate_expectation": {"before": "allow and analyze print(1)", "after": "VETO/LGV-001 without code analysis"}
+}

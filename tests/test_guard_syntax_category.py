@@ -15,17 +15,13 @@ Expectations below are pinned from the amendment text, independently of
 the implementation constants. Offline, fixture-discovery only; nothing
 executes. Fixture PID 4711 / label example.litellm only.
 """
-import sys
 import unittest
-from pathlib import Path
 
-MODULE_PATH = (Path(__file__).resolve().parents[1] /
-               "integrations/hermes/proxy-lifecycle-guard/guard.py")
+from test_lifecycle_guard import GuardHarness, guard
 
-from test_lifecycle_guard import GuardHarness, guard, write_policy
-
-# A real newline inside a single-quoted string: the documented byte-exact
-# refusal shape (git multi-paragraph -m convention pasted into code) —
+# Synthetic payload of the documented refusal class, not a replay of the
+# stopped historical diagnostic: a real newline inside a single-quoted
+# string (git multi-paragraph -m convention pasted into code) —
 # invalid Python, under any size bound.
 SMALL_MALFORMED = "x = 'line one\n\nline two'"
 # Malformed AND carrying signal vocabulary: still refused, still SHAPE.
