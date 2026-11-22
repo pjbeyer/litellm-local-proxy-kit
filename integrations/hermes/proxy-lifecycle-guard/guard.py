@@ -3084,14 +3084,17 @@ def _analyze_code_text(text, policy, get_snapshot):
     # be statically proven safe. A real newline inside a single-quoted
     # string (the git multi-paragraph -m convention pasted into code, as
     # in the byte-exact refusal fixture) is a SyntaxError, not a
-    # lifecycle threat: refuse with the bound's corrective category
-    # (BOUND_SIZE/LGV-010 — reduce/restructure and resubmit), never a
-    # lifecycle VETO. Malformed input stays REFUSED (fail-closed); only
-    # the category is corrected.
+    # lifecycle threat and NOT a size problem: this payload is under
+    # MAX_TEXT_CHARS, so refuse with the shape's corrective category
+    # (SHAPE_ENVELOPE/LGV-020 — restructure it; IR-008), never a
+    # lifecycle VETO and never the misleading over-cap bound guidance.
+    # Malformed input stays REFUSED (fail-closed); only the category is
+    # corrected. The over-cap branch above keeps BOUND_SIZE: there the
+    # input genuinely exceeds the bound.
     try:
         ast.parse(text)
     except SyntaxError:
-        raise _BoundRefuse("BOUND_SIZE") from None
+        raise _BoundRefuse("SHAPE_ENVELOPE") from None
     if _OS_KILL_RE.search(text):  # os.kill( / os.killpg(
         # F-014 carve-out: signal-0 liveness probes pass; any real
         # signal — or an unprovable call shape — vetoes
