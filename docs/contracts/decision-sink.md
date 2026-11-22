@@ -5,6 +5,14 @@ No live activation is approved by this document.
 Scope: the existing optional decision sink, not guard policy or restart authority.
 This refines the guard's existing FR-007/SC-004 bounded-evaluation guarantee.
 
+## Proposed follow-on amendment
+
+[Guard incidence reduction](guard-incidence-reduction.md) proposes diagnostic
+reasons and callback-generation attribution. It does not change this contract's
+four-key schema yet. A versioned schema, producer/consumer migration and review
+must precede any field addition; the writer and lifecycle safety invariants below
+remain binding.
+
 ## Invariants
 
 - D1. `evaluate` returns the same allow/block decision and fixed refusal vocabulary
