@@ -41,8 +41,10 @@ Every block is one decision with a category and a stable log code. The plugin
 emits its own log line per decision (category + code) so distinguishability
 does not depend on runtime surfacing.
 
-- **VETO — LGV-001**: recognized lifecycle threat. Fixed sanitized message
-  naming the owner-reviewed restart workflow.
+- **VETO — LGV-001**: recognized lifecycle/self-protection intent **or an
+  unresolved execution operand whose safety cannot be established**. It is not
+  proof of malicious intent or of a conclusive protected-target hit. Fixed
+  sanitized message naming the owner-reviewed restart workflow.
 - **BOUND_SIZE — LGV-010 / BOUND_DEPTH — LGV-011 / BOUND_COUNT — LGV-012**:
   input too large / nesting too deep / batch too large to prove safe. Each
   carries corrective guidance (reduce and resubmit); large-but-innocent inputs
