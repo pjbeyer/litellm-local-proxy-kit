@@ -1,0 +1,91 @@
+integrations/hermes/proxy-lifecycle-guard/guard.py
+  s_9cfcc948e0dad4::t_731d438221e8bf 2035-2036,2038
+  s_9cfcc948e0dad4::t_340677f0b8d744 1991-1993
+  s_9cfcc948e0dad4::t_503041ed001d75 2010-2019
+  s_9cfcc948e0dad4::t_8234e2caa3fc69 2020-2022,2025
+  s_9cfcc948e0dad4::t_afff5d25c38e39 2041-2043
+  s_9cfcc948e0dad4::t_63ffddb36b567a 2026-2028,2031-2034,2039-2040,2044-2050,2055-2056,2060-2061,2080
+  s_9cfcc948e0dad4::t_63d72813dd97e8 2029-2030
+  s_9cfcc948e0dad4::t_446e632e5b0e84 2069-2070
+  s_9cfcc948e0dad4::t_cc0490f471444c 1981-1987,1989,1997
+  s_9cfcc948e0dad4::t_14e71704007375 2190-2233
+  s_9cfcc948e0dad4::t_fd571e45774fd9 2773
+  s_9cfcc948e0dad4::t_33cafddb6f7613 2057
+  s_9cfcc948e0dad4::t_5bca994d919166 2001-2008
+  s_9cfcc948e0dad4::t_39908dd98c7e1c 2074-2079
+  s_9cfcc948e0dad4::t_455cbda0b1154d 2623
+  s_9cfcc948e0dad4::t_1dbec56a49a42e 2037
+  s_9cfcc948e0dad4::t_d12db5394b4142 2051-2054,2062-2066,2071,2088-2089
+  s_9cfcc948e0dad4::t_445950ca0776f6 1945-1971,1973-1975,1977-1978,1980,1995-1996
+  s_9cfcc948e0dad4::t_eb37fbf4847b26 2023-2024
+  s_9cfcc948e0dad4::t_001ad3de0e12ea 2067-2068
+  s_9cfcc948e0dad4::t_f3745240f833fa 2314-2317
+docs/handoffs/ir007-synthetic-regression-evidence.md
+  s_9cfcc948e0dad4::t_bd4559fe4a689d 1-25,32-48,50-51,53,55-61,63-67,71-78
+  s_9cfcc948e0dad4::t_ce1fab95e7b0b9 52
+  s_c3bcb9d054962a::t_c37a723371ad85 54
+  s_c3bcb9d054962a::t_7655c6289cc590 62
+  s_9cfcc948e0dad4::t_53439b72cd9d62 49
+  s_c3bcb9d054962a::t_ff92bc6082e0f9 68-70
+  s_c3bcb9d054962a::t_01cb55b6fbcb14 26-31
+tests/test_guard_prose_and_vars.py
+  s_c3bcb9d054962a::t_6bd90ca351c348 119,125-128
+tests/fixtures/ir007-home-synthetic.json
+  s_9cfcc948e0dad4::t_da34fee28af886 1-10,12-14,16-27
+  s_9cfcc948e0dad4::t_73e66e65e611b3 11
+  s_9cfcc948e0dad4::t_96e0a7e3b49686 15
+tests/test_guard_home_resolution.py
+  s_9cfcc948e0dad4::t_b7642dd467849f 13,15,18-19
+  s_9cfcc948e0dad4::t_82333ed50f8209 62
+  s_9cfcc948e0dad4::t_4e6ff2efd7ae9f 160-172
+  s_9cfcc948e0dad4::t_d5901cfd0e9446 37
+  s_9cfcc948e0dad4::t_30b67e275d197d 61,63
+  s_9cfcc948e0dad4::t_896b082adc767b 209-217
+  s_9cfcc948e0dad4::t_529addcdbbef93 147-159
+  s_9cfcc948e0dad4::t_fd663030ec0162 33,35-36,38,40-41,45-46,49
+  s_9cfcc948e0dad4::t_4f84179e67a445 238
+  s_9cfcc948e0dad4::t_fba6dc9dba7288 14,16-17
+  s_9cfcc948e0dad4::t_b975debdeb9029 173-185
+  s_9cfcc948e0dad4::t_f6bb4c2657f6f5 89-100
+  s_9cfcc948e0dad4::t_3a61f03cb3a45d 5
+  s_9cfcc948e0dad4::t_cbbcf905e6727f 34,39,42-44,47-48,50-54
+  s_9cfcc948e0dad4::t_5a056a9f59032d 108-110
+  s_9cfcc948e0dad4::t_b2f23dda10653b 2
+  s_9cfcc948e0dad4::t_2ca7aca26cb6c0 1,4,6-12,20-28,31-32,55-60,64-88,101-107,111-132,218-224,240,242-251
+  s_9cfcc948e0dad4::t_ad83abc2fdb9d2 225-227
+  s_9cfcc948e0dad4::t_dc6755c4fa3e2b 241
+  s_9cfcc948e0dad4::t_e2b04a8e1358d6 228-237,239
+  s_9cfcc948e0dad4::t_1469539b703284 3
+  s_9cfcc948e0dad4::t_2e18e98b655f47 186-196
+  s_9cfcc948e0dad4::t_50e4297a21855e 29-30
+  s_9cfcc948e0dad4::t_b3dcc8c75a8474 146,197-208
+  s_9cfcc948e0dad4::t_4a8b53aa082fed 133-145
+tests/test_guard_syntax_category.py
+  s_c3bcb9d054962a::t_5a241af5bb7103 20,22-24
+tests/test_guard_quotation_fp.py
+  s_c3bcb9d054962a::t_ce9ee5352c898e 61,64-66,73-74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "977e50f085ea7987e305d08424a020bfbbc831d9",
+  "prompts": {},
+  "sessions": {
+    "s_9cfcc948e0dad4": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261122_181549_bb9873",
+        "model": "gpt-6.1-terra"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_c3bcb9d054962a": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261114_154648_59b3af",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
