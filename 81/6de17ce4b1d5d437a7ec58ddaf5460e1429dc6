@@ -1,0 +1,23 @@
+docs/contracts/guard-incidence-reduction.md
+  s_f361a801a4cd25::t_27dcca6c3e9fa2 1-124
+docs/handoffs/2026-11-22-guard-post-restart.md
+  s_f361a801a4cd25::t_0310bdacfe0eac 1-121
+docs/contracts/decision-sink.md
+  s_f361a801a4cd25::t_c04a4611ea5b8f 8-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "816de17ce4b1d5d437a7ec58ddaf5460e1429dc6",
+  "prompts": {},
+  "sessions": {
+    "s_f361a801a4cd25": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261122_163255_d18451",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
