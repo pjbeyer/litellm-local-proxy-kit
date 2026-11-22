@@ -1,0 +1,38 @@
+docs/handoffs/2026-11-22-guard-post-restart.md
+  s_0e8d4b73e8a778::t_d58593032c7dba 47-51
+  s_0e8d4b73e8a778::t_8fed8237f58783 82-84
+  s_0e8d4b73e8a778::t_8f4fe3313c5b72 133-136,138-153
+  s_0e8d4b73e8a778::t_e02c286d2545ec 6-16
+  s_0e8d4b73e8a778::t_cd64a9e397cd91 137
+docs/contracts/guard-incidence-reduction.md
+  s_0e8d4b73e8a778::t_b94224ad4709b6 91-97
+  s_0e8d4b73e8a778::t_56f8f759c4779d 3-7
+  s_0e8d4b73e8a778::t_317d79f43c6b55 104-114
+  s_0e8d4b73e8a778::t_46de5e778a17f5 115-123
+  s_0e8d4b73e8a778::t_9a9c744541d4ca 57-68
+  s_f361a801a4cd25::t_509f78bc632666 75-90
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "fc29ffdc4ae3f0f9dd003f2efa10ce295ad9bc13",
+  "prompts": {},
+  "sessions": {
+    "s_0e8d4b73e8a778": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261122_164435_03366b",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_f361a801a4cd25": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261122_163255_d18451",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
