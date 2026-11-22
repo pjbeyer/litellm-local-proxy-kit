@@ -1,0 +1,19 @@
+integrations/hermes/proxy-lifecycle-guard/README.md
+  s_f361a801a4cd25::t_50a75fef780a19 44-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "f55aa4c929bb5641090b9f60a13fcd6a6fa719b0",
+  "prompts": {},
+  "sessions": {
+    "s_f361a801a4cd25": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261122_163255_d18451",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
