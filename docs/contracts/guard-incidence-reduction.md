@@ -1,6 +1,10 @@
 # Guard incidence reduction — proposed amendment
 
-Status: source-only implementation contract, pending independent review and owner release approval.
+Status: source-only implementation contract. Independent review round 1 (2026-11-22)
+returned REQUEST_CHANGES (3×P2, 1×P3); all recommended edits — IR-007 bounded
+resolution wording, IR-003/004/005 decision-neutrality amendment, IR-008
+parse-site pinning, IR-010 testable falsification wording, IR-011 live-path
+evidence — are incorporated below. Owner release approval still pending.
 Date: 2026-11-22.
 Audience: the guard implementation session.
 
@@ -50,44 +54,73 @@ worktrees; this amendment lives alongside the extant portable contract.
   every exact-schema consumer, fixture and watchdog in the same release slice.
   A consumer incompatibility is a release blocker, not permission to delete old
   evidence or silently accept an unknown schema.
+- **IR-003/004/005 amendment — reason/generation decision neutrality**: Reason
+  and serving-generation identity are observability metadata only. Derive each
+  reason locally from that invocation's decision branch. Do not add cross-call
+  decision caches, prior-decision lookups, correlation, cooldowns, or
+  deduplication. The only new in-memory state permitted is an immutable
+  registration-time generation binding and records admitted to the existing
+  bounded sink queue; do not add a new persistent store. Collection, lookup,
+  validation, serialization, or enqueue failure must not change the
+  allow/refuse result, category, code, or fixed refusal message. If generation
+  identity cannot be bound, emit the bounded unknown value without changing
+  the decision. Existing queue counters remain bounded telemetry and must not
+  influence enforcement.
 - **IR-006**: Prefer isolated disposable state for synthetic probes. Do not infer
   probe provenance from a timestamp or an agent-controlled argument. If a probe
   marker is implemented, its producer must be trusted diagnostic context, not
   tool-call content, and it must never affect enforcement. Legacy row origin is
   unknown unless corroborated independently. Do not publish an organic refusal
   rate without an organic invocation denominator; counts alone are not rates.
-- **IR-007**: Resolve direct command-position `$HOME` and `${HOME}` path prefixes
-  with the existing bounded static-resolution machinery, only when the effective
-  value is provable in the modeled shell environment. Apply this across command
-  and pipeline positions already in scope, without executing a shell, reading
-  scripts or resolving arbitrary environment variables. Respect same-payload
-  assignments, unset/empty behavior, quoting and literal single-quoted forms;
-  inherited HOME must not override an explicit assignment. Never expand prefixes
-  such as `$HOMEOTHER`. Unprovable, unsafe, recursive or over-bound values refuse.
-  Re-analyze the resolved command through the full protection pipeline; a known
-  path is not an allow decision. This is not a general shell evaluator rewrite.
-- **IR-008**: Route under-cap top-level Python syntax failures to SHAPE_ENVELOPE /
-  LGV-020 rather than BOUND_SIZE / LGV-010. Malformed code remains refused. Keep
-  the actual over-cap/head-truncation path a bound refusal; do not globally replace
-  every SyntaxError mapping. Retain the existing treatment of execution operands
-  unless separately specified and reviewed. Update explanatory comments and tests.
+- **IR-007**: Resolve only direct leading `$HOME/` and `${HOME}/` expansions
+  in command position, plus the existing `${VAR:-$HOME/...}` default form,
+  using one shared bounded resolution rule, applied across the command and
+  pipeline positions already in scope. For both forms, an unambiguous
+  simple-literal `HOME` assignment visible to the existing bounded
+  same-payload assignment model takes precedence over inherited `HOME`. An
+  explicit empty or unresolved assignment must not fall back to inherited
+  `HOME`; an unset, unsafe, recursive, ambiguous, or over-bound effective
+  value refuses. If no same-payload binding is visible, inherited `HOME` may
+  be used only when it is an exact, nonempty, safe string. Single-quoted
+  `$HOME` forms are literal and must not be expanded; if quote context is
+  unavailable, refuse. Never expand prefixes such as `$HOMEOTHER`. Re-analyze
+  any resolved command through the full protection pipeline; resolution is
+  not an allow decision. Do not broaden this into a general shell evaluator
+  rewrite, and do not execute a shell, read scripts, or resolve arbitrary
+  environment variables.
+- **IR-008**: Route only the `ast.parse(text)` `SyntaxError` catch in
+  `_analyze_code_text` reached after the input passes the `MAX_TEXT_CHARS`
+  check to SHAPE_ENVELOPE / LGV-020. Keep the `ast.parse(head)` catch in the
+  over-cap/head-truncation branch as BOUND_SIZE / LGV-010. Preserve the
+  existing execution-operand `SyntaxError` handling and all other parse-site
+  mappings. Malformed code remains refused. Update explanatory comments and
+  tests.
 - **IR-009**: Keep human refusal messages fixed; if structured corrective guidance
   is added, use reviewed closed enum values, never source excerpts. Incomplete
   envelope, missing calls and unterminated grammar must remain refusals rather
   than best-effort salvage. Guidance must reflect the failing branch, not a guess.
   Repeat-amplification monitoring is deferred until a privacy-reviewed correlation
   design exists; do not add payload hashes or identifiers by implication.
-- **IR-010**: Treat every reported false-positive mechanism as a hypothesis until
-  a byte-exact offline reproduction and a one-element falsification delta support
-  it under valid policy and discovery fixtures. Assert fixture construction outside
-  the evaluator's catch so setup exceptions cannot masquerade as correct VETOs.
-  A denied verification check stops in its current authorization context; changing
-  source paths, tools, payload encoding or agents is not permission to retry it.
-- **IR-011**: Verify all copies actually used or distributed, including reviewed,
-  runtime-script and plugin-directory watchdog copies. Record their digests and
-  the live invocation path. A stale unused copy is distribution drift, not proof
-  that the scheduled runtime probe is failing. Reconcile copies only through the
-  approved installation path, separately from source-only changes.
+- **IR-010**: For each reported false-positive hypothesis, preserve an offline
+  fixture manifest pinning the exact raw payload bytes, tool metadata, policy
+  and discovery fixtures, relevant environment values, and evaluator/source
+  version. Assert the reproduced outcome independently of fixture construction;
+  setup assertions must remain outside the evaluator's catch. The falsification
+  pair must keep every manifest element identical except one named input
+  element or value, with before-and-after values recorded; "one-element" means
+  one named fixture component or input value, not an unspecified conceptual
+  change. A denied verification check stops in its current authorization
+  context; changing source paths, tools, payload encoding, or agents is not
+  permission to retry it.
+- **IR-011**: Record each watchdog copy's path, digest, and verified role.
+  Establish the live invocation path from active scheduler or invocation
+  evidence; do not infer it from the copy's location or name. A mismatch in a
+  verified-unused copy is distribution drift; a mismatch in the actual
+  invocation copy is a runtime failure. Reconcile copies only through the
+  owner-supported installation workflow, separately from source-only changes.
+  If that workflow or the live path cannot be verified, record the drift and
+  keep activation blocked; do not manually replace installed copies as part
+  of a source-only change.
 
 ## Acceptance and execution order
 

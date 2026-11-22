@@ -3,6 +3,17 @@
 Date: 2026-11-22. Audience: the implementation session.
 Scope: source-only specification and work preparation, not activation approval.
 
+> Continue the guard incidence-reduction work in a dedicated worktree of the
+> LiteLLM Local Proxy Kit. Fetch `docs/guard-post-restart-handoff` and incorporate
+> its documentation into a branch based on current main. Read `AGENTS.md`, this
+> handoff, `docs/contracts/guard-incidence-reduction.md`, and
+> `docs/contracts/decision-sink.md` before changing source. Start with the small
+> syntax-category slice, then bounded HOME resolution; design the versioned
+> diagnostics migration separately. Keep enforcement fail-closed and diagnostics
+> decision-neutral. The denied diagnostic described below remains stopped until
+> the owner explicitly approves its verification context. This handoff does not
+> authorize that resumption, installed-file changes, activation, or any restart.
+
 Read [the proposed amendment](../contracts/guard-incidence-reduction.md) and
 [the existing sink contract](../contracts/decision-sink.md) together. The former
 owns incidence-reduction requirements; the latter retains ownership of writer,
@@ -33,8 +44,11 @@ filesystem, queue and cleanup safety. Neither authorizes live changes.
   `07d9a402bf6af6003e4540c05eccbd022651099b252f6ffcaae3b00e5bb5cc8a`.
   The plugin-directory watchdog differed:
   `edb8796bd4316c97ad29fbcb67ae0660048a4045af64af0ba32b15fa2167fdc7`.
-  The runtime-script copy is not stale on this comparison; the third copy is
-  distribution drift. No installed copy was changed by this handoff.
+  This review did not establish which copy the active scheduler invokes, so
+  per IR-011 the mismatch's runtime significance is unknown: potential
+  distribution drift or a live-path failure until invocation evidence exists.
+  Classifying the copies is implementation-session work. No installed copy
+  was changed by this handoff.
 - At the initial inspection, the sink held 1,485 rows, including 17 dated
   November 22: six VETO and eleven SHAPE_ENVELOPE. Fifteen were in recurring
   diagnostic time windows; timing alone is not provenance. All 17 preceded the
@@ -65,8 +79,9 @@ filesystem, queue and cleanup safety. Neither authorizes live changes.
    Design the versioned migration and callback-bound identity first. Keep all
    existing writer/lifecycle safety invariants. Scope: IR-002, IR-003, IR-004,
    IR-005, IR-006, IR-009 and AC-004. Missing telemetry must not affect enforcement.
-4. **Copy drift needs installation-path reconciliation**, not a runtime outage
-   claim. Scope: IR-011. Leave installed files to the approved owner workflow.
+4. **Copy mismatch needs live-path evidence and installation reconciliation.**
+   Runtime significance remains unknown until the active invocation path is
+   established. Scope: IR-011. Leave installed files to the approved owner workflow.
 5. **Upstream envelope composition remains a separate investigation.** Historical
    review attributed many refusals to malformed emitted envelopes. This review
    did not establish the updated composer's current status or remeasure that
@@ -114,6 +129,27 @@ filesystem, queue and cleanup safety. Neither authorizes live changes.
   policy, integrity reference, process lifecycle and denied-check resumption to
   explicit owner approval. Verify callback identity and non-disruptive controls
   after activation; do not infer successful activation from disk or silence.
+
+## Documentation review disposition
+
+The first independent Codex review requested changes (three P2, one P3).
+The contract now pins HOME precedence and quote handling, immutable and
+decision-neutral diagnostics, exact fixture inputs and falsification deltas,
+and scheduler evidence for watchdog-copy classification. A second independent
+source-only review confirmed the first three and found one remaining P2:
+the handoff classified the watchdog mismatch without invocation evidence.
+The observation and work item above now explicitly leave runtime significance
+unknown. These are documentation dispositions, not a green guard suite or
+release approval.
+
+## Definition of done for implementation
+
+Meet the amendment's acceptance criteria with actual baseline reds, isolated
+regression counts and candidate hashes; independently review tests and source;
+record evidence and remaining work in the private tracker; sync Beads before
+pushing source and verify the remote ref. Report any blocked sync explicitly.
+Share the resulting handoff with the owner. Keep source integration separate
+from the owner-approved live release.
 
 The release boundary is always-gated because it modifies a live security control.
 This handoff prepares work; it neither clears existing denials nor closes the
