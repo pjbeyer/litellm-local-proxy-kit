@@ -1997,56 +1997,258 @@ def _resolve_default_expansion(raw_value, env=None):
     return resolved
 
 
-def _collect_literal_vars(text):
-    """Collect bounded leading assignments; preserve unresolved shadows.
+# HOME-binding builtins/wrappers. A HOME= operand only shadows when the
+# builtin itself is the command word; the same word inside another
+# command's arguments is data (``echo export "HOME=/fake"`` prints two
+# words and binds nothing).
+_HOME_BINDING_HEADS = ('export', 'readonly', 'declare', 'typeset', 'local', 'env')
+# Verbs whose operands are printed/matched text, never executed and never
+# able to bind a shell variable: only these demote a binding-head word to
+# data. Deliberately minimal — any other owner (xargs, env, sudo, find,
+# awk, sed, git, curl, sh/bash/zsh/python, osascript, an unknown word) keeps
+# the fail-closed verdict, so this is not a general argument model.
+_HOME_DATA_VERBS = frozenset({'echo', 'printf', 'cat', 'grep'})
 
-    Only a unique simple-literal assignment in the unconditional leading
-    prefix is usable. HOME is separately checked for unsafe or ambiguous
-    mentions. Unresolved/duplicate bindings stay present as None, so they
-    can never silently fall back to an inherited value or written default.
+
+def _home_binding_residue(prefix):
+    """Residue left after the shared wrappers/assignments/keywords are peeled.
+
+    ``None`` means the prefix could not be resolved (bound refusal inside
+    the shared wrapper logic); callers treat that as fail-closed.
+    """
+    try:
+        rest = _strip_wrappers(_strip_control_flow(list(prefix)))
+    except _Block:
+        return None
+    return rest
+
+
+def _home_binding_shadow(words):
+    """Classify one decoded segment for a real HOME-binding shadow.
+
+    ``True`` — a binding head in command position carries a ``HOME=`` operand
+    and may never inherit HOME. ``False`` — every such head sits in the
+    argument position of a verb that only prints/matches its operands.
+    ``None`` — unresolved: the shared wrapper/control-flow logic refused or
+    stopped early, or an owner this guard does not prove is argument-only
+    holds the word, so the shadow stays fail-closed.
+
+    Scope is handled by the reuse, not by a new shell model: ``_strip_wrappers``
+    peels assignments and ``_strip_control_flow`` peels keywords/braces, so a
+    genuinely in-shell binding downgrades to ``True`` and a function body or
+    unknown owner falls through to ``None``.
+    """
+    for index, word in enumerate(words):
+        if word.rsplit('/', 1)[-1] not in _HOME_BINDING_HEADS:
+            continue
+        # A prefix test, not a substring test: XHOME=/x is not a binding.
+        if not any(item.startswith('HOME=') for item in words[index + 1:]):
+            continue
+        residue = _home_binding_residue(words[:index])
+        if residue is None:
+            return None
+        if not residue:
+            return True
+        if residue[0].rsplit('/', 1)[-1] not in _HOME_DATA_VERBS:
+            return None
+    return False
+
+
+def _collect_literal_vars(text):
+    """Collect bounded, unambiguous standalone assignments before use.
+
+    Unresolved/duplicate bindings stay present as None, so they cannot
+    silently fall back to an inherited value or written default. Only plain
+    semicolon/newline-separated assignments outside control flow qualify;
+    quotation-aware segmentation prevents data from becoming a binding.
     At most 32 assignment matches are admitted.
     """
     env = {}
-    # The only provable bindings are standalone assignments in the leading
-    # unconditional prefix; later or conditional words remain unresolved.
-    leading = re.compile(
-        r'''[ \t\r]*[A-Za-z_]\w*=(?:"[^"]*"|'[^']*'|[^\s;|&]+)[ \t\r]*(?:;|\n)[ \t\r]*''')
-    cursor = 0
-    while True:
-        prefix = leading.match(text, cursor)
-        if prefix is None:
+    segments = _split_segments(text, _CHUNK_SEPS + ("|",))
+    safe_starts = set()
+    scope_ambiguous = False
+    if len(segments) < MAX_CHUNKS:
+        offset = 0
+        previous = None
+        for segment in segments:
+            end = offset + len(segment)
+            separator = next((sep for sep in sorted(_CHUNK_SEPS + ("|",),
+                                                    key=len, reverse=True)
+                              if text.startswith(sep, end)), None)
+            match = re.fullmatch(
+                r'''[ \t\r]*([A-Za-z_]\w*)=(?:"[^"]*"|'[^']*'|[^\s;|&]*)[ \t\r]*''',
+                segment)
+            if (match and not scope_ambiguous
+                    and previous in (None, ';', '\n', '\r')
+                    and separator in (None, ';', '\n', '\r')):
+                start = offset + match.start(1)
+                # Control-flow bodies are not proven unconditional. Also
+                # prohibit future bindings from being used at an earlier use.
+                before = text[:start]
+                name = match.group(1)
+                earlier_use = re.search(
+                    r'\$(?:\{' + re.escape(name) + r'(?=[^A-Za-z0-9_]|$)|'
+                    + re.escape(name) + r'(?![A-Za-z0-9_]))', before)
+                if (not earlier_use
+                        and _normalize_control_flow(before) == before):
+                    safe_starts.add(start)
+            # Grouping or shell functions can put assignments in a different
+            # scope. Over-refuse after any earlier grouping-shaped text.
+            if not match and any(char in segment for char in '(){}'):
+                scope_ambiguous = True
+            offset = end + len(separator or '')
+            previous = separator
+    # Count potential HOME assignment words only outside quoted data. Keep
+    # executable substitution interiors conservative: their contents have a
+    # separate quote context and cannot establish an outer binding. Escapes
+    # outside quotes remain ambiguous rather than permitting inheritance.
+    home_mention_re = re.compile(r"(?<![A-Za-z0-9_])HOME=")
+    substitution_spans = iter(_command_substitutions(text, with_spans=True))
+    substitution = next(substitution_spans, None)
+    home_mentions = []
+    ambiguous_mentions = set()
+    quote = None
+    i = 0
+    while i < len(text):
+        if substitution is not None and i == substitution[0]:
+            end = substitution[1]
+            for m in home_mention_re.finditer(text, i, end):
+                home_mentions.append(m.start())
+                ambiguous_mentions.add(m.start())
+            i = end
+            substitution = next(substitution_spans, None)
+            continue
+        ch = text[i]
+        if quote:
+            if ch == "\\" and quote == '"' and i + 1 < len(text):
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+        elif ch in ('"', "'"):
+            quote = ch
+        elif ch == "\\" and i + 1 < len(text):
+            # The escaped character may be part of a malformed assignment.
+            match = home_mention_re.match(text, i + 1)
+            if match:
+                home_mentions.append(match.start())
+                ambiguous_mentions.add(match.start())
+            i += 2
+            continue
+        else:
+            match = home_mention_re.match(text, i)
+            if match:
+                home_mentions.append(match.start())
+        i += 1
+    home_mention_starts = set(home_mentions)
+    home_binding_matches = [m for m in re.finditer(
+        r'''(?:^|[\n;|&])\s*(HOME)=("[^"]*"|'[^']*'|[^\s;|&]*)''',
+        text)]
+    # Only mentions the quote-aware scan actually collected may ever be
+    # re-admitted as bindings; a regex match inside quoted data is not one.
+    binding_starts = {m.start(1) for m in home_binding_matches
+                      if m.start(1) in home_mention_starts}
+    # Classify segments BEFORE eligibility. Only a head in COMMAND position
+    # can shadow; a head word proven to be argument data of a print/match
+    # verb binds nothing (round-3 P2 quoted, round-4 P2 unquoted:
+    # ``echo export HOME=/fake``), so its HOME= text is not an assignment
+    # and cannot suppress a safe inherited HOME. Any unresolved or real
+    # shadow refuses regardless of any later binding recognition.
+    shadow_refuse = False
+    # A shell function definition can override a data verb (or any word) and
+    # bind HOME inside its body, so any definition shape anywhere in the
+    # payload defeats data-verb trust for the whole text: nothing proven by
+    # a data verb is trusted after (or before) an unmodeled definition.
+    # Position-free, quote-aware: a definition shape anywhere outside
+    # quotes defeats data-verb trust for the whole text (definitions can
+    # follow grouping braces, control-flow keywords, or any unmodeled
+    # context). Inside quotes the shape is printed data, not a definition.
+    has_unquoted_def = False
+    quote = None
+    j = 0
+    # Single pass: quote state advances monotonically from one definition
+    # match to the next (round-9 P2), so total work is linear in the text.
+    for m in re.finditer(r'function\s+[A-Za-z_]\w*|[A-Za-z_]\w*\s*\(\s*\)\s*\{', text):
+        while j < m.start():
+            ch = text[j]
+            if quote:
+                if ch == "\\" and quote == '"' and j + 1 < len(text):
+                    j += 2
+                    continue
+                if ch == quote:
+                    quote = None
+            elif ch == "\\" and j + 1 < len(text):
+                # An escaped character outside quotes is literal: it cannot
+                # open a quote region (round-8 P2: ``echo \"; echo() {...}``
+                # keeps the definition unquoted and must refuse).
+                j += 2
+                continue
+            elif ch in ('"', "'"):
+                quote = ch
+            j += 1
+        if quote is None:
+            has_unquoted_def = True
             break
-        cursor = prefix.end()
-    # Assignment-like words outside the existing separator-led model cannot
-    # be trusted as bindings; remember them as unresolved instead of
-    # inheriting HOME. The bounded subset below may replace this marker.
-    home_mentions = list(re.finditer(r"(?<![A-Za-z0-9_])HOME=", text))
-    if home_mentions:
+    if has_unquoted_def:
+        shadow_refuse = True
+    offset = 0
+    for segment in segments:
+        end = offset + len(segment)
+        separator = next((sep for sep in sorted(_CHUNK_SEPS + ("|",),
+                                                key=len, reverse=True)
+                          if text.startswith(sep, end)), None)
+        if home_mention_re.search(segment):
+            words, overflow = _tokenize(segment)
+            if overflow:
+                shadow_refuse = True
+                break
+            shadow = _home_binding_shadow(words)
+            if shadow is None or shadow:
+                shadow_refuse = True
+                break
+            if shadow is False:
+                # Drop only this segment's PLAIN data mentions. Escaped and
+                # substitution-interior mentions stay ambiguous on their own
+                # (collected by the scan's special branches), so they never
+                # leave with the segment and keep the verdict fail-closed;
+                # a genuine binding match is re-admitted via its mention.
+                seg_mentions = {start for start in home_mentions
+                                if offset <= start < end
+                                and start not in binding_starts
+                                and start not in ambiguous_mentions}
+                if seg_mentions:
+                    home_mentions = [start for start in home_mentions
+                                     if start not in seg_mentions]
+                    home_mention_starts = set(home_mentions)
+        offset = end + len(separator or '')
+    if shadow_refuse:
         env["HOME"] = None
-    # Detect even empty or dynamic HOME assignments, and never silently
-    # fall through to the inherited value on ambiguity or truncation.
-    home_bindings = list(re.finditer(
-        r'''(?:^|[\n;|&])\s*HOME=("[^"]*"|'[^']*'|[^\s;|&]*)''',
-        text))
-    if home_bindings:
-        # Take the entire shell word, including quoted spaces; a mixed or
-        # incomplete word is not a simple binding.
-        home = None
-        # A binding in the leading unconditional prefix is visible to
-        # every later command; control flow and quoted lookalikes are not.
-        if (len(home_bindings) == 1 and len(home_mentions) == 1
-                and home_bindings[0].end() <= cursor):
-            match = home_bindings[0]
-            raw = match.group(1)
-            remainder = text[match.end():].lstrip(' \t\r')
-            standalone = not remainder or remainder[0] in '\n;|&'
-            if standalone:
-                if raw[:1] in ('"', "'") and raw[-1:] == raw[:1]:
-                    raw = raw[1:-1]
-                if (raw and len(raw) <= _HOME_MAX_CHARS
-                        and _LITERAL_PATH.fullmatch(raw)):
-                    home = raw
-        env["HOME"] = home
+    else:
+        if home_mentions:
+            env["HOME"] = None
+        # Detect even empty or dynamic HOME assignments, and never silently
+        # fall through to the inherited value on ambiguity or truncation.
+        home_bindings = [m for m in home_binding_matches
+                         if m.start(1) in home_mention_starts]
+        if home_bindings:
+            # Take the entire shell word, including quoted spaces; a mixed or
+            # incomplete word is not a simple binding.
+            home = None
+            # Only a proven standalone binding is visible; control flow,
+            # earlier uses, and quoted lookalikes are not.
+            if (len(home_bindings) == 1 and len(home_mentions) == 1
+                    and home_bindings[0].start(1) in safe_starts):
+                match = home_bindings[0]
+                raw = match.group(2)
+                remainder = text[match.end():].lstrip(' \t\r')
+                standalone = not remainder or remainder[0] in '\n;|&'
+                if standalone:
+                    if raw[:1] in ('"', "'") and raw[-1:] == raw[:1]:
+                        raw = raw[1:-1]
+                    if (raw and len(raw) <= _HOME_MAX_CHARS
+                            and _LITERAL_PATH.fullmatch(raw)):
+                        home = raw
+            env["HOME"] = home
     count = 0
     assignment_names = set()
     assignment_pattern = re.compile(
@@ -2064,7 +2266,7 @@ def _collect_literal_vars(text):
             continue
         assignment_names.add(name)
         env[name] = None
-        if m.end() > cursor:
+        if m.start(1) not in safe_starts:
             continue
         remainder = text[m.end():].lstrip(' \t\r')
         if remainder and remainder[0] not in '\n;|&':

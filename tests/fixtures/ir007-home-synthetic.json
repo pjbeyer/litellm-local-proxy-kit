@@ -8,7 +8,7 @@
   "runtime": "CPython 3.14.10, pytest 9.2.0; fresh imported guard; XDG_STATE_HOME and TMPDIR redirected to resolved disposable scratch paths",
   "tool": "terminal",
   "argument_key": "command",
-  "relevant_environment": {"HOME": "delta", "PY": "unset", "P": "unset"},
+  "relevant_environment": {"HOME": "/fixture/home", "PY": "unset", "P": "unset"},
   "payload_encoding": "utf-8",
   "payload_utf8_hex": "24484f4d452f62696e2f707974686f6e33202d6320227072696e7428312922",
   "payload_sha256": "4a00b36d06345e94d86e18955f3566836290e2ad98251b33e25162b674bbda5d",
