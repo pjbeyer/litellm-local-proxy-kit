@@ -1,0 +1,105 @@
+tests/fixtures/ir007-home-synthetic.json
+  s_c3bcb9d054962a::t_bd3fd68cfcdf58 11
+tests/test_guard_home_resolution.py
+  s_152a048b518d2c::t_68f9b3be150fbf 537-549
+  s_4d390c055db9c1::t_219deb7103185c 345-362
+  s_df598617c88905::t_f6e965d6a87e1e 550-552,555,558-567
+  s_1ccb29407a75c7::t_5705fb1c04982f 661-668
+  s_c3bcb9d054962a::t_9486e7654cd79b 783
+  s_1ccb29407a75c7::t_6398087285425b 655-660,669-686,745-757
+  s_1ccb29407a75c7::t_380042af224d66 614-616,625-651
+  s_1ccb29407a75c7::t_b6601ba9a74c4a 687-699
+  s_4d390c055db9c1::t_234b488e56e1fb 314
+  s_33500d032a9af4::t_910eb9660bccbf 244
+  s_1ccb29407a75c7::t_e01d3fa735b674 722-744
+  s_df598617c88905::t_f376720d7c4c62 553-554,556-557
+  s_4d390c055db9c1::t_6ed87a1e3c6ccf 335-336
+  s_152a048b518d2c::t_0248aa7702ce54 491,493,495
+  s_4d390c055db9c1::t_ee170d23c09a48 283,285,288-289
+  s_152a048b518d2c::t_613485c8e6d78b 378,382-410,413,416-417,419-428,430-436,470-490,492,494,496-503,519-536,758-773
+  s_4d390c055db9c1::t_d3a6dc24740370 271-282,284,286-287,290-313,315-334,337-343
+  s_152a048b518d2c::t_6c71f63163053c 379-381,411-412,414-415,418,429,437-469,504-518
+  s_1ccb29407a75c7::t_c4b54fde9dcb5c 700-721
+  s_c3bcb9d054962a::t_fc6732f12413a7 807
+  s_1ccb29407a75c7::t_2247ee975b92df 568-613,617-624,652-654
+  s_33500d032a9af4::t_b7fc1993d7b807 218-243,245-259,262-270,344,363-377
+  s_33500d032a9af4::t_fc22e102c941ee 260-261
+integrations/hermes/proxy-lifecycle-guard/guard.py
+  s_152a048b518d2c::t_99c26bde3298b2 2005-2006
+  s_4d390c055db9c1::t_338d08c10e8904 2152
+  s_4d390c055db9c1::t_559695e32ba626 2101-2139,2212,2215,2219,2222,2234-2235,2237
+  s_33500d032a9af4::t_4d0c31f6acea9b 2081-2082
+  s_33500d032a9af4::t_70727f24d21eb5 2095-2098
+  s_152a048b518d2c::t_ca00aa455b227e 2007-2010
+  s_1ccb29407a75c7::t_daad119f6d0e90 2140,2142-2151,2153-2176,2178-2190,2192-2200
+  s_33500d032a9af4::t_42a65819c2ed8d 2218
+  s_152a048b518d2c::t_a32465a764b56d 2029-2039,2044
+  s_152a048b518d2c::t_202e5a62dabe8a 2177,2208
+  s_33500d032a9af4::t_8bcde6f3134a47 2058,2060-2063,2067-2068,2070-2080,2083-2094,2099-2100
+  s_152a048b518d2c::t_aefa02bd827396 2000-2004,2011-2028,2040-2043,2045-2051,2053-2056,2251
+  s_33500d032a9af4::t_d2e4b8c2c4e3f8 2141
+  s_33500d032a9af4::t_6b846842396ac5 2069
+  s_152a048b518d2c::t_0837b23042f9f5 2052
+  s_4d390c055db9c1::t_b1be55d9e57c13 2213-2214
+  s_4d390c055db9c1::t_a7eaa8777719c7 2220-2221
+  s_4d390c055db9c1::t_c54913411fa5a6 2223-2224
+  s_4d390c055db9c1::t_808179afe7899f 2231-2233
+  s_4d390c055db9c1::t_e7072ce269c85d 2236
+  s_1ccb29407a75c7::t_0a5ae7f2fd24e9 2201-2207,2209-2211,2216-2217,2226-2230,2238-2250,2269
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "c9e5033705605ad372326b47fe3d9157a48cd842",
+  "prompts": {},
+  "sessions": {
+    "s_152a048b518d2c": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261122_191249_14086a",
+        "model": "deepseek-v4.1-flash-1017"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_1ccb29407a75c7": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261122_194235_3d95f2",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_33500d032a9af4": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261122_183957_96fae4",
+        "model": "gpt-6.1-terra"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_4d390c055db9c1": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261122_185507_e296d3",
+        "model": "gpt-6.1-terra"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_c3bcb9d054962a": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261114_154648_59b3af",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_df598617c88905": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261122_190604_a1931f",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
