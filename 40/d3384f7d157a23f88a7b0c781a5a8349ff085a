@@ -1,0 +1,20 @@
+tests/test_guard_syntax_category.py
+  s_a86c9a6c1ffb0e::t_e3e62d6200180e 19
+  s_a86c9a6c1ffb0e::t_3deb3ce6346442 68-81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "40d3384f7d157a23f88a7b0c781a5a8349ff085a",
+  "prompts": {},
+  "sessions": {
+    "s_a86c9a6c1ffb0e": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261122_184022_d0a5bd",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
