@@ -1,0 +1,29 @@
+docs/handoffs/guard-next-hermes-restart.md
+  s_e58e371efa8e13::t_bea288ca51bf7d 8-9
+  s_739cbe9f6320c4::t_72f34f290f4cc5 1-7,10-49,55-62
+  s_e58e371efa8e13::t_e12ad06584b62f 50-54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "56da9d58bd628335055103bcd621f56f1b9a2e61",
+  "prompts": {},
+  "sessions": {
+    "s_739cbe9f6320c4": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261123_081331_c170f0",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_e58e371efa8e13": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261123_082249_c15fbe",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
