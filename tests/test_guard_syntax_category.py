@@ -16,6 +16,7 @@ the implementation constants. Offline, fixture-discovery only; nothing
 executes. Fixture PID 4711 / label example.litellm only.
 """
 import unittest
+from unittest.mock import patch
 
 from test_lifecycle_guard import GuardHarness, guard
 
@@ -63,6 +64,20 @@ class TestSyntaxCategoryIR008(GuardHarness):
         self.assertIsNotNone(d)
         self.assertEqual(d.get("category"), "VETO")
         self.assertEqual(d.get("log_code"), "LGV-001")
+
+    def test_malformed_exec_operand_preserves_shell_fallback_refusal(self):
+        # Outer Python parses; only the literal exec operand is malformed.
+        # The retained catch must reach shell analysis, whose unclosed quote
+        # refuses SHAPE_ENVELOPE, not the top-level Python category gate.
+        operand = "x = '"
+        with patch.object(guard, "_analyze_shell_text",
+                          wraps=guard._analyze_shell_text) as shell:
+            d = self.ev_term("exec(" + repr(operand) + ")")
+        self.assertIsNotNone(d)
+        self.assertEqual(d.get("category"), "SHAPE_ENVELOPE")
+        self.assertEqual(d.get("log_code"), "LGV-020")
+        self.assertTrue(any(call.args[0] == operand
+                            for call in shell.call_args_list))
 
     def test_overcap_safe_code_allows_via_bound_row_a(self):
         # genuine over-cap, provably benign: FR-007 row (a) ALLOW control —
