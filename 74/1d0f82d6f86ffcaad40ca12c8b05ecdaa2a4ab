@@ -1,0 +1,20 @@
+docs/handoffs/ir007-synthetic-regression-evidence.md
+  s_a47cd3f69b8622::t_719a45a8db355e 3-23
+  s_a47cd3f69b8622::t_333557cffdcb85 46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "741d0f82d6f86ffcaad40ca12c8b05ecdaa2a4ab",
+  "prompts": {},
+  "sessions": {
+    "s_a47cd3f69b8622": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261125_100806_bbc0c9",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
