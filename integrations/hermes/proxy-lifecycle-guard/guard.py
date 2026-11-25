@@ -2054,6 +2054,14 @@ def _home_binding_shadow(words):
     return False
 
 
+# The ordering check may ignore an exact, quoted HOME value printed by a
+# standalone echo. Do not use decoded tokens or generalize to wrappers,
+# substitutions, redirections, or pipelines: their operands are not proven
+# to be data by this check. The entire command still undergoes normal analysis.
+_HOME_ECHO_DATA_RE = re.compile(r'[ \t]*echo[ \t]+"(?:\$HOME|\$\{HOME\})"[ \t]*')
+_HOME_USE_RE = re.compile(r'\$(?:\{HOME(?=[^A-Za-z0-9_]|$)|HOME(?![A-Za-z0-9_]))')
+
+
 def _collect_literal_vars(text):
     """Collect bounded, unambiguous standalone assignments before use.
 
@@ -2067,6 +2075,9 @@ def _collect_literal_vars(text):
     segments = _split_segments(text, _CHUNK_SEPS + ("|",))
     safe_starts = set()
     scope_ambiguous = False
+    home_scope_ambiguous = False
+    earlier_home_use = False
+    standalone_seps = (None, ';', '\n', '\r')
     if len(segments) < MAX_CHUNKS:
         offset = 0
         previous = None
@@ -2078,24 +2089,32 @@ def _collect_literal_vars(text):
             match = re.fullmatch(
                 r'''[ \t\r]*([A-Za-z_]\w*)=(?:"[^"]*"|'[^']*'|[^\s;|&]*)[ \t\r]*''',
                 segment)
-            if (match and not scope_ambiguous
-                    and previous in (None, ';', '\n', '\r')
-                    and separator in (None, ';', '\n', '\r')):
-                start = offset + match.start(1)
-                # Control-flow bodies are not proven unconditional. Also
-                # prohibit future bindings from being used at an earlier use.
-                before = text[:start]
+            standalone = previous in standalone_seps and separator in standalone_seps
+            echo_data = (standalone and '\r' not in (previous, separator)
+                         and _HOME_ECHO_DATA_RE.fullmatch(segment) is not None)
+            if match and standalone:
                 name = match.group(1)
-                earlier_use = re.search(
-                    r'\$(?:\{' + re.escape(name) + r'(?=[^A-Za-z0-9_]|$)|'
-                    + re.escape(name) + r'(?![A-Za-z0-9_]))', before)
-                if (not earlier_use
-                        and _normalize_control_flow(before) == before):
+                start = offset + match.start(1)
+                before = text[:start]
+                # Do not let a future binding resolve an earlier use, or
+                # treat a control-flow body as an unconditional assignment.
+                if name == 'HOME':
+                    visible = not (earlier_home_use or home_scope_ambiguous)
+                else:
+                    visible = not scope_ambiguous and not re.search(
+                        r'\$(?:\{' + re.escape(name) + r'(?=[^A-Za-z0-9_]|$)|'
+                        + re.escape(name) + r'(?![A-Za-z0-9_]))', before)
+                if visible and _normalize_control_flow(before) == before:
                     safe_starts.add(start)
+            if not echo_data and _HOME_USE_RE.search(segment):
+                earlier_home_use = True
             # Grouping or shell functions can put assignments in a different
-            # scope. Over-refuse after any earlier grouping-shaped text.
+            # scope. Only the exact data form above proves its braces inert,
+            # and only for the HOME ordering check.
             if not match and any(char in segment for char in '(){}'):
                 scope_ambiguous = True
+                if not echo_data:
+                    home_scope_ambiguous = True
             offset = end + len(separator or '')
             previous = separator
     # Count potential HOME assignment words only outside quoted data. Keep

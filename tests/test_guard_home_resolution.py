@@ -228,6 +228,32 @@ def test_later_unconditional_home_assignment_is_visible(scope, monkeypatch, comm
     assert seen == ['print(1)']
 
 
+@pytest.mark.parametrize('early_operand', ['ready', '"$HOME"', '"${HOME}"'])
+def test_data_only_home_reference_before_literal_assignment(scope, monkeypatch, early_operand):
+    monkeypatch.setenv('HOME', 'unsafe inherited home')
+    evaluate, seen, _ = scope
+    command = f'echo {early_operand}; HOME=/fixture/other; "$HOME/bin/python3" -c "print(1)"'
+    decision = evaluate(command)
+    assert decision is None, decision
+    assert seen == ['print(1)']
+
+
+@pytest.mark.parametrize('early_command', [
+    'printf "%s" "$HOME"',
+    'echo "$HOME" | cat',
+    'echo "$HOME" > /fixture/output',
+    'command echo "$HOME"',
+    'echo "${HOME:-default}"',
+])
+def test_ambiguous_home_use_before_literal_assignment_stays_unresolved(scope, monkeypatch, early_command):
+    monkeypatch.setenv('HOME', '/fixture/home')
+    evaluate, seen, _ = scope
+    decision = evaluate(f'{early_command}; HOME=/fixture/other; "$HOME/bin/python3" -c "print(1)"')
+    assert decision is not None and decision['category'] == 'VETO'
+    assert decision['log_code'] == 'LGV-001'
+    assert seen == []
+
+
 @pytest.mark.parametrize('command', [
     'echo ready; X=echo; $X hello',
     'echo ready\nX="echo"\n"$X" hello',

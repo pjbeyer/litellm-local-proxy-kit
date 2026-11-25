@@ -77,8 +77,11 @@ worktrees; this amendment lives alongside the extant portable contract.
   using one shared bounded resolution rule, applied across the command and
   pipeline positions already in scope. For both forms, an unambiguous
   simple-literal `HOME` assignment visible to the existing bounded
-  same-payload assignment model takes precedence over inherited `HOME`. An
-  explicit empty or unresolved assignment must not fall back to inherited
+  same-payload assignment model takes precedence over inherited `HOME`.
+  A preceding standalone `echo` with exactly one double-quoted `$HOME` or
+  `${HOME}` operand does not count as an earlier executable use. This exception
+  does not apply to pipelines, wrappers, redirections, or other operand forms.
+  An explicit empty or unresolved assignment must not fall back to inherited
   `HOME`; an unset, unsafe, recursive, ambiguous, or over-bound effective
   value refuses. If no same-payload binding is visible, inherited `HOME` may
   be used only when it is an exact, nonempty, safe string. Single-quoted
