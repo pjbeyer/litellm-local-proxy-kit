@@ -1,0 +1,52 @@
+integrations/hermes/proxy-lifecycle-guard/README.md
+  s_1fc2c3f76fd92a::t_7791729ff301c2 74-78
+  s_1fc2c3f76fd92a::t_6fb725bb020e57 17-18
+  s_1fc2c3f76fd92a::t_580f2ae34e2985 14-16
+  s_1fc2c3f76fd92a::t_cdaa93a9eec4c5 19-21,71-73
+  s_1fc2c3f76fd92a::t_bc0233511020c0 79-81
+  s_a07f7a3d15ccf7::t_f8450e8abc098c 1-13,22-70,82-162
+docs/macos-managed-service.md
+  s_f1844034525a6f::t_955f3e53086376 45-46
+  s_f1844034525a6f::t_f97e6afd81855e 8-23
+  s_1fc2c3f76fd92a::t_9199d09267b098 135-137
+docs/restart-controller-operations.md
+  s_1fc2c3f76fd92a::t_0dc442f6fa38e6 224-237
+  s_1fc2c3f76fd92a::t_82eb031e43de0d 160-164
+  s_1fc2c3f76fd92a::t_7c91e923b7accd 223,238-243
+  s_1fc2c3f76fd92a::t_1754b8e1bc725e 85-89
+  s_f1844034525a6f::t_09a7cc227cfaa7 21-37
+README.md
+  s_f1844034525a6f::t_aa9ec64f89e92c 7-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "1bb387d87c1b9a2d2b819336a74c7494336c020f",
+  "prompts": {},
+  "sessions": {
+    "s_1fc2c3f76fd92a": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261125_091711_35dbd5",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_a07f7a3d15ccf7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a21317-7df9-7910-b8b0-4480a1fa523f",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_f1844034525a6f": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261125_091156_d347bd",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
