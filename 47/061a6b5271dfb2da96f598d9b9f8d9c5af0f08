@@ -1,0 +1,35 @@
+integrations/hermes/proxy-lifecycle-guard/README.md
+  s_9769e043de476a::t_f9d3029ece28d0 1-23,29-161
+  s_8fcee5af6aa0a0::t_0d1aeb16672f65 24-28
+README.md
+  s_9769e043de476a::t_7854d27f15f0be 73-77
+docs/handoffs/guard-next-hermes-restart.md
+  s_9769e043de476a::t_c9a369010d3e0e 1-5
+docs/handoffs/2026-11-22-guard-post-restart.md
+  s_8fcee5af6aa0a0::t_bf09818fdcd06a 11-14
+  s_9769e043de476a::t_a585dacfc90630 3-7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "47061a6b5271dfb2da96f598d9b9f8d9c5af0f08",
+  "prompts": {},
+  "sessions": {
+    "s_8fcee5af6aa0a0": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261125_090617_d9aa22",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_9769e043de476a": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261125_085638_d37fd7",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
