@@ -9,8 +9,9 @@ when the proxy actually needs a restart.
 
 ## Routine maintenance: respond to alerts, not a checklist
 
-The existing Hermes cron job runs `guard_probe_watchdog.py` without an agent.
-It is silent when healthy. It checks installed files, permissions, integrity,
+Schedule the included `guard_probe_watchdog.py` as a no-agent Hermes job. If
+already scheduled, reuse that job rather than adding another. It is silent
+when healthy. It checks installed files, permissions, integrity,
 and allow/refuse behavior by loading the installed evaluator in a **separate
 process**. It also checks that this process delivered its own fresh sanitized
 refusal record. This does **not** verify the running gateway's hook, callback
@@ -168,7 +169,8 @@ registration succeeds; bounded, nonblocking admission; no enforcement change
 if telemetry drops. Watchdog history is in
 `hermes/guard-probe-watchdog/probe_history.jsonl` under the same state base.
 
-See the [incidence-reduction amendment](../../../docs/contracts/guard-incidence-reduction.md)
-for requirements and the [release verification record](../../../docs/handoffs/ir007-synthetic-regression-evidence.md)
-for historical evidence. Use this README, not a dated handoff, for the next
-maintenance window.
+Use this README, not dated evidence, for maintenance and activation. See the
+[safe-restart contract](../../../docs/safe-restart-contract.md) for the lifecycle
+boundary, the [incidence-reduction amendment](../../../docs/contracts/guard-incidence-reduction.md)
+for guard requirements, and the [release verification record](../../../docs/handoffs/ir007-synthetic-regression-evidence.md)
+for historical evidence.

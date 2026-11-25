@@ -4,6 +4,14 @@ An experimental, OSS-oriented configuration and methodology kit for operating a 
 
 It routes SIMPLE/MEDIUM work to a local OpenAI-compatible model endpoint and allows COMPLEX/REASONING work to use an ordered, explicitly configured cloud-free group. It includes request-policy callbacks, a persistent quota circuit breaker, offline tests, and a preflight that validates the installed LiteLLM API before activation.
 
+## Maintain an existing deployment
+
+- **Change models, configuration, or the runtime pin:** start with [managed macOS service maintenance](docs/macos-managed-service.md#routine-maintenance). Edit deployment inputs, not generated files.
+- **Need to interrupt or recover the proxy?** Use [restart controller operations](docs/restart-controller-operations.md). Staging files is not activation; a restart requires fresh owner authorization.
+- **Investigate a Hermes refusal or watchdog alert:** use the [lifecycle guard runbook](integrations/hermes/proxy-lifecycle-guard/README.md). A guard update is not a proxy restart.
+
+The routing experiment below is reference material, not a managed deployment procedure.
+
 ## Scope and safety
 
 - This is an **experiment-derived reference**, not a claim that every listed provider/model or free-tier allocation is currently available.
