@@ -41,6 +41,43 @@ def test_home_commands_are_fully_analyzed(scope, monkeypatch, command):
     assert seen == ['print(1)'] * (2 if ' | "${P:-' in command else 1)
 
 
+@pytest.mark.parametrize('body', [
+    '{command}',
+    'if true; then {command}; fi',
+    'if false; then :; else {command}; fi',
+    'while false; do {command}; done',
+    'if true; then {command} | cat; fi',
+])
+@pytest.mark.parametrize('command', [
+    '$HOME/bin/python3 -c "print(1)"',
+    '"${HOME}/bin/python3" -c "print(1)"',
+    '"${PY:-$HOME/bin/python3}" -c "print(1)"',
+])
+def test_home_resolution_in_control_flow_body(scope, monkeypatch, body, command):
+    monkeypatch.setenv('HOME', '/fixture/home')
+    evaluate, seen, _ = scope
+    assert evaluate(body.format(command=command)) is None
+    assert seen == ['print(1)']
+
+
+def test_control_flow_home_resolution_keeps_protected_file_refusal(scope, monkeypatch):
+    monkeypatch.setenv('HOME', '/fixture/home')
+    evaluate, seen, _ = scope
+    command = ('if true; then $HOME/bin/python3 -c "print(1)" '
+               '| cat /fixture/plugins/proxy-lifecycle-guard/guard.py; fi')
+    decision = evaluate(command)
+    assert decision is not None and decision['log_code'] == 'LGV-001'
+    assert seen == []
+
+
+@pytest.mark.parametrize('word', ['"then"', "'else'", r'\do'])
+def test_quoted_control_word_does_not_expose_home_command(scope, monkeypatch, word):
+    monkeypatch.setenv('HOME', '/fixture/home')
+    evaluate, seen, _ = scope
+    assert evaluate(word + ' $HOME/bin/python3 -c "print(1)"') is not None
+    assert seen == []
+
+
 @pytest.mark.parametrize('command', [
     '"${PY:-$HOME/bin/python3}" -c "print(1)"; HOME=/fixture/other',
     '$HOME/bin/python3 -c "print(1)"; HOME=/fixture/other',

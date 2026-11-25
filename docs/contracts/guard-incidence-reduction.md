@@ -75,7 +75,10 @@ worktrees; this amendment lives alongside the extant portable contract.
 - **IR-007**: Resolve only direct leading `$HOME/` and `${HOME}/` expansions
   in command position, plus the existing `${VAR:-$HOME/...}` default form,
   using one shared bounded resolution rule, applied across the command and
-  pipeline positions already in scope. For both forms, an unambiguous
+  pipeline positions already in scope, including command heads after a
+  bare `then`, `else`, or `do` at the start of a chunk. Quoted or escaped
+  lookalikes are not prefixes. In these control-flow positions, references
+  to the guard's protected directory remain refused. For both forms, an unambiguous
   simple-literal `HOME` assignment visible to the existing bounded
   same-payload assignment model takes precedence over inherited `HOME`.
   A preceding standalone `echo` with exactly one double-quoted `$HOME` or

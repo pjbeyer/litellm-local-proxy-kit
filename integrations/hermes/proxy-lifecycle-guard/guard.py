@@ -2411,10 +2411,17 @@ def _analyze_chunk(chunk, policy, get_snapshot, depth=0, env=None):
         if len(stage_list) >= MAX_STAGES:
             raise _Block()
         changed = False
+        resolved_body_head = False
         rebuilt = []
-        for stage in stage_list:
+        for index, stage in enumerate(stage_list):
             stage = stage.strip()
-            match = re.match(r"(\S+)(.*)", stage, re.DOTALL)
+            # Only the first stage can start a control-flow body. Match a
+            # bare keyword at the chunk head; quoted or escaped lookalikes
+            # are not syntax. Leave the original stage alone unless an
+            # operand actually resolves.
+            body = re.match(r"(?:then|else|do)[ \t]+", stage) if index == 0 else None
+            head_start = body.end() if body else 0
+            match = re.match(r"(\S+)(.*)", stage[head_start:], re.DOTALL)
             if not match:
                 rebuilt.append(stage)
                 continue
@@ -2432,9 +2439,14 @@ def _analyze_chunk(chunk, policy, get_snapshot, depth=0, env=None):
                 value = _resolve_home_path(word, env)
             elif word.startswith('${') and word.endswith('}') and (
                     ':-' in word or '-' in word):
+                if head_start and not re.match(
+                        r"\$\{[A-Za-z_]\w*(?::-|-)\$(?:HOME|\{HOME\})/", word):
+                    rebuilt.append(stage)
+                    continue
                 eligible = True
                 value = _resolve_default_expansion(word, env)
-            elif re.fullmatch(r"\$(?:[A-Za-z_]\w*|\{[A-Za-z_]\w*\})", word):
+            elif not head_start and re.fullmatch(
+                    r"\$(?:[A-Za-z_]\w*|\{[A-Za-z_]\w*\})", word):
                 name = word[2:-1] if word.startswith('${') else word[1:]
                 if name in env:
                     eligible = True
@@ -2444,11 +2456,19 @@ def _analyze_chunk(chunk, policy, get_snapshot, depth=0, env=None):
                         or len(value) > _HOME_MAX_CHARS
                         or not _LITERAL_PATH.fullmatch(value)):
                     raise _Block()
-                stage = value + remainder
+                stage = stage[:head_start] + value + remainder
+                resolved_body_head = resolved_body_head or head_start != 0
                 changed = True
             rebuilt.append(stage)
         if changed:
-            _analyze_shell_text(' | '.join(rebuilt), policy, get_snapshot,
+            resolved = ' | '.join(rebuilt)
+            # The directory scanner runs before control-flow normalization.
+            # Preserve the refusal for this newly resolvable position when
+            # either the original or resolved pipeline names protected files.
+            if resolved_body_head and (PLUGIN_DIR_MARKER in chunk.lower()
+                                       or PLUGIN_DIR_MARKER in resolved.lower()):
+                raise _Block()
+            _analyze_shell_text(resolved, policy, get_snapshot,
                                 depth + 1, _literal_env=env)
             return
 
