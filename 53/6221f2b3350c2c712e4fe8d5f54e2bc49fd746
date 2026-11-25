@@ -1,0 +1,30 @@
+tests/test_guard_home_resolution.py
+  s_a47cd3f69b8622::t_6151013b6ab428 63-72
+  s_a47cd3f69b8622::t_1d86008edf5a6a 44-62,73-80
+docs/contracts/guard-incidence-reduction.md
+  s_a47cd3f69b8622::t_9def2f76ab922d 80-81
+  s_a47cd3f69b8622::t_e752116b311695 78-79
+integrations/hermes/proxy-lifecycle-guard/guard.py
+  s_a47cd3f69b8622::t_5676706a98d1da 2416,2418-2422
+  s_a47cd3f69b8622::t_3cda7fddd64685 2442-2445,2448-2449
+  s_a47cd3f69b8622::t_1e3ea59f1d0fd9 2423-2424
+  s_a47cd3f69b8622::t_6b2ea760cbe5c6 2460,2464-2471
+  s_a47cd3f69b8622::t_be0d0e552dd010 2459
+  s_a47cd3f69b8622::t_679593d42892ef 2414
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "536221f2b3350c2c712e4fe8d5f54e2bc49fd746",
+  "prompts": {},
+  "sessions": {
+    "s_a47cd3f69b8622": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261125_100806_bbc0c9",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
