@@ -49,6 +49,14 @@ class TestSyntaxCategoryIR008(GuardHarness):
         self.assertEqual(d.get("log_code"), "LGV-020")
         self.assertIn("could not be proven safe", d.get("message", ""))
 
+    def test_runbook_probe_cannot_execute_without_hook(self):
+        probe = "("
+        with self.assertRaises(SyntaxError):
+            compile(probe, "<runbook probe>", "exec")
+        decision = self.ev_term(probe)
+        self.assertEqual(decision["category"], "SHAPE_ENVELOPE")
+        self.assertEqual(decision["log_code"], "LGV-020")
+
     def test_small_malformed_signal_code_is_still_refused(self):
         # malformed + signal vocabulary: fail-closed, SHAPE category
         d = self.ev_term(SMALL_MALFORMED_SIGNAL)

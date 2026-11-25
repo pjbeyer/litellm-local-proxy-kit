@@ -70,18 +70,25 @@ A passing source gate does not authorize activation.
    LiteLLM. Copy `guard.py`, `__init__.py`, and `plugin.yaml` byte-for-byte.
    Preserve `config.json` unless a policy change was separately reviewed; for
    a new install, use the example below. The owner records matching digests
-   in `integrity.sha256`. Keep both files owner-owned with no group/world
-   write permission. Verify installed file parity, policy and reference
-   before starting Hermes. Don't swap files while the old hook is serving.
+   in `integrity.sha256`. Set mode `0600` on the owner-owned `config.json`,
+   `integrity.sha256`, installed source files, `plugin.yaml`, and `README.md`
+   if present. The watchdog rejects any group/other permission bits on these
+   files. Keep the plugin directory and its cache free of group/other write
+   access. Verify installed file parity, policy and reference before starting
+   Hermes. Don't swap files while the old hook is serving.
 3. For a new install, enable with `hermes plugins enable proxy-lifecycle-guard`
    for the intended profile. Preserve the enable setting for upgrades. Start
    Hermes and verify the plugin is loaded in the serving context; a saved
    enable flag or a CLI discovery result isn't enough. Verify a harmless
    allow and an owner-approved, **non-executing** refusal through the live
-   hook. Confirm the refusal reaches the live sink, proxy readiness is
-   unchanged, and the scheduled watchdog is healthy. Never actually signal
-   the proxy as a probe. Record disk parity and observed live behavior
-   separately; neither establishes the exact serving callback digest.
+   hook: submit the single character `(` as the entire `execute_code` program.
+   Expect `SHAPE_ENVELOPE` / `LGV-020`. Without the hook, Python rejects the
+   incomplete program before executing anything. This checks the live refusal
+   path, not lifecycle matching; the watchdog checks lifecycle matching
+   separately. Do not use a live signal command. Confirm the refusal reaches
+   the live sink, proxy readiness is unchanged, and the scheduled watchdog is
+   healthy. Record disk parity and observed live behavior separately; neither
+   establishes the exact serving callback digest.
 4. If verification fails, stop Hermes again and restore the backed-up files,
    policy and matching integrity reference together. Restore the prior enable
    setting and scheduled script if changed. Verify consistency before
@@ -113,6 +120,11 @@ session handle list only with handles owned by the protected deployment.
 }
 ```
 
+The policy's `input_text_bytes` is the outer UTF-8 byte bound. The inner
+structural limit is 65,536 characters for terminal command text and
+`execute_code` / `browser_exec` code. The bounded head scan, when used,
+inspects the first 8,192 characters.
+
 `integrity.sha256` is JSON, not `shasum` output. From the installed directory,
 use `shasum -a 256 config.json guard.py __init__.py` to get the digests:
 
@@ -123,8 +135,9 @@ use `shasum -a 256 config.json guard.py __init__.py` to get the digests:
 }
 ```
 
-The guard rechecks policy and source digests on evaluation. The manifest is
-checked separately by comparing it with the pinned release.
+The guard re-reads `integrity.sha256` on evaluation and checks policy and
+source digests against it. Compare the plugin manifest (`plugin.yaml`)
+separately with the pinned release.
 
 ## Refusals and evidence
 
