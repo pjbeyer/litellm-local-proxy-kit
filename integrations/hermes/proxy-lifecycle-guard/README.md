@@ -1,305 +1,162 @@
-# Practical proxy lifecycle guard for Hermes
+# Proxy lifecycle guard for Hermes
 
-This optional adapter reuses the kit's existing deployment ownership and adds a
-`pre_tool_call` veto. It does not install a service, expose a restart tool, resolve
-credentials, modify the model prompt, or change proxy configuration. Installing
-it never requires restarting either the proxy or the Hermes gateway.
+This profile-local plugin blocks recognizable lifecycle operations against the
+protected LiteLLM proxy before Hermes runs them. It is accident prevention,
+not process isolation or restart authorization. Read-only diagnostics can pass.
+A refusal is not permission to retry through another tool. Use the
+[owner-reviewed restart workflow](../../../docs/restart-controller-operations.md)
+when the proxy actually needs a restart.
 
-## What is protected (in scope)
+## Routine maintenance: respond to alerts, not a checklist
 
-Recognizable lifecycle signals against the current port owner/process group,
-proxy-wide selectors, port-based kill pipelines, protected launchd labels, and
-protected background-process handles are blocked before the tool executes.
-Compound commands, ordinary shell quoting and command substitutions, common
-command wrappers, control-flow-wrapped bodies, inline shell/Python commands,
-and nested deferred-tool calls are inspected. Read-only process/service/health
-diagnostics pass.
+Schedule the included `guard_probe_watchdog.py` as a no-agent Hermes job. If
+already scheduled, reuse that job rather than adding another. It is silent
+when healthy. It checks installed files, permissions, integrity,
+and allow/refuse behavior by loading the installed evaluator in a **separate
+process**. It also checks that this process delivered its own fresh sanitized
+refusal record. These checks do **not** verify the running gateway's hook,
+callback identity, sink worker, or storage durability.
 
-In-scope tools: `terminal`, `execute_code`, `browser_exec`, `tool_call`
-(envelopes unwrapped recursively), and mutating `process_manage` actions.
-Unresolved kill substitutions, xargs kill pipelines, and regex process
-selectors are deliberately refused rather than assuming that a different port
-or an opaque stdin producer proves unrelated ownership.
+On alert, check the cron job's last run and failing check. Resolve the actual
+script and target profile from the job configuration; the script defaults to
+`~/.hermes/plugins/proxy-lifecycle-guard`, not `$HERMES_HOME`. Set
+`GUARD_PROBE_DEPLOY_DIR` explicitly for a different target. Compare the
+scheduled script with the reviewed copy using `cmp`. The scheduled copy lives
+beside the Hermes cron helpers `cron_output_sanitizer` and `network_health`.
+A mismatch at the scheduled path is a runtime failure; an unused copy beside
+the plugin is distribution drift. Reconcile either only through the owner’s
+installation workflow. If the scheduler path or workflow is unclear, record
+the drift and stop before activation.
 
-## Quoted program inspection
+For a refusal investigation, use the category and code to triage, then recover
+exact tool arguments from the authorized session record if needed. The sink
+contains no arguments. Reproduce unexpected decisions only in isolated tests
+with the policy, environment and discovery inputs pinned; don't replay a
+refused operation live or add raw arguments to shared logs.
 
-Shell control-flow words are normalized only outside quoted or escaped text.
-Quoted inline shell/Python programs are inspected recursively without changing
-payload bytes; a Python conditional or a string containing `else` must not
-become different code during analysis. **Signal vocabulary carried as inert
-DATA (dict values, json.dumps args, bytestrings, list/tuple contents, commit
-messages) is not a lifecycle threat and is not analyzed as code** (lpkit-0gk/
-90d): only string operands that reach an EXECUTION primitive (os.system /
-os.popen / subprocess shell or argv with a lifecycle executor verb / exec /
-eval — including bare-name and module-alias forms and wrapper-wrapped kill
-argv) are inspected. Genuine execution of a signal always vetoes. Source-only
-regression results do not authorize retrying a refused live invocation.
+## Verify a source change
 
-## Refusal reference (rev-3 vocabulary)
+From the repository root, use the [kit's offline test setup](../../../README.md#validation-boundary).
+The focused loop includes the evaluator, its hook and the watchdog/sink tests;
+run the complete kit suite before staging a release. Use a short, resolved
+scratch path for `TMPDIR` (Darwin socket paths are limited), and a separate
+`XDG_STATE_HOME` under that disposable path. Keep the scratch directory
+private and use the normal test umask (`022`), not `077`.
 
-Every block is one decision with a category and a stable log code. The plugin
-emits its own log line per decision (category + code) so distinguishability
-does not depend on runtime surfacing.
+```sh
+# In the isolated test environment, with TMPDIR and XDG_STATE_HOME set as above:
+.venv-tests/bin/python -m pytest -q tests/test_lifecycle_guard.py tests/test_guard_*.py tests/test_sink_*.py
+.venv-tests/bin/python -m pytest -q tests
+hermes plugins validate integrations/hermes/proxy-lifecycle-guard --json
+```
 
-- **VETO — LGV-001**: recognized lifecycle threat. Fixed sanitized message
-  naming the owner-reviewed restart workflow.
-- **BOUND_SIZE — LGV-010 / BOUND_DEPTH — LGV-011 / BOUND_COUNT — LGV-012**:
-  input too large / nesting too deep / batch too large to prove safe. Each
-  carries corrective guidance (reduce and resubmit); large-but-innocent inputs
-  that the bounded scan proves safe are allowed.
-- **SHAPE_ENVELOPE — LGV-020**: deferred-call envelope that could not be
-  proven safe — a non-decoding / garbled / model-interleaved envelope shape.
-  (Benign stringified dialects — single-quoted JSON, Python `repr` of a
-  call-list dict, BOM/whitespace-wrapped JSON — are decoded gracefully via
-  `json.loads` then `ast.literal_eval` and analyzed normally; only genuinely
-  ambiguous content stays SHAPE_ENVELOPE, never salvaged.)
-- **POLICY_INVALID — LGV-030**: policy missing, unreadable, schema-invalid,
-  tampered (digest mismatch), or deployed source diverged from the
-  owner-recorded digests. Read-only tools still pass (fail-closed split).
-- **HOOK_MISMATCH — LGV-031**: call could not be attributed to a known tool
-  (unknown or nameless tool name carrying executable-looking arguments).
-- **INTEGRITY_REF_INVALID — LGV-032**: the owner-established
-  `integrity.sha256` reference is missing/unreadable — must be re-established
-  by the owner.
+Run plugin validation in a disposable Hermes profile. For a release, record
+its full Git commit and SHA-256 digests of `guard.py`, `__init__.py`, and
+`plugin.yaml`; include the watchdog digest if it changes. Compare the live
+sink before and after the isolated release gate; investigate any unexplained
+delta instead of claiming isolation. Review behavior changes independently.
+A passing source gate does not authorize activation.
 
-## Honest boundaries (FR-012 — read this)
+## Install, upgrade, or roll back (owner only)
 
-This is **bounded accident prevention, not process isolation**, and not an
-authorization boundary. Bypass classes, by design:
+1. In an owner shell outside the gateway, stage only the reviewed files from
+   the pinned commit and resolve the intended profile's actual plugin
+   directory (`$HERMES_HOME/plugins/proxy-lifecycle-guard/` for that profile).
+   For upgrades, verify the current tuple against the expected predecessor;
+   stop on drift. Back up the installed files, policy, integrity reference,
+   and enable setting privately. Only include the watchdog in the backup and
+   cutover if its scheduled copy changes.
+2. At the approved Hermes maintenance window, stop the **Hermes gateway** and
+   keep it stopped until installation is consistent. Do not stop or restart
+   LiteLLM. Copy `guard.py`, `__init__.py`, and `plugin.yaml` byte-for-byte.
+   Preserve `config.json` unless a policy change was separately reviewed; for
+   a new install, use the example below. The owner records matching digests
+   in `integrity.sha256`. Use mode `0600` for the installed source, manifest,
+   policy, integrity reference, and README if present. The plugin directory
+   and any `__pycache__` must not allow group or world writes. Verify file
+   parity, permissions, policy and reference before starting Hermes. Do not
+   swap files while the old hook is serving.
+3. For a new install, enable with `hermes plugins enable proxy-lifecycle-guard`
+   for the intended profile. Preserve the enable setting for upgrades. Start
+   Hermes and verify the plugin is loaded in the serving context; a saved
+   enable flag or a CLI discovery result isn't enough. Verify a harmless
+   allow and an owner-approved, **non-executing** refusal through the live
+   hook. The refusal probe must be incapable of taking the protected action
+   even if the guard does not load. Confirm the refusal reaches the live sink, proxy readiness is
+   unchanged, and the scheduled watchdog is healthy. Never actually signal
+   the proxy as a probe. Record disk parity and observed live behavior
+   separately; neither establishes the exact serving callback digest.
+4. If verification fails, stop Hermes again and restore the backed-up files,
+   policy and matching integrity reference together. Restore the prior enable
+   setting and scheduled script if changed. Verify consistency before
+   starting Hermes, then repeat the applicable checks. Don't disable a live
+   guard to make a refused action pass.
 
-- Imported scripts, encoded or generated programs, and Python primitive
-  aliasing (binding `os.kill` to another name) are outside static inspection.
-- Other execution tools not listed above, and arbitrary same-user code, can
-  signal processes directly.
-- Another agent/profile, or any terminal outside this enabled Hermes profile,
-  is not protected.
-- Unsupported shell grammar is NOT a blanket bypass: grammar the matcher
-  cannot classify is refused conservatively, not allowed.
-- **Discovery-to-execution race**: PID discovery is a read-only snapshot; the
-  port owner can change between discovery and signal execution. For deferred
-  `tool_call` envelopes the race window extends from envelope submission to
-  the inner call's actual execution.
-- **Restart-transition gap**: protection exists only while the configured
-  listener is bound; while a restart unbinds the listener, discovery answers
-  empty and port-targeted protection lapses.
-- **Credential exfiltration via read-only diagnostics is OUT OF SCOPE
-  (explicit boundary, Principle II)**: `ps eww`/`ps -E`-style environment
-  dumps of the protected proxy (e.g. redirected to a file) are read-only
-  process diagnostics — the documented pass row — and their confidentiality
-  risk (the proxy process environment may hold provider keys) is a
-  secrets-hygiene concern, not a lifecycle signal. This guard is an
-  availability control; extending it to secrets-DLP is an owner scope
-  decision, not a defect. Adjudicated in V&V: the shape passes on every
-  generation by design, and earlier live vetoes of similar text were
-  attributed to kill-family content in the composition, not the `ps` read.
+### New-install policy and integrity reference
 
-## Profile-local installation
+Keep both files in the installed directory, never in Git. Replace the example
+port and label with the actual listener and service label; populate the
+session handle list only with handles owned by the protected deployment.
 
-1. Review and test this directory from the kit checkout. Run
-   `hermes plugins validate <plugin-directory> --json`, then the test suite
-   (`python3 -m unittest tests.test_lifecycle_guard` from the repo root —
-   includes the loopback listener fixture and mutation checks; repo bytes are
-   never modified).
-2. Copy `__init__.py`, `guard.py`, and `plugin.yaml` byte-for-byte to
-   `$HERMES_HOME/plugins/proxy-lifecycle-guard/` in the authorized profile
-   only. Parity with the reviewed kit source is the evidence of deployment;
-   a divergent deployed copy is treated as uninstalled (fail-closed at the
-   next policy load).
-3. Author `config.json` **in the installed directory** (never the checkout)
-   using the rev-3 schema — every key is required, no extras:
+`config.json` (all keys required; no extras):
 
-   ```json
-   {
-     "schema_version": 1,
-     "protected_port": 4000,
-     "protected_labels": ["example.litellm"],
-     "protected_session_handles": ["owner-authorized-bridge-handle"],
-     "bounds": {
-       "input_text_bytes": 262144,
-       "max_chunks": 512,
-       "max_depth": 8,
-       "discovery_timeout_ms": 2000,
-       "max_snapshot_pids": 256
-     },
-     "refusal_vocabulary_version": 1
-   }
-   ```
+```json
+{
+  "schema_version": 1,
+  "protected_port": 4000,
+  "protected_labels": ["example.litellm"],
+  "protected_session_handles": [],
+  "bounds": {
+    "input_text_bytes": 262144,
+    "max_chunks": 512,
+    "max_depth": 8,
+    "discovery_timeout_ms": 2000,
+    "max_snapshot_pids": 256
+  },
+  "refusal_vocabulary_version": 1
+}
+```
 
-   Derive the real label from the deployment's installed plist; obtain any
-   bridge handle from the owning tool process. Bounds are capped by the
-   schema: a valid policy cannot configure the guard past its hook budget.
-   These are environment-specific, non-secret values — never commit them.
+`integrity.sha256` is JSON, not `shasum` output. From the installed directory,
+use `shasum -a 256 config.json guard.py __init__.py` to get the digests:
 
-   Effective size bounds (lpkit-5j5): beyond the config's
-   `input_text_bytes` (above), the guard enforces an inner structural
-   cap of MAX_TEXT_CHARS = 65536 chars on terminal commands and on
-   execute_code/browser_exec code (HEAD_SCAN inspection window: 8192
-   chars). Inputs over the cap take the FR-007 bound decision table —
-   kill-family intent in the inspectable head vetoes; intent-free,
-   provable input allows; anything unprovable refuses with
-   BOUND_SIZE — never a blanket veto for benign over-cap input.
-   Refusal messages intentionally carry no numbers (sanitization
-   discipline); the numeric bounds are documented here and in the
-   guard module docstring.
-4. Set owner-only permissions (no group/world write) on `config.json`.
-5. Establish the integrity reference (owner action): compute SHA-256 of the
-   policy and of each deployed source file (`guard.py`, `__init__.py`) and
-   write them to `integrity.sha256` beside the policy:
+```json
+{
+  "policy_digest": "<SHA-256 of config.json>",
+  "source_digests": {"guard.py": "<SHA-256>", "__init__.py": "<SHA-256>"}
+}
+```
 
-   ```json
-   {
-     "policy_digest": "<sha256 of config.json>",
-     "source_digests": {"guard.py": "<sha256>", "__init__.py": "<sha256>"}
-   }
-   ```
+The guard rechecks policy and source digests on evaluation. The manifest is
+checked separately by comparing it with the pinned release.
 
-   Set owner-only permissions on it too. The guard re-reads and re-verifies
-   both on EVERY evaluation: tampering with the policy or the deployed
-   source fails closed on the next call.
+## Refusals and evidence
 
-6. Enable with `hermes plugins enable proxy-lifecycle-guard`. This supported
-   command reloads plugins in a responding gateway; confirm the plugin status
-   shows enabled AND loaded — the saved enable flag alone does not prove
-   live activation. Do not restart the proxy.
-7. Verify a live denial safely: a marker followed by `false &&` and a
-   recognized protected lifecycle command, e.g.
-   `echo guard-probe-marker && false && pkill -f litellm`. The guard must
-   veto the entire tool call (no marker execution, LGV-001 in the logs);
-   the `false &&` branch keeps the probe non-destructive even if the hook
-   is missing. Also verify read-only diagnostics pass and the listener and
-   readiness are unchanged. Never test by actually signaling the proxy.
+- `VETO` / `LGV-001`: a protected operation or an unresolved execution
+  operand. It does not prove intent or a confirmed protected-target hit.
+- `BOUND_SIZE` / `LGV-010`, `BOUND_DEPTH` / `LGV-011`, `BOUND_COUNT` /
+  `LGV-012`: the input exceeded the corresponding analysis limit and could
+  not be proven safe.
+- `SHAPE_ENVELOPE` / `LGV-020`: a deferred call envelope that could
+  not be proven safe. Check the original input rather than inferring it from the log.
+- `POLICY_INVALID` / `LGV-030` and `INTEGRITY_REF_INVALID` / `LGV-032`:
+  investigate installed policy, permissions, integrity reference, and file
+  parity. Only the owner repairs those files.
+- `HOOK_MISMATCH` / `LGV-031`: the executable-looking call could not be
+  attributed to a known tool.
 
-### Upgrading an existing installation (order matters)
+The guard covers `terminal`, `execute_code`, `browser_exec`, `tool_call`, and
+mutating `process_manage` actions. It does not restrict other profiles or
+arbitrary same-user code, inspect every runtime-generated program, or guarantee
+listener identity between discovery and execution. Port-targeted detection
+requires a bound listener. Read-only access is not a confidentiality control.
 
-A running gateway holds the guard module in memory and re-reads
-`config.json` on every call. Swapping a config whose schema the LOADED
-module cannot parse fail-closes every execution tool until the module is
-reloaded — the correct order is:
+Sanitized block records use the fixed `{ts, category, code, tool}` schema in
+`${XDG_STATE_HOME:-$HOME/.local/state}/hermes/lifecycle-guard/decisions.jsonl`.
+The [decision-sink contract](../../../docs/contracts/decision-sink.md) owns
+queue, rotation, and file safety: one worker per loaded generation when cleanup
+registration succeeds; bounded, nonblocking admission; no enforcement change
+if telemetry drops. Watchdog history is in
+`hermes/guard-probe-watchdog/probe_history.jsonl` under the same state base.
 
-1. `hermes plugins disable proxy-lifecycle-guard` — unloads the module
-   from the running gateway (this is the reload mechanism; the saved
-   enable flag alone is not). **Run this from an owner shell OUTSIDE the
-   running gateway.** F-017 deliberately vetoes agent-mediated
-   disable/uninstall of a live guard from inside the gateway (that is
-   accident/persuasion protection working as specified) — an agent
-   session that attempts step 1 will be refused and must not treat the
-   refusal as a defect (documented agent-path behavior).
-2. Copy the new source files and author the new `config.json` +
-   `integrity.sha256` (owner actions) while the guard is unloaded. If the
-   file swap is performed while the old module is still live (e.g. from an
-   agent session, before step 1), every execution tool fail-closes with
-   POLICY_INVALID/LGV-030 until bytes and reference match again — a
-   2026-11-04-class window blocked 5 unrelated sessions for ~2 minutes.
-3. `hermes plugins enable proxy-lifecycle-guard` — loads the new module
-   against the new config.
-4. Run the verification probe (step 7 above) to confirm the new module
-   is live.
-
-**Agent-session path (no owner shell available):** the documented
-disable→swap→enable order is not executable from inside the gateway —
-`enable` only flips the saved flag and does not reload an already-loaded
-module, and `update` requires a git origin this standalone deployment
-lacks. The only in-gateway activation path is an **owner gateway
-restart** (`hermes gateway restart` from a separate shell — this
-restarts Hermes, not the port-4000 proxy). Until that restart, swap
-bytes + re-materialize `integrity.sha256` to match so the on-disk state
-is consistent (avoiding the POLICY_INVALID window in step 2), then ask
-the owner to restart.
-
-Note on the decision-sink worker: the async worker is per module
-generation — it starts at plugin registration and is retired with its
-module. An upgrade that swaps bytes before the reload leaves the OLD
-generation's worker running (it drains and exits at shutdown of that
-generation); only the gateway restart that loads the new module also
-starts the new generation's worker. Verify with a live hook decision
-reaching the sink after the restart, not merely with on-disk parity.
-
-## Probe watchdog (deployment monitor)
-
-The kit ships `guard_probe_watchdog.py` in this directory. The runtime
-copy lives at `~/.hermes/scripts/guard_probe_watchdog.py` (mirrored
-byte-for-byte; parity is the evidence the reviewed repo copy matches
-what the cron job executes) and is run by the configured recurring
-watchdog cron job every 4h as a no-agent script job.
-
-It verifies the deployed installation read-only on every run:
-
-- plugin directory presence and FR-009 owner-only permissions,
-- FR-015 integrity digests (recomputed against `integrity.sha256`),
-- live VETO of a non-executing lifecycle probe command (dead-branch
-  construction, FR-010),
-- allow of a read-only diagnostic (false-positive tripwire),
-- shape-class routing: decode-fail envelopes → SHAPE_ENVELOPE/LGV-020,
-  non-canonical `tool`/`args` key shapes → SHAPE_ENVELOPE, and a
-  canonical relay envelope → ALLOW (over-blocking tripwire),
-- decision-sink lifecycle: the probe subprocess drives
-  `sink_start()` → veto → bounded `sink_flush()`/`sink_shutdown()`,
-  and a sink record observed by the probe evidences flushed offline
-  source-path delivery **in the probe subprocess only** — it is NOT a
-  claim of storage durability and does NOT prove the live gateway
-  activated the sink.
-
-Silent on health (exit 0); any probe that cannot be proven healthy is
-an alert (exit 1) with the failing classes named. Per-run decisions are
-appended to `probe_history.jsonl` under
-`$XDG_STATE_HOME/hermes/guard-probe-watchdog/` (all five decision
-categories + integrity/perms verdicts). Run the self-test with
-`python3 guard_probe_watchdog.py --self-test` (pure-logic assertions,
-no guard import, no state writes). Mirroring rule: change the repo copy
-and the `~/.hermes/scripts/` copy in the same change — byte parity is
-the deployment contract.
-
-### Decision sink (async, fail-open telemetry)
-
-Every block decision the guard makes is also appended — sanitized — to
-an append-only JSONL sink at
-`$XDG_STATE_HOME/hermes/lifecycle-guard/decisions.jsonl`, one line per
-decision with the fixed schema `{ts, category, code, tool}`. The
-sanitization discipline matches `BLOCK_MESSAGE`: no arguments, paths,
-or PIDs are ever recorded, and allow decisions are not recorded at all.
-The file is created owner-only (0600 in a 0700 dir) and rotates to
-`decisions.jsonl.1` at 256 KiB (single generation, bounded disk).
-
-Delivery is asynchronous and strictly bounded so telemetry can never
-affect enforcement:
-
-- The enforcement callback only admits a record — capture is
-  nonblocking (try-lock), performs no filesystem I/O, and never waits.
-  Records dropped when the queue is full (64 pending + 1 in flight)
-  are counted, not retried.
-- Exactly one worker thread per module generation is started by the
-  adapter at registration (outside any callback). It is never started,
-  restarted, or replaced from a callback; a failed start is latched and
-  never retried.
-- All filesystem work happens in the worker, off the enforcement path.
-  Flush completion is not fsync durability.
-- **Fail-open by contract**: a sink write failure is log-only and never
-  weakens enforcement — the block decision is still returned.
-  Degradation is observable without leaking anything: `sink_status()`
-  returns fixed non-secret counters (admitted/written/failed/dropped,
-  saturating) and sticky flags (busy-lock drop, pre-admission drop) —
-  no record content, path, or environment material.
-
-The state-home prefix is resolved via realpath once at capture (trusted
-environment prefix; e.g. macOS `/var` → `/private/var`), while the
-hardened no-follow descriptor walk continues to protect the managed
-directory tail and the sink files themselves.
-
-The watchdog consumes this sink (read-only) as its `sink` probe: after
-its veto probe fires, it verifies a matching sanitized record landed,
-giving the cron monitor queryable per-category decision history without
-grepping `agent.log`.
-
-## Operating, disabling, rollback
-
-A denial is not an outage or permission to retry through a different tool.
-Use the owner-reviewed restart workflow; until a real supervised controller,
-handoff, and rollback are delivered, they remain separate outstanding
-requirements.
-
-An owner can disable this plugin with `hermes plugins disable
-proxy-lifecycle-guard`; verify live unload and record that accident
-protection is then ABSENT. This removes only the guard and must not stop
-the proxy. **Disabling the guard to make a blocked lifecycle command pass is
-forbidden** — if a command was vetoed, the answer is the owner-reviewed
-workflow, not removing the guard.
+Use this README for routine maintenance. See the [safe-restart contract](../../../docs/safe-restart-contract.md) for the lifecycle boundary; dated evidence is not an activation procedure.
