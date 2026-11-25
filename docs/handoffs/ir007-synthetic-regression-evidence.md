@@ -1,6 +1,26 @@
 # IR-007 synthetic fixture evidence
 
-## Latest disposition — round-10 review: PASS
+## Combined branch verification
+
+The complete offline kit suite passed on source revision
+`536221f2b3350c2c712e4fe8d5f54e2bc49fd746`: **1,984 tests and 70 subtests
+passed**, with four warnings and pytest exit 0. The run used disposable
+HOME, Hermes home, XDG state, and temporary directories. The parent read the
+production decision sink before pytest launch and after exit; the bytes
+matched. Plugin validation passed with no warnings. These checks verify
+source, not live activation. See the [maintenance runbook](../../integrations/hermes/proxy-lifecycle-guard/README.md)
+for current cutover instructions.
+
+| Candidate input | SHA-256 |
+| --- | --- |
+| `guard.py` | `29436c0a9e28d928b8ddbbcf9d2ba8e3ca8f9c6e4742f0b4d6e200105ac785d4` |
+| `__init__.py` | `01d8478cd53213cdf410692551829b3f52951a0a132d76c5838d965778a9c43e` |
+| `plugin.yaml` | `f1a0ac7f14ddb649a5368c178b70dc062c685dcaa5d41259d1fe8dcecfb78da5` |
+| `test_guard_home_resolution.py` | `91a45821a909de127330b3207157ef8f2690aeb0d88e21858b9db9a900368e69` |
+| `test_guard_syntax_category.py` | `6449bdb83876f18d8a3fe4d44c9098e74b9612cd5eb66fbb386dc63e8a465b68` |
+| Raw pytest output | `6ddd38585d7e7467177bc53f0a67ec4f0964422eb6ca122b8a5d65a8631d300f` |
+
+## Historical disposition — round-10 review: PASS
 
 The round-9 P2 (quadratic per-match quote rescan) is remediated with a
 single-pass monotonic quote-state scan; a near-limit regression (~62k
@@ -23,7 +43,7 @@ byte-identical production decision sink. Those receipts cover the reviewed
 battery, not the later assertion edit. For the owner cutover and rollback,
 see [the next-restart handoff](guard-next-hermes-restart.md).
 
-**Final isolated release gate (AC-005): PASS.** The full kit suite ran
+**Historical isolated release gate (AC-005): PASS for `56da9d5` only.** The full kit suite ran
 against the tightened HOME battery and final syntax-category tests:
 1,956 passed, 70 subtests passed, 4 warnings, zero failures, pytest exit 0
 (306.81s). All 90 recorded source and test inputs matched commit
