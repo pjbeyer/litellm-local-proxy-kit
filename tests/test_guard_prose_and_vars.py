@@ -116,14 +116,16 @@ def test_signal_text_as_data_passes(scope):
     assert decision is None
 
 
-def test_analysis_cell_unprovable_gets_bound_category(scope):
+def test_analysis_cell_unprovable_gets_shape_category(scope):
     evaluate, _, _ = scope
     code = ("t('git commit -m ' + '\"Small message.\n"
             "\nCloses litest-6c5.\"', 'commit')")
     decision = evaluate("python3 -c " + shlex.quote(code))
     assert decision is not None
-    assert decision["category"] == "BOUND_SIZE"
-    assert decision["log_code"] == "LGV-010"
+    # IR-008: under-cap unparseable Python is a shape defect, not a
+    # size defect — SHAPE_ENVELOPE/LGV-020 corrective guidance.
+    assert decision["category"] == "SHAPE_ENVELOPE"
+    assert decision["log_code"] == "LGV-020"
 
 
 def test_listing_compound_with_plugin_dir_legs_passes(scope):

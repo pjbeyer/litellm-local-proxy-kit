@@ -1942,69 +1942,363 @@ def _strip_shell_comments(text):
     return "".join(out)
 
 
-def _resolve_default_expansion(raw_value):
-    """lpkit-ebr: resolve an assignment value that is exactly ONE
-    ${NAME:-default} / ${NAME-default} expansion (optionally
-    quoted), using the hf5 allowlist rules ($HOME only; any other
-    variable unprovable). Returns the resolved literal or None."""
+# The HOME grammar is deliberately narrower than shell expansion. Unsafe or
+# ambiguous bindings are represented by None and may never inherit HOME.
+_HOME_MAX_CHARS = 4096
+_LITERAL_PATH = re.compile(r"[A-Za-z0-9_./@:+-]+\Z")
+
+
+def _resolve_home_path(value, env):
+    """Resolve exactly one leading HOME expansion into a bounded literal."""
+    if value.startswith("${HOME}/"):
+        suffix = value[len("${HOME}"):]
+    elif value.startswith("$HOME/"):
+        suffix = value[len("$HOME"):]
+    else:
+        return None
+    home = env.get("HOME") if "HOME" in env else os.environ.get("HOME")
+    if (type(home) is not str or not home or len(home) > _HOME_MAX_CHARS
+            or not _LITERAL_PATH.fullmatch(home)):
+        return None
+    result = home + suffix
+    if len(result) > _HOME_MAX_CHARS or not _LITERAL_PATH.fullmatch(result):
+        return None
+    return result
+
+
+def _resolve_default_expansion(raw_value, env=None):
+    """Resolve an exact default expression; single quotes never expand."""
+    env = env if env is not None else {}
     v = raw_value
-    if v[:1] in ('"', "'") and v[-1:] == v[:1] and len(v) >= 2:
+    if v.startswith("'"):
+        return None
+    if v.startswith('"') and v.endswith('"') and len(v) >= 2:
         v = v[1:-1]
-    if not (v.startswith("${") and v.endswith("}")):
+    match = re.fullmatch(r"\$\{([A-Za-z_]\w*)(:-|-)(.+)\}", v)
+    if not match:
         return None
-    inner = v[2:-1]
-    sep = None
-    if ":-" in inner:
-        sep = ":-"
-    elif "-" in inner and ":" not in inner:
-        sep = "-"
-    if sep is None:
+    name, _, default = match.groups()
+    # HOME-bearing defaults use the shared rule even when another binding
+    # could suppress them; this preserves the existing conservative refusal.
+    if default.startswith(('$HOME/', '${HOME}/')):
+        resolved = _resolve_home_path(default, env)
+    elif len(default) <= _HOME_MAX_CHARS and _LITERAL_PATH.fullmatch(default):
+        resolved = default
+    else:
         return None
-    nm, _, dflt = inner.partition(sep)
-    if not (nm and re.fullmatch(r"[A-Za-z_]\w*", nm) and dflt
-            and "`" not in dflt
-            and not dflt.startswith("~")):
+    if resolved is None:
         return None
-    cand = dflt.replace("${HOME}", "\x00")
-    cand = cand.replace("$HOME", "\x00")
-    if "$" in cand.replace("\x00", ""):
-        return None  # non-allowlisted variable
-    home = os.environ.get("HOME")
-    if not home or any(c in home for c in ' \t\n;$`"\\' + "'"):
-        return None  # HOME unset/unsafe
-    cand = cand.replace("\x00", home)
-    if not re.fullmatch(r"[A-Za-z0-9_./@:+-]+", cand):
+    # Inherited arbitrary variables are outside the bounded model; a
+    # missing same-payload binding cannot prove the default is selected.
+    if name not in env and name in os.environ:
         return None
-    return cand
+    if name in env:
+        return env[name]
+    return resolved
+
+
+# HOME-binding builtins/wrappers. A HOME= operand only shadows when the
+# builtin itself is the command word; the same word inside another
+# command's arguments is data (``echo export "HOME=/fake"`` prints two
+# words and binds nothing).
+_HOME_BINDING_HEADS = ('export', 'readonly', 'declare', 'typeset', 'local', 'env')
+# Verbs whose operands are printed/matched text, never executed and never
+# able to bind a shell variable: only these demote a binding-head word to
+# data. Deliberately minimal — any other owner (xargs, env, sudo, find,
+# awk, sed, git, curl, sh/bash/zsh/python, osascript, an unknown word) keeps
+# the fail-closed verdict, so this is not a general argument model.
+_HOME_DATA_VERBS = frozenset({'echo', 'printf', 'cat', 'grep'})
+
+
+def _home_binding_residue(prefix):
+    """Residue left after the shared wrappers/assignments/keywords are peeled.
+
+    ``None`` means the prefix could not be resolved (bound refusal inside
+    the shared wrapper logic); callers treat that as fail-closed.
+    """
+    try:
+        rest = _strip_wrappers(_strip_control_flow(list(prefix)))
+    except _Block:
+        return None
+    return rest
+
+
+def _home_binding_shadow(words):
+    """Classify one decoded segment for a real HOME-binding shadow.
+
+    ``True`` — a binding head in command position carries a ``HOME=`` operand
+    and may never inherit HOME. ``False`` — every such head sits in the
+    argument position of a verb that only prints/matches its operands.
+    ``None`` — unresolved: the shared wrapper/control-flow logic refused or
+    stopped early, or an owner this guard does not prove is argument-only
+    holds the word, so the shadow stays fail-closed.
+
+    Scope is handled by the reuse, not by a new shell model: ``_strip_wrappers``
+    peels assignments and ``_strip_control_flow`` peels keywords/braces, so a
+    genuinely in-shell binding downgrades to ``True`` and a function body or
+    unknown owner falls through to ``None``.
+    """
+    for index, word in enumerate(words):
+        if word.rsplit('/', 1)[-1] not in _HOME_BINDING_HEADS:
+            continue
+        # A prefix test, not a substring test: XHOME=/x is not a binding.
+        if not any(item.startswith('HOME=') for item in words[index + 1:]):
+            continue
+        residue = _home_binding_residue(words[:index])
+        if residue is None:
+            return None
+        if not residue:
+            return True
+        if residue[0].rsplit('/', 1)[-1] not in _HOME_DATA_VERBS:
+            return None
+    return False
+
+
+# The ordering check may ignore an exact, quoted HOME value printed by a
+# standalone echo. Do not use decoded tokens or generalize to wrappers,
+# substitutions, redirections, or pipelines: their operands are not proven
+# to be data by this check. The entire command still undergoes normal analysis.
+_HOME_ECHO_DATA_RE = re.compile(r'[ \t]*echo[ \t]+"(?:\$HOME|\$\{HOME\})"[ \t]*')
+_HOME_USE_RE = re.compile(r'\$(?:\{HOME(?=[^A-Za-z0-9_]|$)|HOME(?![A-Za-z0-9_]))')
 
 
 def _collect_literal_vars(text):
-    """Map NAME -> simple literal value for visible assignments.
+    """Collect bounded, unambiguous standalone assignments before use.
 
-    Only simple single/double-quoted or bare-word literal values are
-    collected (NAME="literal", NAME='literal', NAME=word). Any
-    substitution, concatenation, or interpolation in the value makes
-    the variable UNRESOLVED (excluded) — resolution must be analysis,
-    not a hole (lpkit-5ix). EXCEPTION (lpkit-ebr): an assignment
-    whose value is exactly ONE ${NAME:-default} expansion (optionally
-    quoted) resolves via the hf5 allowlist rules and stores the
-    RESOLVED default, so the later command-position "$NAME" lookup
-    succeeds; unresolvable defaults keep the variable out of the map
-    (FR-006 refuse). Bounded to 32 entries."""
+    Unresolved/duplicate bindings stay present as None, so they cannot
+    silently fall back to an inherited value or written default. Only plain
+    semicolon/newline-separated assignments outside control flow qualify;
+    quotation-aware segmentation prevents data from becoming a binding.
+    At most 32 assignment matches are admitted.
+    """
     env = {}
-    for m in re.finditer(
-            r"(?:^|[\n;|&])([A-Za-z_]\w*)=(\"[^\"]*\"|'[^']*'"
-            r"|[A-Za-z0-9_./@-]+)", text):
-        if len(env) >= 32:
+    segments = _split_segments(text, _CHUNK_SEPS + ("|",))
+    safe_starts = set()
+    scope_ambiguous = False
+    home_scope_ambiguous = False
+    earlier_home_use = False
+    standalone_seps = (None, ';', '\n', '\r')
+    if len(segments) < MAX_CHUNKS:
+        offset = 0
+        previous = None
+        for segment in segments:
+            end = offset + len(segment)
+            separator = next((sep for sep in sorted(_CHUNK_SEPS + ("|",),
+                                                    key=len, reverse=True)
+                              if text.startswith(sep, end)), None)
+            match = re.fullmatch(
+                r'''[ \t\r]*([A-Za-z_]\w*)=(?:"[^"]*"|'[^']*'|[^\s;|&]*)[ \t\r]*''',
+                segment)
+            standalone = previous in standalone_seps and separator in standalone_seps
+            echo_data = (standalone and '\r' not in (previous, separator)
+                         and _HOME_ECHO_DATA_RE.fullmatch(segment) is not None)
+            if match and standalone:
+                name = match.group(1)
+                start = offset + match.start(1)
+                before = text[:start]
+                # Do not let a future binding resolve an earlier use, or
+                # treat a control-flow body as an unconditional assignment.
+                if name == 'HOME':
+                    visible = not (earlier_home_use or home_scope_ambiguous)
+                else:
+                    visible = not scope_ambiguous and not re.search(
+                        r'\$(?:\{' + re.escape(name) + r'(?=[^A-Za-z0-9_]|$)|'
+                        + re.escape(name) + r'(?![A-Za-z0-9_]))', before)
+                if visible and _normalize_control_flow(before) == before:
+                    safe_starts.add(start)
+            if not echo_data and _HOME_USE_RE.search(segment):
+                earlier_home_use = True
+            # Grouping or shell functions can put assignments in a different
+            # scope. Only the exact data form above proves its braces inert,
+            # and only for the HOME ordering check.
+            if not match and any(char in segment for char in '(){}'):
+                scope_ambiguous = True
+                if not echo_data:
+                    home_scope_ambiguous = True
+            offset = end + len(separator or '')
+            previous = separator
+    # Count potential HOME assignment words only outside quoted data. Keep
+    # executable substitution interiors conservative: their contents have a
+    # separate quote context and cannot establish an outer binding. Escapes
+    # outside quotes remain ambiguous rather than permitting inheritance.
+    home_mention_re = re.compile(r"(?<![A-Za-z0-9_])HOME=")
+    substitution_spans = iter(_command_substitutions(text, with_spans=True))
+    substitution = next(substitution_spans, None)
+    home_mentions = []
+    ambiguous_mentions = set()
+    quote = None
+    i = 0
+    while i < len(text):
+        if substitution is not None and i == substitution[0]:
+            end = substitution[1]
+            for m in home_mention_re.finditer(text, i, end):
+                home_mentions.append(m.start())
+                ambiguous_mentions.add(m.start())
+            i = end
+            substitution = next(substitution_spans, None)
+            continue
+        ch = text[i]
+        if quote:
+            if ch == "\\" and quote == '"' and i + 1 < len(text):
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+        elif ch in ('"', "'"):
+            quote = ch
+        elif ch == "\\" and i + 1 < len(text):
+            # The escaped character may be part of a malformed assignment.
+            match = home_mention_re.match(text, i + 1)
+            if match:
+                home_mentions.append(match.start())
+                ambiguous_mentions.add(match.start())
+            i += 2
+            continue
+        else:
+            match = home_mention_re.match(text, i)
+            if match:
+                home_mentions.append(match.start())
+        i += 1
+    home_mention_starts = set(home_mentions)
+    home_binding_matches = [m for m in re.finditer(
+        r'''(?:^|[\n;|&])\s*(HOME)=("[^"]*"|'[^']*'|[^\s;|&]*)''',
+        text)]
+    # Only mentions the quote-aware scan actually collected may ever be
+    # re-admitted as bindings; a regex match inside quoted data is not one.
+    binding_starts = {m.start(1) for m in home_binding_matches
+                      if m.start(1) in home_mention_starts}
+    # Classify segments BEFORE eligibility. Only a head in COMMAND position
+    # can shadow; a head word proven to be argument data of a print/match
+    # verb binds nothing (round-3 P2 quoted, round-4 P2 unquoted:
+    # ``echo export HOME=/fake``), so its HOME= text is not an assignment
+    # and cannot suppress a safe inherited HOME. Any unresolved or real
+    # shadow refuses regardless of any later binding recognition.
+    shadow_refuse = False
+    # A shell function definition can override a data verb (or any word) and
+    # bind HOME inside its body, so any definition shape anywhere in the
+    # payload defeats data-verb trust for the whole text: nothing proven by
+    # a data verb is trusted after (or before) an unmodeled definition.
+    # Position-free, quote-aware: a definition shape anywhere outside
+    # quotes defeats data-verb trust for the whole text (definitions can
+    # follow grouping braces, control-flow keywords, or any unmodeled
+    # context). Inside quotes the shape is printed data, not a definition.
+    has_unquoted_def = False
+    quote = None
+    j = 0
+    # Single pass: quote state advances monotonically from one definition
+    # match to the next (round-9 P2), so total work is linear in the text.
+    for m in re.finditer(r'function\s+[A-Za-z_]\w*|[A-Za-z_]\w*\s*\(\s*\)\s*\{', text):
+        while j < m.start():
+            ch = text[j]
+            if quote:
+                if ch == "\\" and quote == '"' and j + 1 < len(text):
+                    j += 2
+                    continue
+                if ch == quote:
+                    quote = None
+            elif ch == "\\" and j + 1 < len(text):
+                # An escaped character outside quotes is literal: it cannot
+                # open a quote region (round-8 P2: ``echo \"; echo() {...}``
+                # keeps the definition unquoted and must refuse).
+                j += 2
+                continue
+            elif ch in ('"', "'"):
+                quote = ch
+            j += 1
+        if quote is None:
+            has_unquoted_def = True
+            break
+    if has_unquoted_def:
+        shadow_refuse = True
+    offset = 0
+    for segment in segments:
+        end = offset + len(segment)
+        separator = next((sep for sep in sorted(_CHUNK_SEPS + ("|",),
+                                                key=len, reverse=True)
+                          if text.startswith(sep, end)), None)
+        if home_mention_re.search(segment):
+            words, overflow = _tokenize(segment)
+            if overflow:
+                shadow_refuse = True
+                break
+            shadow = _home_binding_shadow(words)
+            if shadow is None or shadow:
+                shadow_refuse = True
+                break
+            if shadow is False:
+                # Drop only this segment's PLAIN data mentions. Escaped and
+                # substitution-interior mentions stay ambiguous on their own
+                # (collected by the scan's special branches), so they never
+                # leave with the segment and keep the verdict fail-closed;
+                # a genuine binding match is re-admitted via its mention.
+                seg_mentions = {start for start in home_mentions
+                                if offset <= start < end
+                                and start not in binding_starts
+                                and start not in ambiguous_mentions}
+                if seg_mentions:
+                    home_mentions = [start for start in home_mentions
+                                     if start not in seg_mentions]
+                    home_mention_starts = set(home_mentions)
+        offset = end + len(separator or '')
+    if shadow_refuse:
+        env["HOME"] = None
+    else:
+        if home_mentions:
+            env["HOME"] = None
+        # Detect even empty or dynamic HOME assignments, and never silently
+        # fall through to the inherited value on ambiguity or truncation.
+        home_bindings = [m for m in home_binding_matches
+                         if m.start(1) in home_mention_starts]
+        if home_bindings:
+            # Take the entire shell word, including quoted spaces; a mixed or
+            # incomplete word is not a simple binding.
+            home = None
+            # Only a proven standalone binding is visible; control flow,
+            # earlier uses, and quoted lookalikes are not.
+            if (len(home_bindings) == 1 and len(home_mentions) == 1
+                    and home_bindings[0].start(1) in safe_starts):
+                match = home_bindings[0]
+                raw = match.group(2)
+                remainder = text[match.end():].lstrip(' \t\r')
+                standalone = not remainder or remainder[0] in '\n;|&'
+                if standalone:
+                    if raw[:1] in ('"', "'") and raw[-1:] == raw[:1]:
+                        raw = raw[1:-1]
+                    if (raw and len(raw) <= _HOME_MAX_CHARS
+                            and _LITERAL_PATH.fullmatch(raw)):
+                        home = raw
+            env["HOME"] = home
+    count = 0
+    assignment_names = set()
+    assignment_pattern = re.compile(
+        r'''(?:^|[\n;|&])\s*([A-Za-z_]\w*)=("[^"]*"|'[^']*'|[^\s;|&]*)''')
+    for m in assignment_pattern.finditer(text):
+        count += 1
+        if count > 32:
+            env["HOME"] = None
             break
         name, raw = m.group(1), m.group(2)
+        if name == "HOME":
+            continue
+        if name in assignment_names:
+            env[name] = None
+            continue
+        assignment_names.add(name)
+        env[name] = None
+        if m.start(1) not in safe_starts:
+            continue
+        remainder = text[m.end():].lstrip(' \t\r')
+        if remainder and remainder[0] not in '\n;|&':
+            continue
         if raw[:1] in ('"', "'"):
             value = raw[1:-1]
-            if "$" in value or "`" in value or "\\" in value:
-                # lpkit-ebr: a single ${NAME:-default} expansion in an
-                # assignment value resolves (hf5 allowlist); other
-                # interpolation stays unresolvable
-                resolved = _resolve_default_expansion(raw)
+            if raw.startswith("'"):
+                # Literal dollar/escape characters cannot be treated as an
+                # expansion or as a statically safe executable.
+                if not _LITERAL_PATH.fullmatch(value):
+                    continue
+            elif "$" in value or "`" in value or "\\" in value:
+                resolved = _resolve_default_expansion(raw, env)
                 if resolved is not None:
                     env[name] = resolved
                 continue
@@ -2012,7 +2306,8 @@ def _collect_literal_vars(text):
             if not re.fullmatch(r"[A-Za-z0-9_./@-]+", raw):
                 continue
             value = raw
-        env[name] = value
+        if value:
+            env[name] = value
     return env
 
 
@@ -2113,88 +2408,70 @@ def _analyze_chunk(chunk, policy, get_snapshot, depth=0, env=None):
     # assignment is visible (env may be empty).
     if env is not None:
         stage_list = _split_segments(chunk, ("|",), limit=MAX_STAGES)
-        if stage_list:
-            head_words = stage_list[0].strip().split()
-            if head_words:
-                raw = head_words[0]
-                # bare and quoted forms: $X, "$X", '${X}'
-                if raw.startswith('"') and raw.endswith('"'):
-                    var = raw[1:-1]
-                elif raw.startswith("'") and raw.endswith("'"):
-                    var = raw[1:-1]
-                elif raw.startswith("$") and len(raw) > 1:
-                    var = raw
-                else:
-                    var = None
-                if var:
-                    var = var.lstrip("$").lstrip("{").rstrip("}")
-                    # lpkit-uy4: ${NAME:-default} / ${NAME-default} in
-                    # command position resolves against the WRITTEN
-                    # default when the default is a statically
-                    # analyzable simple literal. The shell substitutes
-                    # the default whenever the variable is unset/empty
-                    # (:-) or unset (-); a value present in the env
-                    # could differ, so resolution is ANALYSIS, not a
-                    # hole: the substituted text is re-analyzed in
-                    # full, and any signal intent in the default (or
-                    # the remaining payload) still vetoes. A default
-                    # that is not a simple literal (nested expansion,
-                    # command substitution, empty) is unprovable and
-                    # stays refused (FR-006).
-                    resolved_default = None
-                    if ":-" in var or ("-" in var and ":" not in var):
-                        sep = ":-" if ":-" in var else "-"
-                        _nm, _, _dflt = var.partition(sep)
-                        if (_nm and re.fullmatch(
-                                r"[A-Za-z_]\w*", _nm) and _dflt
-                                and "`" not in _dflt
-                                and not _dflt.startswith("~")):
-                            # lpkit-hf5: ONE level of allowlisted env
-                            # resolution inside the written default.
-                            # $HOME is deterministic for the owning
-                            # user (the guard itself resolves its own
-                            # paths from os.environ["HOME"]), so
-                            # ${VAR:-$HOME/...} resolves against it.
-                            # Any other variable in the default is
-                            # unprovable and stays refused (FR-006).
-                            # Resolution is ANALYSIS: the substituted
-                            # text is re-analyzed in full below, so
-                            # signal intent under a $HOME default
-                            # still vetoes.
-                            cand = _dflt.replace("${HOME}", "\x00")
-                            cand = cand.replace("$HOME", "\x00")
-                            if "$" in cand.replace("\x00", ""):
-                                cand = None  # non-allowlisted var
-                            else:
-                                home = os.environ.get("HOME")
-                                if not home or any(
-                                        c in home for c in ' \t\n;$`"\\'+"'"):
-                                    cand = None  # HOME unset/unsafe
-                                else:
-                                    cand = cand.replace("\x00", home)
-                            if cand is not None and re.fullmatch(
-                                    r"[A-Za-z0-9_./@:+-]+", cand):
-                                resolved_default = cand
-                            elif (cand is None and "$" not in _dflt
-                                  and "`" not in _dflt
-                                  and re.fullmatch(
-                                      r"[A-Za-z0-9_./@:+-]+", _dflt)):
-                                resolved_default = _dflt
-                        var = _nm
-                    if resolved_default is not None or var in env:
-                        # env literal wins (shell precedence: an
-                        # assigned value suppresses the default)
-                        value = env.get(var, resolved_default)
-                        resolved = " ".join(
-                            [value] + head_words[1:])
-                        _analyze_shell_text(
-                            resolved, policy, get_snapshot, depth + 1)
-                        for stage in stage_list[1:]:
-                            if stage.strip():
-                                _analyze_chunk(
-                                    stage.strip(), policy, get_snapshot,
-                                    depth + 1, env)
-                        return
+        if len(stage_list) >= MAX_STAGES:
+            raise _Block()
+        changed = False
+        resolved_body_head = False
+        rebuilt = []
+        for index, stage in enumerate(stage_list):
+            stage = stage.strip()
+            # Only the first stage can start a control-flow body. Match a
+            # bare keyword at the chunk head; quoted or escaped lookalikes
+            # are not syntax. Leave the original stage alone unless an
+            # operand actually resolves.
+            body = re.match(r"(?:then|else|do)[ \t]+", stage) if index == 0 else None
+            head_start = body.end() if body else 0
+            match = re.match(r"(\S+)(.*)", stage[head_start:], re.DOTALL)
+            if not match:
+                rebuilt.append(stage)
+                continue
+            raw, remainder = match.groups()
+            # shlex removes quote provenance; only exact unquoted or wholly
+            # double-quoted command words may be expanded here.
+            if raw.startswith("'") or raw.startswith("\\"):
+                rebuilt.append(stage)
+                continue
+            word = raw[1:-1] if raw.startswith('"') and raw.endswith('"') else raw
+            value = None
+            eligible = False
+            if word.startswith(('$HOME/', '${HOME}/')):
+                eligible = True
+                value = _resolve_home_path(word, env)
+            elif word.startswith('${') and word.endswith('}') and (
+                    ':-' in word or '-' in word):
+                if head_start and not re.match(
+                        r"\$\{[A-Za-z_]\w*(?::-|-)\$(?:HOME|\{HOME\})/", word):
+                    rebuilt.append(stage)
+                    continue
+                eligible = True
+                value = _resolve_default_expansion(word, env)
+            elif not head_start and re.fullmatch(
+                    r"\$(?:[A-Za-z_]\w*|\{[A-Za-z_]\w*\})", word):
+                name = word[2:-1] if word.startswith('${') else word[1:]
+                if name in env:
+                    eligible = True
+                    value = env[name]
+            if eligible:
+                if (type(value) is not str or not value
+                        or len(value) > _HOME_MAX_CHARS
+                        or not _LITERAL_PATH.fullmatch(value)):
+                    raise _Block()
+                stage = stage[:head_start] + value + remainder
+                resolved_body_head = resolved_body_head or head_start != 0
+                changed = True
+            rebuilt.append(stage)
+        if changed:
+            resolved = ' | '.join(rebuilt)
+            # The directory scanner runs before control-flow normalization.
+            # Preserve the refusal for this newly resolvable position when
+            # either the original or resolved pipeline names protected files.
+            if resolved_body_head and (PLUGIN_DIR_MARKER in chunk.lower()
+                                       or PLUGIN_DIR_MARKER in resolved.lower()):
+                raise _Block()
+            _analyze_shell_text(resolved, policy, get_snapshot,
+                                depth + 1, _literal_env=env)
+            return
+
     # F-017: mutation of the guard's own deployed plugin directory (or
     # self-disable/uninstall through the runtime CLI) vetoes
     low_chunk = chunk.lower()
@@ -2275,6 +2552,10 @@ def _analyze_chunk(chunk, policy, get_snapshot, depth=0, env=None):
             tokens = _strip_wrappers(tokens)
             if not tokens:
                 continue
+            # A wrapper or inline assignment must not hide an unresolved
+            # executable after the pre-shlex resolution pass.
+            if tokens[0].startswith(("$", "`")):
+                raise _Block()
             verb = tokens[0].rsplit("/", 1)[-1].lower()
             rest = tokens[1:]
             if verb == "eval":
@@ -2580,7 +2861,7 @@ def _full_text_kill_intent(text, policy):
     return _FULL_TEXT_INTENT_RE.search(text.lower()) is not None
 
 
-def _analyze_shell_text(text, policy, get_snapshot, depth=0):
+def _analyze_shell_text(text, policy, get_snapshot, depth=0, _literal_env=None):
     if depth > MAX_TOOL_CALL_DEPTH:
         raise _Block()
     if not isinstance(text, str):
@@ -2730,7 +3011,7 @@ def _analyze_shell_text(text, policy, get_snapshot, depth=0):
     # lpkit-5ix: simple literal assignments visible in this payload
     # back command-position variable resolution; anything else stays
     # unresolvable (FR-006).
-    env = _collect_literal_vars(text)
+    env = _collect_literal_vars(text) if _literal_env is None else _literal_env
     for substitution in _command_substitutions(text):
         _analyze_shell_text(substitution, policy, get_snapshot, depth + 1)
     chunks = _split_segments(text, _CHUNK_SEPS)
@@ -3084,14 +3365,17 @@ def _analyze_code_text(text, policy, get_snapshot):
     # be statically proven safe. A real newline inside a single-quoted
     # string (the git multi-paragraph -m convention pasted into code, as
     # in the byte-exact refusal fixture) is a SyntaxError, not a
-    # lifecycle threat: refuse with the bound's corrective category
-    # (BOUND_SIZE/LGV-010 — reduce/restructure and resubmit), never a
-    # lifecycle VETO. Malformed input stays REFUSED (fail-closed); only
-    # the category is corrected.
+    # lifecycle threat and NOT a size problem: this payload is under
+    # MAX_TEXT_CHARS, so refuse with the shape's corrective category
+    # (SHAPE_ENVELOPE/LGV-020 — restructure it; IR-008), never a
+    # lifecycle VETO and never the misleading over-cap bound guidance.
+    # Malformed input stays REFUSED (fail-closed); only the category is
+    # corrected. The over-cap branch above keeps BOUND_SIZE: there the
+    # input genuinely exceeds the bound.
     try:
         ast.parse(text)
     except SyntaxError:
-        raise _BoundRefuse("BOUND_SIZE") from None
+        raise _BoundRefuse("SHAPE_ENVELOPE") from None
     if _OS_KILL_RE.search(text):  # os.kill( / os.killpg(
         # F-014 carve-out: signal-0 liveness probes pass; any real
         # signal — or an unprovable call shape — vetoes
