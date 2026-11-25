@@ -5,6 +5,22 @@ The older routing experiment in the root README is not an activation procedure.
 Use a reviewed deployment repository; do not install directly from a template or
 use this guide to bypass a workstation's operator/EDR approval boundary.
 
+## Routine maintenance
+
+For an already managed proxy, use the **reviewed kit revision for that
+installation**, not whichever branch happens to be current. For a
+controller-managed proxy, confirm the checkout agrees with the installed
+controller policy before editing or applying anything.
+
+1. **Diagnose before changing anything.** Check the local listener's liveness and readiness, then the failing client or model. If you suspect file drift, run the installer's `--verify` against the intended deployment root. A green health check does not prove file parity or upstream model access.
+2. **Change source, then stage.** Edit the deployment repository's `overlay.yaml` for routing changes or its `pin.lock` and required build evidence for a runtime change. Do not hand-edit rendered YAML, installed helpers, or plists. Use the [installer sequence below](#stage-files-does-not-reload-launchd): dry-run, review, approved apply, verify. Stop if the diff includes unrelated files or if provenance or preflight fails.
+3. **Activate separately.** For an existing controller-managed proxy, follow [restart controller operations](restart-controller-operations.md), not the initial service reload below. Apply and verify the files before the final controller refresh if the installed generation binds boot-time assets. Obtain fresh qualification for that generation where required; never copy evidence from a predecessor. Keep the current listener up if any gate refuses.
+4. **Check the change you made.** After the owner's controlled activation, verify the expected listener, readiness, invalid-key 401 and a real authenticated request to each changed route. Check DB, streaming tools or MCP when affected. Record the tested kit and deployment revisions and the rollback outcome if used; never record keys or raw payloads.
+
+The kit's [published deployment inputs](../deployments/personal/) are sanitized
+reference artifacts, not a complete installer target. The setup sections below
+are for provisioning or a separately approved managed handoff.
+
 ## Source and runtime contract
 
 - The kit's `core/` and `launchd/` files are shared source.
@@ -26,7 +42,8 @@ use this guide to bypass a workstation's operator/EDR approval boundary.
   `LITELLM_MCP_STDIO_EXTRA_COMMANDS`, and `LITELLM_ENABLE_MCP_STDIO` are
   accepted. The stdio flag must be quoted literal `'true'` or `'false'`; enabling
   it is the reviewed opt-in that lets the proxy start configured stdio children.
-  must be password-free PostgreSQL without query/fragment; use the credential
+  An overlay `DATABASE_URL` must be password-free PostgreSQL without a query
+  or fragment; use the credential
   manifest to resolve a credential-bearing URL into `DATABASE_URL` instead.
 - List additional MCP stdio executable **basenames** as a comma-separated value.
   This controls executable admission, not server or tool authorization. Preserve
@@ -114,6 +131,9 @@ ProgramArguments, even after its plist on disk changes. It can therefore try to
 restart a retired script. Do not leave this transition unattended.
 
 ## Operator reload and verification
+
+This section is for initial provisioning or a separately approved handoff.
+For a controller-managed listener, use the [restart controller](restart-controller-operations.md#existing-deployment-before-you-prepare) instead.
 
 On an operator-owned workstation, the **operator** runs:
 

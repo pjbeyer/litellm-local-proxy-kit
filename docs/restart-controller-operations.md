@@ -18,6 +18,23 @@ been issued. Behavior proven by the offline suite must not be read as evidence
 about this host's live launchd behavior. Live activation, the isolated-canary
 lane and production handoff remain separate operator gates.
 
+## Existing deployment: before you prepare
+
+Start with [routine maintenance](macos-managed-service.md#routine-maintenance)
+for source changes and staging. Then use `status` on the installed, policy-bound
+controller; confirm it is idle and that the trusted qualification matches the
+installed generation and current daemon incarnation. `status` alone is not a
+qualification check. If the policy or installed generation changed, follow the
+applicable owner activation and qualification gates below. If evidence expired,
+follow the installed generation's qualification contract; never reuse a dated
+issuer or another incarnation's canary evidence.
+
+When those gates are satisfied, use the [closed client interface](#closed-client-interface).
+Allow time for its real candidate checks. Only the owner may approve the exact
+prepared plan and submit the restart before the deadlines. On refusal or
+uncertain progress, preserve the running listener and recovery state; use
+[failure handling](#failure-handling), not an alternate control command.
+
 ## Provision and install
 
 Use the pinned proxy Python with PyYAML. Provision an operator-owned policy JSON
@@ -65,20 +82,11 @@ Hermes-owned background daemon is not independently supervised.
 
 Before restart can be enabled, the trusted operator must obtain real evidence
 of canary bootstrap, normal KeepAlive behaviour and bootout **from the intended
-controller execution context**. This release does not provide a canary runner or
-an automatic qualification issuer. Fixture tests and a successful external-shell
-bootstrap cannot substitute for that evidence.
-
-The operator-issued `qualification.json` is a 0600 regular, non-symlink file under
-`state_dir`, with exactly the fields checked by `Runtime.qualify`:
-
-- `version`, `operator_uid`, `controller_label`, `controller_identity`.
-- `controller_digest`, `policy_digest`, `plist_digest`, `controller_epoch`.
-- `controller_plist_digest`: SHA-256 of the exact generated controller plist.
-- `controller_supervision`: exact `KeepAlive`, `ThrottleInterval`, `RunAtLoad` and
-  `ExitTimeOut` dictionary from that generated definition.
-- `issued_at`, `expires_at`, `issued_monotonic`, `expires_monotonic`.
-- `canary_evidence_digest`: SHA-256 of the reviewed real canary evidence.
+controller execution context**. Use the [startup canary lane](#startup-canary-arm-and-worker-boundaries).
+It produces evidence, not authorization. Fixture tests and a successful
+external-shell bootstrap cannot substitute for that evidence. The owner
+issues `qualification.json` using the [v2 schema](#qualification-schema-v2);
+there is no automatic issuer.
 
 Bind the current daemon epoch, exact source/policy/proxy-plist digests, dynamic
 UID and kernel PID/microsecond birth identity. Both lifetimes are at most 24
@@ -149,12 +157,11 @@ Python helpers or proxy execution. This prevents those entrypoints from rewritin
 the frozen cache evidence; it neither repairs existing caches nor disables their
 verification. Preserve and reconcile pre-existing mismatches separately.
 
-An editable Rust/Maturin build can leave a Git-ignored native extension next to
-tracked Python source. Matching a local Cargo output or a wheel's own metadata is
-not independent provenance. The current contract still rejects untracked native
-code. Do not remove native capability or whitelist an observed hash to force a
-pass. Any artifact-binding extension requires an explicit reviewed contract change
-and verified build inputs before installation or live qualification.
+The [native runtime artifact contract](native-runtime-artifact-contract.md)
+defines the one supported optional native artifact and its required pin and
+build receipt. An editable build or matching local Cargo output is not proof
+of provenance. Keep the pin and `native-build.json` paired; do not whitelist
+an observed hash or remove native code to force a pass.
 
 ## Failure handling
 
@@ -213,17 +220,27 @@ normal `serve` after runtime/identity verification and before RPC admission:
 
 ## Qualification schema v2
 
-`qualification.json` (v2) gains exactly two fields over v1 —
-`shutdown_contract` (the exact contract dict, compared structurally) and
-`controller_plist_digest` (SHA-256 of the generated controller plist) — and
-`canary_evidence_digest` now names a validated evidence FILE at
-`state_dir/canary/evidence/<digest>.json` (0600, owned, hash-bound), not a
-free string. The evidence file must be a closed v1 evidence envelope in
-fixture or isolated-launchd scope whose identity/epoch/digest/supervision/
-contract bindings equal the record's; two incarnations with distinct births;
-all producer checks true. Legacy v1 qualification records refuse — there is no
-automatic upgrade. Evidence alone never creates qualification; qualification
-alone never activates a generation.
+The owner issues `qualification.json` as an owned, regular, non-symlink 0600
+file under `state_dir`. [The runtime validator](../core/restart_control/runtime.py)
+requires exactly these fields:
+
+- `version` (integer `2`), `operator_uid`, `controller_label`,
+  `controller_epoch`, and `controller_identity` (`pid`, `uid`, `ppid`, `pgid`,
+  `birth`) for the intended live controller.
+- `controller_digest`, `policy_digest`, `plist_digest` (proxy plist), and
+  `controller_plist_digest` (exact generated controller plist).
+- `controller_supervision` with `KeepAlive`, `ThrottleInterval`, `RunAtLoad`,
+  and `ExitTimeOut` from the generated controller definition, and
+  `shutdown_contract` matching `SHUTDOWN_CONTRACT` in the
+  [pinned controller source](../core/restart_control/shutdown.py).
+- `issued_at`, `expires_at`, `issued_monotonic`, `expires_monotonic`, and
+  `canary_evidence_digest`.
+
+The evidence digest binds `state_dir/canary/evidence/<digest>.json`, an owned
+0600 file. Its identity, epoch, digests, supervision and contract must match the
+qualification, with two distinct worker births and all producer checks true.
+Use real evidence for a live controller, not fixtures. Legacy v1 qualification
+records refuse. Evidence does not issue qualification or authorize activation.
 
 ## Recovery reconciliation
 
