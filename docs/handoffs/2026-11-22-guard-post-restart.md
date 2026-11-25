@@ -1,18 +1,17 @@
 # Guard post-restart verification and implementation handoff
 
+> Historical record. The handoff branch was incorporated into the
+> incidence-reduction branch. Do not fetch the old branch or treat the
+> observations below as current. See the
+> [guard runbook](../../integrations/hermes/proxy-lifecycle-guard/README.md).
+
 Date: 2026-11-22. Audience: the implementation session.
 Scope: source-only specification and work preparation, not activation approval.
 
-> Continue the guard incidence-reduction work in a dedicated worktree of the
-> LiteLLM Local Proxy Kit. Fetch `docs/guard-post-restart-handoff` and incorporate
-> its documentation into a branch based on current main. Read `AGENTS.md`, this
-> handoff, `docs/contracts/guard-incidence-reduction.md`, and
-> `docs/contracts/decision-sink.md` before changing source. Start with the small
-> syntax-category slice, then bounded HOME resolution; design the versioned
-> diagnostics migration separately. Keep enforcement fail-closed and diagnostics
-> decision-neutral. The denied diagnostic described below remains stopped until
-> the owner explicitly approves its verification context. This handoff does not
-> authorize that resumption, installed-file changes, activation, or any restart.
+The handoff scoped source work to syntax categorization first, then bounded HOME
+resolution, with versioned diagnostics designed separately. It did not authorize
+resuming the denied diagnostic, modifying installed files, activating the guard,
+or restarting a service.
 
 Read [the proposed amendment](../contracts/guard-incidence-reduction.md) and
 [the existing sink contract](../contracts/decision-sink.md) together. The former

@@ -70,6 +70,11 @@ Cloudflare has a SHARED 10,000-Neuron/day allowance, not 10K tokens/day or a per
 - This is a reactive circuit breaker, not an exact persistent RPD/token counter. Parallel in-flight requests can still receive 429s. Other applications' usage is not visible until the provider reports limits. SQLite stores only bucket, resume time and reason code; this callback does not log prompts, responses, keys or error bodies.
 - Once streaming output has reached the client, do NOT assume transparent cross-provider retry is possible. Surface interruption; avoid blindly rerunning tool actions. This is not an exactly-once execution system.
 
+## Hermes integration
+
+See the [proxy lifecycle guard runbook](integrations/hermes/proxy-lifecycle-guard/README.md)
+for routine alerts, release checks, and owner-only upgrades and rollback.
+
 ## Validation boundary
 
 The original imported routing experiment is **not an activation or migration procedure**. The separately specified shared service core (`core/`, `launchd/`, spec 015) now has a [managed macOS service guide](docs/macos-managed-service.md), covering manifest installation, runtime environment parity, operator reload, real authentication/inference gates and rollback. Workstation credentials and resolved plists remain excluded; deployment source is separate.

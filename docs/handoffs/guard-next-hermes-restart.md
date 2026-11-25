@@ -1,4 +1,8 @@
-# Guard candidate for the next Hermes restart
+# Historical cutover handoff: IR-007 and IR-008
+
+> Release-specific record, not instructions for a future restart. For current
+> maintenance, see the [guard runbook](../../integrations/hermes/proxy-lifecycle-guard/README.md).
+> The instructions and digests below apply only to this historical candidate.
 
 > Use the commit containing this handoff on `feat/guard-incidence-reduction`.
 > Stage and verify the three plugin source files against the digests below.
