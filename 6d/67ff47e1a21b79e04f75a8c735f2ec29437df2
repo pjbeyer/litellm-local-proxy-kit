@@ -1,0 +1,23 @@
+specs/001-proxy-lifecycle-guard-plugin/tasks.md
+  s_b9fb29c78dd877::t_ec21ceaad22aa5 1-8,10-29,31-43,45-47,49-70
+  s_b9fb29c78dd877::t_d12fd74947848e 9
+  s_b9fb29c78dd877::t_c24f5f06c03efd 30
+  s_b9fb29c78dd877::t_5deb0d9b91f7cd 44
+  s_b9fb29c78dd877::t_c07c079abc5b78 48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "6d67ff47e1a21b79e04f75a8c735f2ec29437df2",
+  "prompts": {},
+  "sessions": {
+    "s_b9fb29c78dd877": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261126_161125_a9b192",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
