@@ -1,0 +1,22 @@
+.specify/extensions/security-review/commands/security-review-staged.md
+  h_c5be3b3dad7ca8 76
+.specify/extensions/security-review/scripts/bash/detect-changed-files.sh
+  h_c5be3b3dad7ca8 149,155,161,191,196
+.specify/extensions/security-review/scripts/powershell/detect-changed-files.ps1
+  h_c5be3b3dad7ca8 139,147,155,174-175
+.specify/extensions/spec-validate/scripts/bash/write-approval-state.sh
+  h_c5be3b3dad7ca8 44-45,48-59
+tests/test_speckit_gate.py
+  h_c5be3b3dad7ca8 147-150,154-155,167-168,170,175-176,187
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "c9e211717eca5a1336d9359c8e61f83ce064ebc3",
+  "prompts": {},
+  "humans": {
+    "h_c5be3b3dad7ca8": {
+      "author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
