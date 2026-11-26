@@ -7,15 +7,21 @@ use this guide to bypass a workstation's operator/EDR approval boundary.
 
 ## Routine maintenance
 
-For an already managed proxy, use the **reviewed kit revision for that
-installation**, not whichever branch happens to be current. For a
-controller-managed proxy, confirm the checkout agrees with the installed
-controller policy before editing or applying anything.
+For a controller-managed proxy, run `make help` from the kit root. The targets
+use `~/.config/litellm-restart-controller/policy.json` by default (`POLICY`
+selects another provisioned policy). The policy selects the reviewed kit and
+deployment sources and the installed controller client. Confirm those bindings
+before editing or applying anything. If a root is stale, stop and use the
+[controller install runbook](restart-controller-operations.md#provision-and-install);
+do not substitute another checkout for the policy-bound source.
 
-1. **Diagnose before changing anything.** Check the local listener's liveness and readiness, then the failing client or model. If you suspect file drift, run the installer's `--verify` against the intended deployment root. A green health check does not prove file parity or upstream model access.
-2. **Change source, then stage.** Edit the deployment repository's `overlay.yaml` for routing changes or its `pin.lock` and required build evidence for a runtime change. Do not hand-edit rendered YAML, installed helpers, or plists. Use the [installer sequence below](#stage-files-does-not-reload-launchd): dry-run, review, approved apply, verify. Stop if the diff includes unrelated files or if provenance or preflight fails.
-3. **Activate separately.** For an existing controller-managed proxy, follow [restart controller operations](restart-controller-operations.md), not the initial service reload below. Apply and verify the files before the final controller refresh if the installed generation binds boot-time assets. Obtain fresh qualification for that generation where required; never copy evidence from a predecessor. Keep the current listener up if any gate refuses.
-4. **Check the change you made.** After the owner's controlled activation, verify the expected listener, readiness, invalid-key 401 and a real authenticated request to each changed route. Check DB, streaming tools or MCP when affected. Record the tested kit and deployment revisions and the rollback outcome if used; never record keys or raw payloads.
+1. **Diagnose.** `make health` checks loopback liveness, readiness and unauthenticated `/v1/models` at the port in the policy's proxy plist. `make status` reports controller status. `make verify` checks installed files and drift using the pinned proxy Python, which provides PyYAML. A green health check alone proves neither file parity nor upstream access.
+2. **Preview, then apply.** Edit deployment source, not rendered YAML, installed helpers, or plists. Run `make preview` and review the installer output. Only then run `make apply` to stage and verify the reviewed files. Stop on unexpected changes or a failed check. Apply does not reload launchd.
+3. **Activate separately.** Stage and verify files before any required controller refresh. Follow the [restart controller runbook](restart-controller-operations.md) for that refresh and fresh qualification. Run `make prepare`. After the owner approves the exact prepared plan and the matching approval is recorded, submit it with `make restart REQUEST_ID=… ASSET_DIGEST=…`. The Makefile neither grants approval nor overrides a refusal.
+4. **Verify the result.** Confirm the controller reports a restart, not rollback. Run `make health` again and send a real authenticated request to each changed route. Check DB, streaming tools or MCP when affected. Record the tested revisions and any rollback outcome, not keys or raw payloads.
+
+For a deployment without an installed controller, use the [installer sequence
+below](#stage-files-does-not-reload-launchd) with the reviewed kit revision.
 
 The kit's [published deployment inputs](../deployments/personal/) are sanitized
 reference artifacts, not a complete installer target. The setup sections below
