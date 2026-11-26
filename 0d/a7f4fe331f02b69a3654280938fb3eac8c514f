@@ -1,0 +1,24 @@
+specs/004-isolated-proxy-rehearsal/spec-validation-review.md
+  s_8c847b7ad325b0::t_326794d448dd15 1-12
+  s_8c847b7ad325b0::t_aa9b5b6068b6a9 13-15
+specs/004-isolated-proxy-rehearsal/spec.md
+  s_8c847b7ad325b0::t_c4e9b429fbbe5d 29
+  s_8c847b7ad325b0::t_d61deba6a6fdf4 33
+  s_8c847b7ad325b0::t_028ce383d437b2 52-53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "0da7f4fe331f02b69a3654280938fb3eac8c514f",
+  "prompts": {},
+  "sessions": {
+    "s_8c847b7ad325b0": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261125_155706_404655",
+        "model": "gpt-6.2-sol"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
