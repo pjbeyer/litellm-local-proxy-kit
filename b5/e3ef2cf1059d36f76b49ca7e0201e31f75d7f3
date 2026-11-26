@@ -1,0 +1,129 @@
+.specify/extensions/spec-validate/.gitignore
+  s_dae37ba7bf8414::t_710e76fd99c353 1-3
+specs/003-restart-controller/plan.md
+  s_dae37ba7bf8414::t_632f4bd6be68ac 37-38
+  s_dae37ba7bf8414::t_48ccecb1692c0f 15
+docs/project-tooling.md
+  s_dae37ba7bf8414::t_3dc841e8ddf5aa 26-31
+  s_dae37ba7bf8414::t_d5be5c78b8a345 70-85
+  s_dae37ba7bf8414::t_df45e2cc8efc49 86-87
+  s_f5638b76e173bb::t_18947bd53c0da1 45-51,57-59
+specs/003-restart-controller/spec.md
+  s_dae37ba7bf8414::t_e7cde3be2f84b3 5
+specs/README.md
+  s_dae37ba7bf8414::t_e984f7172ea8f5 8
+.specify/extensions.yml
+  s_f5638b76e173bb::t_00d539d6bf8592 3-4,17-24,34-78
+.specify/extensions/.registry
+  s_f5638b76e173bb::t_7f21ab0b0a9af1 17-57,60
+.specify/extensions/security-review/.gitignore
+  s_f5638b76e173bb::t_76f32d304f63bb 1-95
+.specify/extensions/security-review/CHANGELOG.md
+  s_f5638b76e173bb::t_301f7ec3636a25 1-34
+.specify/extensions/security-review/CONTRIBUTING.md
+  s_f5638b76e173bb::t_adb83c871df898 1-52
+.specify/extensions/security-review/LICENSE
+  s_f5638b76e173bb::t_229ac30cad430f 1-21
+.specify/extensions/security-review/README.md
+  s_f5638b76e173bb::t_a1bfecc67abb23 1-638
+.specify/extensions/security-review/commands/init.md
+  s_f5638b76e173bb::t_342a5bdb8169e6 1-102
+.specify/extensions/security-review/commands/security-review-apply.md
+  s_f5638b76e173bb::t_7f1bfeeab5e1de 1-167
+.specify/extensions/security-review/commands/security-review-branch.md
+  s_f5638b76e173bb::t_8afa64a5a540e5 1-207
+.specify/extensions/security-review/commands/security-review-export.md
+  s_f5638b76e173bb::t_c8009298b48914 1-200
+.specify/extensions/security-review/commands/security-review-followup.md
+  s_f5638b76e173bb::t_1f951fd38e1dc2 1-247
+.specify/extensions/security-review/commands/security-review-plan.md
+  s_f5638b76e173bb::t_11996f5dbf8d8a 1-198
+.specify/extensions/security-review/commands/security-review-staged.md
+  s_f5638b76e173bb::t_e04582afb53d06 1-199
+.specify/extensions/security-review/commands/security-review-tasks.md
+  s_f5638b76e173bb::t_5850cc739139ec 1-199
+.specify/extensions/security-review/commands/security-review.md
+  s_f5638b76e173bb::t_6d3bbb4b3e60d0 1-798
+.specify/extensions/security-review/config-template.yml
+  s_f5638b76e173bb::t_2f2fc90f05fa97 1-317
+.specify/extensions/security-review/extension.yml
+  s_f5638b76e173bb::t_0a6745a8368fee 1-62
+.specify/extensions/security-review/scripts/bash/detect-changed-files.sh
+  s_f5638b76e173bb::t_c8f6ba5c1f261d 1-256
+.specify/extensions/security-review/scripts/powershell/detect-changed-files.ps1
+  s_f5638b76e173bb::t_70893959d50837 1-235
+.specify/extensions/security-review/scripts/test-install.sh
+  s_f5638b76e173bb::t_4c407369fc3139 1-114
+.specify/extensions/security-review/scripts/update-document-headers.sh
+  s_f5638b76e173bb::t_e95ec839426c54 1-216
+.specify/extensions/spec-validate/CHANGELOG.md
+  s_f5638b76e173bb::t_8e0f2abf3f29cf 1-33
+.specify/extensions/spec-validate/LICENSE
+  s_f5638b76e173bb::t_71832ce152e5b9 1-21
+.specify/extensions/spec-validate/README.md
+  s_f5638b76e173bb::t_89aa0339b107c5 1-137
+.specify/extensions/spec-validate/commands/analytics.md
+  s_f5638b76e173bb::t_172aa244b01d66 1-83
+.specify/extensions/spec-validate/commands/gate.md
+  s_f5638b76e173bb::t_3dca2ccad94df9 1-36
+.specify/extensions/spec-validate/commands/review.md
+  s_f5638b76e173bb::t_a11378922b3727 1-21
+.specify/extensions/spec-validate/commands/status.md
+  s_f5638b76e173bb::t_67decd22ed1db7 1-44
+.specify/extensions/spec-validate/commands/validate-tasks.md
+  s_f5638b76e173bb::t_436becdf84312b 1-45
+.specify/extensions/spec-validate/commands/validate.md
+  s_f5638b76e173bb::t_cde7ce6743da7f 1-117
+.specify/extensions/spec-validate/config-template.yml
+  s_f5638b76e173bb::t_817bb0e5482f45 1-35
+.specify/extensions/spec-validate/extension.yml
+  s_f5638b76e173bb::t_5c81b7ccb7e0ce 1-63
+.specify/extensions/spec-validate/scripts/bash/check-gate.sh
+  s_f5638b76e173bb::t_8a5044efa6fe32 1-203
+.specify/extensions/spec-validate/scripts/bash/compute-hash.sh
+  s_f5638b76e173bb::t_546d649a83bc5a 1-36
+.specify/extensions/spec-validate/scripts/bash/read-approval-state.sh
+  s_f5638b76e173bb::t_175afe7b5c5f48 1-69
+.specify/extensions/spec-validate/scripts/bash/write-approval-state.sh
+  s_f5638b76e173bb::t_124740fa3e8b29 1-56
+.specify/extensions/spec-validate/scripts/powershell/check-gate.ps1
+  s_f5638b76e173bb::t_26629ae0d3b248 1-110
+.specify/extensions/spec-validate/scripts/powershell/compute-hash.ps1
+  s_f5638b76e173bb::t_25a1fdc2599577 1-27
+.specify/extensions/spec-validate/scripts/powershell/read-approval-state.ps1
+  s_f5638b76e173bb::t_06f0af1559c903 1-59
+.specify/extensions/spec-validate/scripts/powershell/write-approval-state.ps1
+  s_f5638b76e173bb::t_1f9c4c3b3d7773 1-49
+.specify/extensions/spec-validate/spec-validate-config.yml
+  s_f5638b76e173bb::t_6e0a4e616ebe8a 1-35
+.specify/extensions/spec-validate/templates/approval-summary.md
+  s_f5638b76e173bb::t_c31e242bb46c28 1-30
+.specify/extensions/spec-validate/templates/distractor-patterns.yml
+  s_f5638b76e173bb::t_d6d4f276f383e3 1-35
+tests/test_speckit_gate.py
+  s_f5638b76e173bb::t_7a8a7202d2aa3c 1-193
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "b5e3ef2cf1059d36f76b49ca7e0201e31f75d7f3",
+  "prompts": {},
+  "sessions": {
+    "s_dae37ba7bf8414": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261125_202039_3f0e1d",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_f5638b76e173bb": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261126_095657_8c581e",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
