@@ -1,0 +1,37 @@
+README.md
+  s_8c847b7ad325b0::t_c9b60355386f04 21-23
+  s_8c847b7ad325b0::t_58946aead4de04 3,7,11,13-17,19,26,29
+  s_8c847b7ad325b0::t_e467d778acda6d 8-9
+docs/publication-readiness.md
+  s_8c847b7ad325b0::t_f93ef04dd166b3 7
+  s_8c847b7ad325b0::t_b15b365ba637ee 1,3,5,8-10,12
+docs/routing-experiment.md
+  s_8c847b7ad325b0::t_2382c9bda12878 1-11
+docs/macos-managed-service.md
+  s_8c847b7ad325b0::t_7092374b15fa8e 72
+  s_8c847b7ad325b0::t_0f9569802c5ea4 3-7,9-11,13,15-17
+  s_8c847b7ad325b0::t_5dd8a6192a5c53 145
+  s_8c847b7ad325b0::t_7ba5de349e060c 73-80
+  s_8c847b7ad325b0::t_0bcdfb692a66b5 137,140,144
+  s_8c847b7ad325b0::t_c416c3e72af518 139,142-143,146-149
+  s_8c847b7ad325b0::t_fa368e59534a6f 138
+  s_8c847b7ad325b0::t_1cc7eccaa1558d 141
+docs/restart-controller-operations.md
+  s_8c847b7ad325b0::t_eba303ff90da45 26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "f127e6cb67d115879489a96b28f1958c1122e313",
+  "prompts": {},
+  "sessions": {
+    "s_8c847b7ad325b0": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261125_155706_404655",
+        "model": "gpt-6.2-sol"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
