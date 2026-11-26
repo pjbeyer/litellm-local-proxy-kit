@@ -1,0 +1,32 @@
+docs/macos-managed-service.md
+  s_e00acb9d98ae8a::t_f387d572e9575d 10-19,21-24
+  s_e00acb9d98ae8a::t_98ef1bb64f7161 20
+Makefile
+  s_e00acb9d98ae8a::t_7ae342d633fa33 25
+  s_e00acb9d98ae8a::t_bde4ecfd6acf6c 1,4-24
+tests/test_owner_maintenance.py
+  s_e00acb9d98ae8a::t_b413348cdd7b12 45-51
+  s_e00acb9d98ae8a::t_02bfc999659e6e 78
+  s_e00acb9d98ae8a::t_ef9ce1a8019a67 121
+  s_e00acb9d98ae8a::t_41b3823441f359 1-44,52-77,79-120,122-150
+owner_maintenance.py
+  s_e00acb9d98ae8a::t_267ebe3d826d9a 12-14
+  s_e00acb9d98ae8a::t_5fc1698f211b53 9-11
+  s_e00acb9d98ae8a::t_1289a4ded42fbc 15-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "bbbb4e5b5f159ce079b29fa1a837390104b7c9b9",
+  "prompts": {},
+  "sessions": {
+    "s_e00acb9d98ae8a": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261125_153652_9a7d9c",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
