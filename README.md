@@ -7,7 +7,7 @@ It routes SIMPLE/MEDIUM work to a local OpenAI-compatible model endpoint and all
 ## Maintain an existing deployment
 
 - **Change models, configuration, or the runtime pin:** start with [managed macOS service maintenance](docs/macos-managed-service.md#routine-maintenance). Edit deployment inputs, not generated files.
-- **Need to interrupt or recover the proxy?** Use [restart controller operations](docs/restart-controller-operations.md). Staging files is not activation; a restart requires fresh owner authorization.
+- **Need to interrupt or recover the proxy?** Use [restart controller operations](docs/restart-controller-operations.md). Staging files is not activation; a restart requires fresh owner authorization. See [Specs](specs/README.md) for controller requirements and verification.
 - **Investigate a Hermes refusal or watchdog alert:** use the [lifecycle guard runbook](integrations/hermes/proxy-lifecycle-guard/README.md). A guard update is not a proxy restart.
 
 The routing experiment below is reference material, not a managed deployment procedure.

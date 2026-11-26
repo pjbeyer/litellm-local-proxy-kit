@@ -7,21 +7,9 @@ use this guide to bypass a workstation's operator/EDR approval boundary.
 
 ## Routine maintenance
 
-For a controller-managed proxy, run `make help` from the kit root. The targets
-use `~/.config/litellm-restart-controller/policy.json` by default (`POLICY`
-selects another provisioned policy). The policy selects the reviewed kit and
-deployment sources and the installed controller client. Confirm those bindings
-before editing or applying anything. If a root is stale, stop and use the
-[controller install runbook](restart-controller-operations.md#provision-and-install);
-do not substitute another checkout for the policy-bound source.
-
-1. **Diagnose.** `make health` checks loopback liveness, readiness and unauthenticated `/v1/models` at the port in the policy's proxy plist. `make status` reports controller status. `make verify` checks installed files and drift using the pinned proxy Python, which provides PyYAML. A green health check alone proves neither file parity nor upstream access.
-2. **Preview, then apply.** Edit deployment source, not rendered YAML, installed helpers, or plists. Run `make preview` and review the installer output. Only then run `make apply` to stage and verify the reviewed files. Stop on unexpected changes or a failed check. Apply does not reload launchd.
-3. **Activate separately.** Stage and verify files before any required controller refresh. Follow the [restart controller runbook](restart-controller-operations.md) for that refresh and fresh qualification. Run `make prepare`. After the owner approves the exact prepared plan and the matching approval is recorded, submit it with `make restart REQUEST_ID=… ASSET_DIGEST=…`. The Makefile neither grants approval nor overrides a refusal.
-4. **Verify the result.** Confirm the controller reports a restart, not rollback. Run `make health` again and send a real authenticated request to each changed route. Check DB, streaming tools or MCP when affected. Record the tested revisions and any rollback outcome, not keys or raw payloads.
-
-For a deployment without an installed controller, use the [installer sequence
-below](#stage-files-does-not-reload-launchd) with the reviewed kit revision.
+For an existing controller-managed deployment, use the [restart controller
+runbook](restart-controller-operations.md). For initial setup or a deployment
+without a controller, follow the installer sequence below.
 
 The kit's [published deployment inputs](../deployments/personal/) are sanitized
 reference artifacts, not a complete installer target. The setup sections below

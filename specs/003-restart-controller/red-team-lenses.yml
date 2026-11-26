@@ -1,0 +1,29 @@
+# Triggers: contracts, multi_party, immutability_audit.
+# No change to model routing, spend controls or regulatory scope.
+version: 1
+defaults: {finding_bound: 3, severity_weight: 1.0}
+lenses:
+  - name: Trust boundary
+    description: Separate repository work, deployed inputs and live authority.
+    trigger_match: [contracts, multi_party]
+    severity_weight: 1.0
+    core_questions:
+      - Can a green check be mistaken for permission or a worktree for the installed source?
+  - name: Race and staleness
+    description: Assess exact limits of disk observations.
+    trigger_match: [contracts, immutability_audit]
+    severity_weight: 1.0
+    core_questions:
+      - Can stale or mixed observations be reported as live readiness?
+  - name: Configuration drift
+    description: Compare the proposed check to the real generation bindings.
+    trigger_match: [contracts, immutability_audit]
+    severity_weight: 1.0
+    core_questions:
+      - Which actual controller and deployment inputs are not covered by the disk check?
+  - name: Documentation drift
+    description: Separate inherited design, current contract and new proposals.
+    trigger_match: [contracts, multi_party]
+    severity_weight: 1.0
+    core_questions:
+      - Does a historical instruction or ambiguous source hierarchy send an operator to the wrong gate?

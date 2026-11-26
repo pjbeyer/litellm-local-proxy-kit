@@ -1,39 +1,45 @@
 # Restart controller operations (macOS)
 
-**Release posture: validation draft, not production-qualified.** Qualification
-checks the generated controller plist and available loaded executable, arguments,
-source path, working directory, environment and throttle settings, not just
-PID/birth agreement. Operator evidence separately binds supervision fields that
-launchctl cannot expose. Source verification is not live platform qualification:
-activation, evidence issuance and production interruption remain operator gates.
-The executable contract is [restart-controller.md](restart-controller.md). Installation does not
-activate a job, qualify a platform, grant approval, or take over a bridge.
-This is accident prevention for trusted same-user automation, not OS isolation.
+Use a dedicated kit worktree. Run `make help` there, one target at a time. The
+commands use `~/.config/litellm-restart-controller/policy.json` unless you set
+`POLICY` to another provisioned policy. The installed policy selects the durable
+kit source, deployment source and client; your worktree supplies the command,
+not those inputs. If a bound root is missing, stop. Never substitute your checkout
+or repoint installed policy to a disposable worktree.
 
-The [cap-aware shutdown amendment](restart-controller-shutdown-contract.md) is
-now **offline-implemented** (plan T001–T025 executed and test-verified offline),
-but it is still **not deployed and not platform-qualified**: no live canary has
-been run, no controller generation has been activated, and no qualification has
-been issued. Behavior proven by the offline suite must not be read as evidence
-about this host's live launchd behavior. Live activation, the isolated-canary
-lane and production handoff remain separate operator gates.
+The [Spec Kit feature](../specs/003-restart-controller/spec.md) owns controller
+behavior. This runbook owns operations. Dated evidence describes past runs, not
+current eligibility. These controls prevent accidents among trusted same-user
+actors; they are not OS isolation.
 
 ## Existing deployment: before you prepare
 
-Start with [routine maintenance](macos-managed-service.md#routine-maintenance)
-for source changes and staging. Then use `status` on the installed, policy-bound
-controller; confirm it is idle and that the trusted qualification matches the
-installed generation and current daemon incarnation. `status` alone is not a
-qualification check. If the policy or installed generation changed, follow the
-applicable owner activation and qualification gates below. If evidence expired,
-follow the installed generation's qualification contract; never reuse a dated
-issuer or another incarnation's canary evidence.
+| Need | Command | What it does and does not prove |
+|---|---|---|
+| Inspect the controller | `make status` | Queries the installed controller; not a live qualification check. |
+| Check the primary listener | `make health` | Checks loopback liveness, readiness and unauthenticated models access; not provenance, owner approval or upstream model acceptance. |
+| Preview reviewed deployment changes | `make preview` | Installer dry run, not a credential-free check. Use only reviewed deployment inputs; it does not stage or activate. |
+| Stage reviewed changes | `make apply` | Writes and verifies managed files after preview and review. No service reload; stop on error and reconcile any partial staging. |
+| Check proxy files and drift | `make verify` | Installer verify plus deployment drift via the pinned Python; not controller bundle parity. |
+| Check controller bundle parity | [Install verifier](#provision-and-install) | Stay in your worktree and run the policy-bound installer by absolute path with `--verify`. Compares installed files and generated plist; does not validate the loaded job or qualify the daemon. |
+| Ask for a restart plan | `make prepare` | Real candidate rehearsal; may use credentials and shared DB, cache and inference. Does not approve or restart. |
+| Submit an approved plan | `make restart REQUEST_ID=… ASSET_DIGEST=…` | Owner-only step after exact fresh approval and matching record. Never retry after timeout or refusal without reconciling the outcome. |
 
-When those gates are satisfied, use the [closed client interface](#closed-client-interface).
-Allow time for its real candidate checks. Only the owner may approve the exact
-prepared plan and submit the restart before the deadlines. On refusal or
-uncertain progress, preserve the running listener and recovery state; use
-[failure handling](#failure-handling), not an alternate control command.
+**Routine order:** diagnose first. If staging is needed, edit the deployment
+source, then preview, review, apply and verify. A change to a boot-bound input
+can require an owner controller refresh and new qualification before prepare.
+Do not edit installed files or issue qualification yourself. If `status` reports
+an active request or the outcome is unclear, stop and reconcile it first.
+For read-only triage, stop at status, health and the relevant parity check.
+Do not schedule rehearsal, staging or submission as an unattended check.
+
+Follow the [client and approval rules](#closed-client-interface) for rehearsal
+and submission. If a client times out, the daemon may still be working. Observe
+`make status` and have the owner reconcile the durable outcome; do not submit
+again or infer success from HTTP. After a reported restart, confirm terminal
+`restarted` (not rollback), a new primary identity, unchanged controller epoch,
+`make health`, and authenticated acceptance of the affected routes. Record the
+outcome, not raw responses or credentials.
 
 ## Provision and install
 
@@ -58,11 +64,19 @@ The Unix socket pathname must fit the platform's Unix-domain pathname limit.
 Create necessary parent directories deliberately; existing directories must not
 be symlinks or owned by another user. State and socket parents are 0700.
 
-From the kit checkout, with `POLICY` set to that private policy path:
+Stay in your worktree. Set `POLICY` to the absolute path of the private
+policy, `KIT_ROOT` to the exact absolute `kit_root` in that policy, and
+`PROXY_PYTHON` to the pinned interpreter (`LITELLM_PROXY_PYTHON` in the proxy
+plist named by the policy). If the bound script is missing, stop; do not run
+the worktree copy. For an existing installation, run only the `--verify`
+command:
 
 ```sh
-python3 core/install_restart_controller.py --policy "$POLICY"
-python3 core/install_restart_controller.py --policy "$POLICY" --verify
+# Existing installation: check parity without activating anything.
+"$PROXY_PYTHON" -B "$KIT_ROOT/core/install_restart_controller.py" --policy "$POLICY" --verify
+
+# First install only, by the owner after provisioning.
+"$PROXY_PYTHON" -B "$KIT_ROOT/core/install_restart_controller.py" --policy "$POLICY"
 ```
 
 The installer copies a byte/mode-matched controller bundle and writes only its new
@@ -117,7 +131,9 @@ handoff remains a separate, explicitly authorized operator operation.
 
 ## Closed client interface
 
-Use the installed entrypoint with the same private policy:
+Use the routine `make` targets above (they invoke the installed entrypoint).
+When the reviewed worktree predates the Makefile, use the installed entrypoint
+with the same private policy:
 
 ```sh
 python3 "$CONTROLLER_ROOT/restart_controller.py" --policy "$POLICY" status
@@ -269,13 +285,13 @@ fence), and `canary/` (arms, scopes, evidence, detail). Reconciliation rules:
 
 Before selecting a fresh state root or arming the first canary of a new
 generation, produce the bounded hash-pinned predecessor-state inventory
-(plan T026): every pending/prepared request, consumed approval, operation/
+([historical shutdown plan](../specs/003-restart-controller/history/shutdown-plan.md), T026): every pending/prepared request, consumed approval, operation/
 fence row, spawn/child record and consumed canary scope, each with a
 disposition and the operator's reconciliation decision. Unknown, truncated or
 unreconciled state blocks packet readiness — no automatic root-switch.
 
 Activation is a sequence of separate owner gates, in order: (1) offline
-acceptance (T025) — complete suite, mutation battery, reviews, all green;
+acceptance (historical shutdown plan T025) — complete suite, mutation battery, reviews, all green;
 (2) the predecessor-state audit above; (3) the immutable candidate-generation
 activation packet (reviewed digests, bounded arm lifetime, derived scope,
 expected observations) — preparation evidence only, never execution; (4) the
