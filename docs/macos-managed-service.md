@@ -1,19 +1,20 @@
 # Managed macOS service installation
 
-This guide covers the separately specified shared deployment core (spec 015).
-The older routing experiment in the root README is not an activation procedure.
-Use a reviewed deployment repository; do not install directly from a template or
-use this guide to bypass a workstation's operator/EDR approval boundary.
+This guide is for first installation, migration, and rollback of the shared
+macOS deployment core. For an existing controller-managed deployment, start
+with [routine maintenance](restart-controller-operations.md#existing-deployment-before-you-prepare)
+instead. Do not use the install or reload examples as a fallback after a
+controller refusal.
+
+Use a reviewed deployment repository. The kit's
+[published deployment inputs](../deployments/personal/) are reference artifacts,
+not a complete installer target or a copy of a running deployment.
 
 ## Routine maintenance
 
-For an existing controller-managed deployment, use the [restart controller
-runbook](restart-controller-operations.md). For initial setup or a deployment
-without a controller, follow the installer sequence below.
-
-The kit's [published deployment inputs](../deployments/personal/) are sanitized
-reference artifacts, not a complete installer target. The setup sections below
-are for provisioning or a separately approved managed handoff.
+Use the [restart controller runbook](restart-controller-operations.md) for the
+policy-bound `make` targets. Use the sections below to provision a new deployment
+or for an explicitly authorized handoff.
 
 ## Source and runtime contract
 
@@ -68,11 +69,15 @@ retire. Keep credential backups in secure storage, not plaintext scratch copies.
 A rollback must restore both the old plist and every script it calls; an old
 venv alone is not a rollback when its editable source checkout has changed.
 
-Rehearse **the new managed wrapper and generated plist environment**, not merely
-the old wrapper with the new interpreter, on an unused loopback port. Explicitly
-provide HOME, PATH and the user runtime-directory variables when building a
-minimal manual environment. Do not treat one working environment as proof that
-a particular variable caused an earlier authentication failure.
+Review and validate **the new managed wrapper and generated plist environment**,
+not merely the old wrapper with the new interpreter. First use the [installer
+sequence below](#stage-files-does-not-reload-launchd) with a separate reviewed
+candidate deployment root, label, config directory and log directory. Review
+its dry run, apply and verify only its candidate targets, then use the installed
+candidate wrapper and its sibling manifest/pin. Stage the primary targets only
+after candidate acceptance. Check a separate, unused loopback port so the primary
+cannot satisfy the probes. Use explicit `HOME`, `PATH` and runtime paths; a spare
+port alone is not an isolation boundary.
 
 Require health 200, invalid-key **401**, a real authenticated completion and a
 streamed tool call with exactly-once reconstructed arguments. A 400 response
@@ -129,7 +134,19 @@ restart a retired script. Do not leave this transition unattended.
 This section is for initial provisioning or a separately approved handoff.
 For a controller-managed listener, use the [restart controller](restart-controller-operations.md#existing-deployment-before-you-prepare) instead.
 
-On an operator-owned workstation, the **operator** runs:
+The **operator** first verifies whether the label is loaded, then chooses one path.
+
+**First install, both labels verified absent:**
+
+```bash
+launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/$LABEL.plist" &&
+launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/$LABEL.rotate.plist"
+```
+
+Verify both labels with `launchctl print`. If only one bootstrap succeeds,
+reconcile what's loaded before any further service control.
+
+**Replacement, previous proxy job verified loaded:**
 
 ```bash
 launchctl bootout "gui/$(id -u)/$LABEL" &&

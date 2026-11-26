@@ -1,26 +1,12 @@
-# Publication Readiness Checklist
+# Publication and release checks
 
-This repository is an import-stage local project, not yet a public release.
+This repository is public source under the MIT license. A public source revision is not a release qualification or evidence of a live deployment.
 
-## Complete for this import
+## Before publishing a branch, tag, or release
 
-- [x] Reviewed each candidate source artifact before import.
-- [x] Excluded raw runtime logs, backups, personal Hermes configuration, and machine-specific launch files.
-- [x] Replaced source-specific absolute paths with generic `$HOME` paths or placeholders.
-- [x] Replaced the secret-shaped local test placeholder with an environment-variable reference.
-- [x] Ran secret-shaped-value and private-path scans on the staged repository.
-- [x] Ran offline policy tests, syntax/YAML checks, checksum verification, and independent Codex review.
+1. Before staging, scan the exact candidate for secret material, private paths, merge markers and empty artifacts. Review changes and every artifact that becomes reachable. Exclude resolved credentials and real credential references, workstation configuration, raw logs or responses, private tracker records, and agent prompts or session metadata. Put deployment-specific material in a separate private repository.
+2. Review the public repository beyond the working tree: branches, tags, pull-request refs, notes, database refs, releases, and Actions artifacts. Never mirror a private issue database or prompt-bearing attribution notes to the public source remote. A cleanup commit does not erase earlier commits or data still available through other refs.
+3. Run the complete offline suite and an independent review of the exact release candidate. Keep reports redacted. Treat findings in history or auxiliary refs as exposure to contain, not as issues fixed by adding patterns to `.gitignore`.
+4. If releasing a new runtime, declare its interpreter, source pin, dependencies and native receipt where relevant. Run `preflight.py --router-test` with that runtime, and perform separately authorized auth, inference and required tool/MCP checks. Revalidate provider limits and data-handling terms. Document unresolved compatibility limits instead of implying support.
 
-## Required before a public remote or release
-
-- [x] Select and record an OSS license: MIT (LICENSE).
-- [x] Identify and isolated-validate a stable LiteLLM candidate: `1.101.0` passed the imported callback/router matrix; see `docs/stable-candidate-validation.md`. Superseded 2026-11-04: `1.108.0` passed pip check, the complete offline suite, and `--router-test`; two-phase tool transport pending.
-- [ ] Re-run `preflight.py --router-test` with the exact declared release environment whenever the candidate dependency set changes.
-- [ ] Verify each provider/model name, quota policy, and data-handling term at release time; do not rely on source-experiment observations.
-- [ ] Add a portable macOS service guide only after separate specification and review. Do not publish a workstation plist or script.
-- [ ] Replace the validation-only candidate and disposable `requirements-pilot.txt` manifest with reproducible, stable-release dependency/install metadata and a declared supported Python/LiteLLM environment.
-- [ ] Resolve the RC proxy authentication dependency gap documented in `docs/isolated-rc-pilot-result.md`; the current manifest is not a production lockfile.
-- [ ] Repeat and pass every remaining pilot gate recorded in `docs/isolated-rc-pilot-result.md`, including approved provider validation and a client-executed function-tool round trip, before release consideration.
-- [ ] Resolve the local forced-tool incompatibility documented in `docs/local-tool-compatibility.md` and add a loopback regression before representing the local route as tool capable.
-- [ ] Add CI that runs offline tests and publication-hygiene scans.
-- [ ] Run a final independent review of the release candidate.
+Use the [managed service guide](macos-managed-service.md) for deployment and the [compatibility evidence](compatibility.md) for qualified claims about specific test runs.

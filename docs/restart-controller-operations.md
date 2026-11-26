@@ -23,7 +23,7 @@ actors; they are not OS isolation.
 | Check proxy files and drift | `make verify` | Installer verify plus deployment drift via the pinned Python; not controller bundle parity. |
 | Check controller bundle parity | [Install verifier](#provision-and-install) | Stay in your worktree and run the policy-bound installer by absolute path with `--verify`. Compares installed files and generated plist; does not validate the loaded job or qualify the daemon. |
 | Ask for a restart plan | `make prepare` | Real candidate rehearsal; may use credentials and shared DB, cache and inference. Does not approve or restart. |
-| Submit an approved plan | `make restart REQUEST_ID=… ASSET_DIGEST=…` | Owner-only step after exact fresh approval and matching record. Never retry after timeout or refusal without reconciling the outcome. |
+| Submit an approved plan | `make restart REQUEST_ID=… ASSET_DIGEST=…` | Owner-only step after exact fresh approval and matching record. It does not create approval. Never retry after timeout or refusal without reconciling the outcome. |
 
 **Routine order:** diagnose first. If staging is needed, edit the deployment
 source, then preview, review, apply and verify. A change to a boot-bound input
