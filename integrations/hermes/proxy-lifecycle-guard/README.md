@@ -7,6 +7,39 @@ A refusal is not permission to retry through another tool. Use the
 [owner-reviewed restart workflow](../../../docs/restart-controller-operations.md)
 when the proxy actually needs a restart.
 
+## Routine work in Hermes
+
+Start from your own linked Git worktree. Use these entry points for new work;
+none is an override for a refused call.
+
+| Need | Supported entry point | What to do if it stops |
+| --- | --- | --- |
+| Check proxy availability | Use the liveness and readiness checks in the [managed service runbook](../../../docs/macos-managed-service.md#routine-maintenance). | A service check is not restart authorization. Use the owner workflow when recovery is needed. |
+| Check guard health or installed-file drift | Read the most recent run of the existing [`guard_probe_watchdog.py`](guard_probe_watchdog.py) job in the owning profile. For source changes, use the [offline tests below](#verify-a-source-change). | Report a missing or failed receipt; don't change installed files or schedule a second watchdog to obtain a green result. |
+| Check credentials after rotation | Use the credential owner's read-only check for the service and account that were rotated. A GitHub or Dolt check does not verify proxy credentials. Keep diagnostic output private. | A check that ran and exited nonzero is not a guard refusal. Preserve the exit result and ask the credential owner to diagnose it. |
+| Validate a kit specification | Use the [Spec Kit workflow](../../../specs/README.md) and its existing prerequisite, artifact, and approval checks. | Record a refused or failed gate as open. Other document checks cannot stand in for it. |
+| Run Git, Beads, or relay work | Use the native tool for the job. Keep document editing separate from execution; use structured tool arguments rather than embedding prose or nested JSON in shell programs. For relay calls, use the configured connector's schema. | After a refusal, stop that operation. After an uncertain write or blocked readback, preserve the available receipt and report **unverified**; don't infer no write occurred or submit it again. |
+
+### When a call is refused
+
+1. Record the fixed category/code, tool, and time. If available, corroborate
+   with the [decision sink](../../../docs/contracts/decision-sink.md). Do not
+   classify a relay, authentication, or command exit error as a guard refusal.
+2. `POLICY_INVALID` or `INTEGRITY_REF_INVALID`: stop executable work and notify
+   the owner. A malformed envelope goes to the tool composer. For `VETO`, stop
+   the operation and report the intended task; the category alone does not
+   establish what triggered it.
+3. For a suspected false positive, keep the original call receipt private and
+   report the smallest sanitized description that identifies the workflow.
+   Do not retry via a new session, helper, executor, or reformatted payload.
+   Continue only independent work. For recurring jobs, report and stop the
+   retry loop; repeated log rows are not separate incidents.
+4. To disposition a false positive, reproduce it offline against the
+   installed evaluator (`guard.evaluate` with the deployed policy) and
+   file the finding as a guard issue; do not patch the installed plugin
+   directory. Keep any regression fixtures in the kit's test suite. Fixes land
+   through the kit's review workflow, never by editing the deployed copy.
+
 ## Routine maintenance: respond to alerts, not a checklist
 
 Schedule the included `guard_probe_watchdog.py` as a no-agent Hermes job. If
@@ -36,17 +69,18 @@ refused operation live or add raw arguments to shared logs.
 
 ## Verify a source change
 
-From the repository root, use the [kit's offline test setup](../../../README.md#validation-boundary).
-The focused loop includes the evaluator, its hook and the watchdog/sink tests;
-run the complete kit suite before staging a release. Use a short, resolved
+From the repository root, use the [kit's offline test setup](../../../README.md#verify-without-touching-a-deployment).
+The focused loop includes the evaluator, its hook and the watchdog/sink tests.
+Run the complete kit suite before staging a release. The callback tests stub
+LiteLLM; the offline suite does not need the LiteLLM runtime. Use a short, resolved
 scratch path for `TMPDIR` (Darwin socket paths are limited), and a separate
 `XDG_STATE_HOME` under that disposable path. Keep the scratch directory
 private and use the normal test umask (`022`), not `077`.
 
 ```sh
 # In the isolated test environment, with TMPDIR and XDG_STATE_HOME set as above:
-.venv-tests/bin/python -m pytest -q tests/test_lifecycle_guard.py tests/test_guard_*.py tests/test_sink_*.py
-.venv-tests/bin/python -m pytest -q tests
+uv run --no-project --with pytest --with pyyaml python -m pytest -q tests/test_lifecycle_guard.py tests/test_guard_*.py tests/test_sink_*.py
+uv run --no-project --with pytest --with pyyaml python -m pytest -q tests
 hermes plugins validate integrations/hermes/proxy-lifecycle-guard --json
 ```
 
