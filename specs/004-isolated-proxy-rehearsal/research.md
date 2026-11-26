@@ -8,6 +8,12 @@
 
 **Alternatives:** Extend managed `prepare` (reject: depends on the live controller and may share real credentials and spend); run a same-user process on the host (reject: containment not established); use a Linux container (reject for the native macOS acceptance target).
 
+### Native alternative: SandVault
+
+**Disposition:** Worth evaluating as a native launcher, not a qualifying boundary as shipped. SandVault combines a separate macOS user/login context with `sandbox-exec`, preserving the native runtime and adding filesystem and Mach-service restrictions. The [pinned upstream profile](https://github.com/webcoyote/sandvault/blob/e2f0aae861232028d3fab19848bd8a52c7d8810d/sv#L1989-L2145) starts with `allow default`, and its [security review](https://github.com/webcoyote/sandvault/blob/e2f0aae861232028d3fab19848bd8a52c7d8810d/docs/security-review-2026-11-24.md#11-sandbox-profile-is-allow-default) confirms network and host-loopback access. That directly fails FR-003. The regular writable shared workspace and optional host bridges are not the planned read-only input and bounded result channel.
+
+A native trial would need an independently enforced deny-by-default network boundary, limited disposable storage, proof that credential stores and host IPC are inaccessible, and supervision with durable run ownership and closure proof under FR-005. Exercise all of those with inert inputs on the target Mac before considering the real build. This was a source review only; SandVault was not installed or run. Keep the offline macOS VM as the planned first backend unless a native trial proves equivalent controls.
+
 ## Render and verify only inside the guest
 
 **Decision:** Transport pinned, reviewed artifacts as data. The host verifies opaque file identities and closed manifest shape; the guest renders the overlay and verifies the actual guest interpreter, source, native receipt and sentinel. Use the existing renderer and proof/checker entrypoints and a rehearsal-specific fixture-only startup adapter. Keep production preflight unchanged.
