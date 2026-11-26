@@ -1,0 +1,49 @@
+specs/README.md
+  s_f6d8584cf80c2e::t_a55f1e2afd83ef 5
+specs/002-hermes-eval-attribution/analysis.md
+  s_ff3677362bb4fa::t_1b32c0291b73bd 1-33
+specs/002-hermes-eval-attribution/checklists/attribution.md
+  s_ff3677362bb4fa::t_88e45833a37b78 1-26
+specs/002-hermes-eval-attribution/checklists/requirements.md
+  s_ff3677362bb4fa::t_aa2c1f4fac8d93 1-27
+specs/002-hermes-eval-attribution/clarifications.md
+  s_ff3677362bb4fa::t_48796f713032c2 1-14
+specs/002-hermes-eval-attribution/contracts/attribution.md
+  s_ff3677362bb4fa::t_4d8b76fe462c97 1-27
+specs/002-hermes-eval-attribution/data-model.md
+  s_ff3677362bb4fa::t_5bbe6fd2903281 1-24
+specs/002-hermes-eval-attribution/plan.md
+  s_ff3677362bb4fa::t_589c59481adf99 1-45
+specs/002-hermes-eval-attribution/quickstart.md
+  s_ff3677362bb4fa::t_baee6b9342ed47 1-32
+specs/002-hermes-eval-attribution/research.md
+  s_ff3677362bb4fa::t_083ea7a3b4129c 1-40
+specs/002-hermes-eval-attribution/spec.md
+  s_ff3677362bb4fa::t_10c5aac0294d80 1-123
+specs/002-hermes-eval-attribution/tasks.md
+  s_ff3677362bb4fa::t_e28df23f463f6d 1-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "0fb72af129603975c05b5d9ced9e0b0c524e6269",
+  "prompts": {},
+  "sessions": {
+    "s_f6d8584cf80c2e": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261126_142349_cc30be",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_ff3677362bb4fa": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261126_143303_277312",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
