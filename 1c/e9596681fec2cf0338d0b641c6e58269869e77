@@ -1,0 +1,19 @@
+specs/README.md
+  s_b3760463dcec3e::t_721cf64d44d65a 3-4,6-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "1ce9596681fec2cf0338d0b641c6e58269869e77",
+  "prompts": {},
+  "sessions": {
+    "s_b3760463dcec3e": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261126_075737_be4439",
+        "model": "gpt-6.2-sol"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
