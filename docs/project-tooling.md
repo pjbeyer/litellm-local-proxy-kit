@@ -23,8 +23,12 @@ instance already exist and are not replaced by the template.
   uvx --from 'git+https://github.com/github/spec-kit.git@fe1d00e3ccaf495880aaf90fb0e17679e82f065b' specify integration status --json
   ```
 
-  Read [the feature index](../specs/README.md) before implementation. The base
-  scaffold does not install community extensions or recreate approval state.
+  Read [the feature index](../specs/README.md) before implementation. The kit
+  also vendors reviewed Spec Validate 1.0.1 and Security Review 1.5.3 snapshots
+  under `.specify/extensions/`, with local fixes and hooks registered in
+  `.specify/extensions.yml`. They do not recreate approval state. Use the
+  checked-in extension command documents for this kit; a globally installed
+  skill may describe a different approval policy.
 - **Agent guidance:** [AGENTS.md](../AGENTS.md) defines the kit-specific rules;
   the [operating-baseline skill](../.agents/skills/project-operating-baseline/SKILL.md)
   carries the generic conventions.
@@ -38,14 +42,21 @@ your normal home just to work on this kit. To prepare commands for review, rende
 in an empty temporary home and project:
 
 ```sh
-stage=$(mktemp -d)
-mkdir -p "$stage/home" "$stage/project"
+stage=$(mktemp -d "${TMPDIR:-/tmp}/kit-spec-render.XXXXXX") || exit 1
+mkdir -p "$stage/home" "$stage/project" || exit 1
+# Run from the kit worktree root; copy source only, never private state.
+for ext in spec-validate security-review; do
+  mkdir -p "$stage/$ext"
+  git archive HEAD ".specify/extensions/$ext" | tar -x -C "$stage/$ext" || exit 1
+done
 (
   export HOME="$stage/home" HERMES_HOME="$stage/home/.hermes"
   cd "$stage/project" || exit 1
   cli='git+https://github.com/github/spec-kit.git@fe1d00e3ccaf495880aaf90fb0e17679e82f065b'
   uvx --from "$cli" specify init --here --integration hermes --script sh --non-interactive &&
-    uvx --from "$cli" specify extension add agent-context
+    uvx --from "$cli" specify extension add agent-context &&
+    uvx --from "$cli" specify extension add --dev "$stage/spec-validate/.specify/extensions/spec-validate" &&
+    uvx --from "$cli" specify extension add --dev "$stage/security-review/.specify/extensions/security-review"
 )
 ```
 
@@ -55,6 +66,24 @@ owner can review the generated skills and install the needed directories in that
 profile's skill root. Never overwrite an existing skill as part of repo setup.
 The CLI status check above only verifies project files. The presence of the
 base `/speckit-implement` command does not clear a feature's validation gate.
+
+For features that require Spec Validate, select the feature in your worktree,
+then use the checked-in [spec validation](../.specify/extensions/spec-validate/commands/validate.md)
+and [task validation](../.specify/extensions/spec-validate/commands/validate-tasks.md)
+procedures with the operator. Complete any
+[independent review](../.specify/extensions/spec-validate/commands/review.md)
+required for each artifact. Run the gate against the feature directory basename
+from the worktree root:
+
+```sh
+SPECIFY_FEATURE_DIRECTORY=specs/003-restart-controller \
+  bash .specify/scripts/bash/check-prerequisites.sh --json --require-spec --require-tasks --include-tasks
+bash .specify/extensions/spec-validate/scripts/bash/check-gate.sh 003-restart-controller
+```
+
+The prerequisite check only locates artifacts. The gate requires current spec
+and task hashes and separate review dispositions. Keep validation state and
+quiz answers out of Git. A missing gate or missing approval is not clearance.
 
 ## Release setup
 

@@ -12,7 +12,7 @@ Python 3, standard library and Make for the owner dispatcher; existing pinned Py
 
 ## Constitution check
 
-Preserve fail-closed behavior and bounded same-user protection (I–II). Fixture tests and independent review are required for behavioral change (III); strip private identifiers and machine paths (IV). Reuse existing interfaces (V); named generation schemas and receipts do not change (VI–VII). No installation as a side effect, bypass, or live state change.
+Keep private identifiers and deployment data out of public artifacts (I). Preserve operator authority and fail-closed behavior without changing installed state (II). Bind validation and review to the current artifacts, and verify success and refusals offline (III). Reuse existing interfaces; do not change generation schemas or receipts (IV).
 
 ## Project structure and traceability
 
@@ -34,7 +34,7 @@ No new service, dependency or runtime schema.
 | Gate | Disposition |
 |---|---|
 | Pre-plan adversarial review | [Recorded for the draft](red-team-findings-2026-11-25.md); findings addressed. Not an approval of the current candidate. |
-| Shared Spec Kit scaffold | **Open.** Use the repo-wide recovery when it lands. This feature does not publish its local bootstrap, the older validation implementation, or another feature’s approval state. |
-| Spec Validate comprehension and applicable peer review | **Open.** The operator must validate the current spec bytes; rerun the installed gate before T004. A structure pass is not approval. |
+| Shared Spec Kit scaffold | Use the checked-in Hermes-first scaffold and [kit extension workflow](../../docs/project-tooling.md#install-hermes-commands-separately). Do not copy a bootstrap or another feature’s approval state. |
+| Spec Validate comprehension and applicable peer review | **Open.** Validate the current spec and task bytes with the operator, complete applicable peer review, and run the checked-in gate before T004. A structure pass is not approval. |
 | Plan/tasks security review and proposed implementation verification | **Open.** Run the applicable review and test the proposed diagnostic before marking T004 complete. |
 | Live activation, qualification and approval | Out of scope. Historical receipts and offline results confer no live authority. |

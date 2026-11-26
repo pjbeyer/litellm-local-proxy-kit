@@ -2,7 +2,7 @@
 
 **Feature**: `003-restart-controller` · **Branch**: `docs/controller-routine-work` · **Created**: 2026-11-25
 
-**Status**: Retrospective baseline plus one proposed maintenance check. Neither the historical design nor this feature authorizes live work. The local, ignored Spec Kit pointer moved from the draft controller directory to `003` to leave `002` available for the separate Hermes attribution feature. Restore the prior pointer at closeout (absent in this worktree before the draft).
+**Status**: Retrospective baseline plus one proposed maintenance check. Neither the historical design nor this feature authorizes live work. Select `specs/003-restart-controller` in your own worktree; do not commit the local feature pointer.
 
 ## User Scenarios & Testing
 
