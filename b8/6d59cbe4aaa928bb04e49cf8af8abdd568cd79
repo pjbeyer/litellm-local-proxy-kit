@@ -1,0 +1,64 @@
+AGENTS.md
+  s_2577c474aaa5a6::t_f60f19568affef 30
+docs/restart-controller-operations.md
+  s_dae37ba7bf8414::t_1069c7ece3a9a6 76,79
+  s_dae37ba7bf8414::t_e5d3453d7208b5 68-72
+  s_dae37ba7bf8414::t_d11d85ec1ca587 24
+  s_dae37ba7bf8414::t_7cad4d0c6f547b 67,75,77-78
+  s_dae37ba7bf8414::t_3befc8d5bc9df1 21-23
+  s_dae37ba7bf8414::t_ff15272c051645 25-27
+specs/README.md
+  s_dae37ba7bf8414::t_6e3dda909469f9 6
+  s_dae37ba7bf8414::t_030ad03731ee79 3-5
+  s_dae37ba7bf8414::t_74a9123380d200 7-8
+tests/test_restart_runtime.py
+  s_dae37ba7bf8414::t_621035ea919ac9 294-316
+specs/003-restart-controller/analysis.md
+  s_2577c474aaa5a6::t_6b75b929775a1a 1-17
+docs/plans/2026-11-03-controller-shutdown.md
+  s_2577c474aaa5a6::t_ed4ffa5b198092 1,3
+docs/plans/restart-controller.md
+  s_2577c474aaa5a6::t_6ec91c2fda5b98 1,3
+docs/restart-controller-shutdown-contract.md
+  s_2577c474aaa5a6::t_263065273e673d 3
+docs/restart-controller.md
+  s_2577c474aaa5a6::t_7a9f1bcd00f0bc 3
+specs/003-restart-controller/contracts/controller.md
+  s_2577c474aaa5a6::t_e46510e2282b3b 1-297
+specs/003-restart-controller/history/original-plan.md
+  s_14c2ec58154bb8::t_7bf8f9c8082b2b 1-67
+specs/003-restart-controller/red-team-lenses.yml
+  s_14c2ec58154bb8::t_8109c2270d0577 1-29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "b86d59cbe4aaa928bb04e49cf8af8abdd568cd79",
+  "prompts": {},
+  "sessions": {
+    "s_14c2ec58154bb8": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261125_195456_e1356a",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_2577c474aaa5a6": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261125_200634_13b910",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_dae37ba7bf8414": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261125_202039_3f0e1d",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
