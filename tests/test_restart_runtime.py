@@ -291,6 +291,29 @@ def test_installer_owned_layout_and_isolated_daemon_status(runtime, private_root
     assert not endpoint.exists()
 
 
+def test_controller_verifier_from_separate_worktree(runtime, private_root):
+    home = private_root/'fixture-home'
+    (home/'Library/LaunchAgents').mkdir(parents=True)
+    atomic_json(runtime.policy_path, dict(runtime.policy, controller_root=str(private_root/'installed')))
+    script = 'core/install_restart_controller.py'
+    env = {'HOME': str(home), 'PATH': os.defpath, 'TMPDIR': os.environ['TMPDIR']}
+
+    def invoke(path, *flags):
+        result = subprocess.run(
+            [sys.executable, '-B', str(path), '--policy', str(runtime.policy_path), *flags],
+            cwd=ROOT, env=env, capture_output=True, text=True, timeout=10,
+        )
+        return result.returncode, json.loads(result.stdout)
+
+    # Install only into the disposable fixture HOME. The caller's cwd stays in
+    # the test worktree, which is deliberately not the policy's source root.
+    assert invoke(runtime.kit/script)[1]['status'] == 'installed'
+    assert invoke(script, '--verify') == (78, {'status': 'blocked', 'code': 'runtime_invalid'})
+    assert invoke(runtime.kit/script, '--verify') == (
+        0, {'status': 'verified', 'activation': 'not_performed'},
+    )
+
+
 def test_freeze_compares_installed_closure_not_live_kit_head(runtime, private_root):
     """lpkit-j4z: an installed bundle must be validated against its
     install.json `sources` closure snapshot, NOT against live kit HEAD bytes.

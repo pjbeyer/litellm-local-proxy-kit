@@ -17,6 +17,14 @@ This is an exploratory, OSS-oriented repository for a local LiteLLM proxy method
 - Run local scans before staging: secrets, private paths, merge markers, and zero-byte artifacts.
 - Run independent Codex review before committing a substantive import or behavioral change.
 
+## Restart controller and worktree isolation
+
+Use a dedicated Git worktree for all kit work, including read-only repository
+investigation and merge verification. Do not edit the shared checkout or point
+installed policy at a disposable worktree. Start with [controller operations](docs/restart-controller-operations.md)
+and `make help`; use [specs/](specs/README.md) for contracts and acceptance.
+Dated evidence is not a procedure or permission to retry a refused operation.
+
 ## Tracking
 
-Until this repository has its own tracker, keep project planning in the designated external issue tracker rather than duplicating a markdown backlog here.
+Use Beads for backlog and delivery status. Keep behavior contracts and acceptance criteria under `specs/`; do not duplicate the backlog there.
