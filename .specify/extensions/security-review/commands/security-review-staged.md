@@ -73,7 +73,7 @@ Avoid retrieving redundant memories.
 
 ## Steps
 
-1. **Identify Scope**: Run `{SCRIPT}` to identify the changed files.
+1. **Identify Scope**: Use the staged file inventory above.
 2. **Retrieve Diff**: Run `git diff --cached` (or `git diff` on the identified files) to retrieve the actual code changes.
 3. **Analyze Diff**: Analyze only the staged diff for security issues across these domains (focusing on requested aspects):
    - Injection vulnerabilities (SQL, NoSQL, command, template)

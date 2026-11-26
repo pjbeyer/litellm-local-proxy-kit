@@ -144,10 +144,15 @@ def test_bash_state_writer_preserves_literal_path(tmp_path):
     state_dir = tmp_path / "operator's worktree"
     script = EXTENSION / 'scripts/bash/write-approval-state.sh'
     state = {'spec_self_validation': 'passed', 'approval_status': 'blocked'}
+    state_dir.mkdir()
+    existing = state_dir / f'{FEATURE}.json'
+    existing.write_text('{}', encoding='utf-8')
+    existing.chmod(0o644)
     env = dict(os.environ, SPEC_VALIDATE_STATE_DIR=str(state_dir))
     subprocess.run(['bash', str(script), FEATURE, json.dumps(state)], env=env,
                    capture_output=True, check=True, timeout=20)
-    assert json.loads((state_dir / f'{FEATURE}.json').read_text()) == state
+    assert json.loads(existing.read_text()) == state
+    assert existing.stat().st_mode & 0o777 == 0o600
 
 
 SECURITY_SCRIPTS = EXTENSION.parent / 'security-review/scripts'
@@ -159,12 +164,16 @@ def test_review_scope_includes_deletions_and_new_files(tmp_path, shell):
         pytest.skip(f'{shell} is not installed')
     file = tmp_path / 'retired-check.txt'
     file.write_text('Fixture\n', encoding='utf-8')
+    changed_type = tmp_path / 'type-change.txt'
+    changed_type.write_text('Fixture\n', encoding='utf-8')
     subprocess.run(['git', 'init', '-q'], cwd=tmp_path, check=True)
-    subprocess.run(['git', 'add', file.name], cwd=tmp_path, check=True)
+    subprocess.run(['git', 'add', file.name, changed_type.name], cwd=tmp_path, check=True)
     subprocess.run(['git', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
                     '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null',
                     'commit', '-qm', 'Fixture'], cwd=tmp_path, check=True)
     file.unlink()
+    changed_type.unlink()
+    changed_type.symlink_to('new check.txt')
     (tmp_path / '.git/info/exclude').write_text('ignored.txt\n', encoding='utf-8')
     (tmp_path / 'ignored.txt').write_text('Local fixture\n', encoding='utf-8')
     added = tmp_path / 'new check.txt'
@@ -175,7 +184,7 @@ def test_review_scope_includes_deletions_and_new_files(tmp_path, shell):
         argv = [shell, '-NoProfile', '-File',
                 str(SECURITY_SCRIPTS / 'powershell/detect-changed-files.ps1'), '-Json']
     result = subprocess.run(argv, cwd=tmp_path, check=True, capture_output=True, text=True, timeout=20)
-    assert sorted(json.loads(result.stdout)['changed_files']) == sorted([added.name, file.name])
+    assert sorted(json.loads(result.stdout)['changed_files']) == sorted([added.name, file.name, changed_type.name])
 
 
 @pytest.mark.parametrize(('body', 'count', 'category'), [

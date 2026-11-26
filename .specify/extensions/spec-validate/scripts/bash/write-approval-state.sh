@@ -41,16 +41,21 @@ else
   STATE_DIR="$_dir/.specify/extensions/spec-validate/status"
 fi
 
-# Create directory if needed
-mkdir -p "$STATE_DIR"
-
-STATE_FILE="$STATE_DIR/${FEATURE}.json"
-
-# Keep local state private and treat its destination as data.
+# Create new directories and replacement files privately. Never truncate the old inode.
 umask 077
-printf '%s' "$JSON_DATA" | python3 -c 'import json, sys
-with open(sys.argv[1], "w", encoding="utf-8") as state:
-    json.dump(json.load(sys.stdin), state, indent=2)
-    state.write("\n")' "$STATE_FILE"
+mkdir -p "$STATE_DIR"
+STATE_FILE="$STATE_DIR/${FEATURE}.json"
+printf '%s' "$JSON_DATA" | python3 -c 'import json, os, sys, tempfile
+record = json.load(sys.stdin)
+path = sys.argv[1]
+fd, temp = tempfile.mkstemp(dir=os.path.dirname(path))
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as state:
+        json.dump(record, state, indent=2)
+        state.write("\n")
+    os.replace(temp, path)
+finally:
+    if os.path.exists(temp):
+        os.unlink(temp)' "$STATE_FILE"
 
 echo "State written to $STATE_FILE" >&2

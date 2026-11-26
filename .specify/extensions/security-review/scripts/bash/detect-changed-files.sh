@@ -146,19 +146,19 @@ if [[ -n "$CURRENT_BRANCH" && -n "$DEFAULT_BRANCH" && "$CURRENT_BRANCH" != "$DEF
         COMMITTED=()
         while IFS= read -r -d '' line; do
             [[ -n "$line" ]] && COMMITTED+=("$line")
-        done < <(git diff --name-only -z --diff-filter=ACDMR "${MERGE_BASE}...HEAD" 2>/dev/null)
+        done < <(git diff --name-only -z --diff-filter=ACDMRT "${MERGE_BASE}...HEAD" 2>/dev/null)
 
         # Staged (index) changes
         STAGED=()
         while IFS= read -r -d '' line; do
             [[ -n "$line" ]] && STAGED+=("$line")
-        done < <(git diff --cached --name-only -z --diff-filter=ACDMR 2>/dev/null)
+        done < <(git diff --cached --name-only -z --diff-filter=ACDMRT 2>/dev/null)
 
         # Unstaged (working tree) changes
         UNSTAGED=()
         while IFS= read -r -d '' line; do
             [[ -n "$line" ]] && UNSTAGED+=("$line")
-        done < <(git diff --name-only -z --diff-filter=ACDMR 2>/dev/null)
+        done < <(git diff --name-only -z --diff-filter=ACDMRT 2>/dev/null)
 
         # Combine and deduplicate (bash 3 compatible — no associative arrays)
         CHANGED_FILES=()
@@ -188,12 +188,12 @@ if [[ -z "$MODE" ]]; then
     STAGED=()
     while IFS= read -r -d '' line; do
         [[ -n "$line" ]] && STAGED+=("$line")
-    done < <(git diff --cached --name-only -z --diff-filter=ACDMR 2>/dev/null)
+    done < <(git diff --cached --name-only -z --diff-filter=ACDMRT 2>/dev/null)
 
     UNSTAGED=()
     while IFS= read -r -d '' line; do
         [[ -n "$line" ]] && UNSTAGED+=("$line")
-    done < <(git diff --name-only -z --diff-filter=ACDMR 2>/dev/null)
+    done < <(git diff --name-only -z --diff-filter=ACDMRT 2>/dev/null)
 
     # Combine and deduplicate (bash 3 compatible — no associative arrays)
     CHANGED_FILES=()

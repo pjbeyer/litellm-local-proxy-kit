@@ -136,7 +136,7 @@ if ($CurrentBranch -and $DefaultBranch -and ($CurrentBranch -ne $DefaultBranch))
 
     if ($MergeBase) {
         # Committed changes since merge-base
-        $diffRaw = git diff --name-only -z --diff-filter=ACDMR "$MergeBase...HEAD" 2>$null
+        $diffRaw = git diff --name-only -z --diff-filter=ACDMRT "$MergeBase...HEAD" 2>$null
         $committedFiles = @()
         if ($diffRaw) {
             $diffJoined = ($diffRaw -join "`n")
@@ -144,7 +144,7 @@ if ($CurrentBranch -and $DefaultBranch -and ($CurrentBranch -ne $DefaultBranch))
         }
 
         # Staged (index) changes
-        $stagedRaw = git diff --cached --name-only -z --diff-filter=ACDMR 2>$null
+        $stagedRaw = git diff --cached --name-only -z --diff-filter=ACDMRT 2>$null
         $stagedFiles = @()
         if ($stagedRaw) {
             $sJoined = ($stagedRaw -join "`n")
@@ -152,7 +152,7 @@ if ($CurrentBranch -and $DefaultBranch -and ($CurrentBranch -ne $DefaultBranch))
         }
 
         # Unstaged (working tree) changes
-        $unstagedRaw = git diff --name-only -z --diff-filter=ACDMR 2>$null
+        $unstagedRaw = git diff --name-only -z --diff-filter=ACDMRT 2>$null
         $unstagedFiles = @()
         if ($unstagedRaw) {
             $uJoined = ($unstagedRaw -join "`n")
@@ -171,8 +171,8 @@ if ($CurrentBranch -and $DefaultBranch -and ($CurrentBranch -ne $DefaultBranch))
 
 if (-not $Mode) {
     # Mode B - Working Directory Changes
-    $stagedRaw = git diff --cached --name-only -z --diff-filter=ACDMR 2>$null
-    $unstagedRaw = git diff --name-only -z --diff-filter=ACDMR 2>$null
+    $stagedRaw = git diff --cached --name-only -z --diff-filter=ACDMRT 2>$null
+    $unstagedRaw = git diff --name-only -z --diff-filter=ACDMRT 2>$null
 
     $allFiles = @()
     if ($stagedRaw) {
