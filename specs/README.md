@@ -1,6 +1,7 @@
 # Kit specifications
 
 - [003 — Restart controller operations](003-restart-controller/spec.md): controller contract, shutdown amendment, later fixes and the operations workflow. [Plan](003-restart-controller/plan.md) · [Tasks](003-restart-controller/tasks.md) · [Offline quickstart](003-restart-controller/quickstart.md).
+- [004 — Isolated LiteLLM rehearsal](004-isolated-proxy-rehearsal/spec.md): proposed `make rehearse` boundary and acceptance criteria; separate from managed restart preparation.
 - Guard interception is separate: start with the [guard incidence-reduction contract](../docs/contracts/guard-incidence-reduction.md). The guard and Hermes attribution features and their project-wide Spec Kit tooling are tracked separately.
 
 Start in a dedicated kit worktree. Beads owns backlog and status. The shared Spec Kit scaffold, constitution and hooks come from the separate repo-wide recovery. If you have a temporary local bootstrap, move it out of the checkout before staging; never commit it, its approval records or `.specify/feature.json`. See the feature [plan](003-restart-controller/plan.md#gates-and-complexity) for implementation prerequisites.
