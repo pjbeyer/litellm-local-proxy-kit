@@ -1,0 +1,32 @@
+# Matched: ai_llm (real inference expressly excluded), contracts (runner interface),
+# multi_party (activation approvals), money_path (no provider spend).
+# Unmatched: regulatory_path; immutability_audit (digests are evidence, not a ledger).
+version: v1
+defaults:
+  finding_bound: 3
+  severity_weight: 5
+lenses:
+  - name: Containment and spend
+    description: Review executable isolation and no-provider-spend requirements.
+    trigger_match: [ai_llm, contracts, money_path]
+    core_questions:
+      - Are permitted endpoints, file mounts, inherited environment and credential facilities defined for every candidate-bearing step?
+      - What must be true of the enforcement evidence before candidate code may run?
+  - name: Runtime identity and config fidelity
+    description: Check that the report represents what ran, not just what was read.
+    trigger_match: [ai_llm, contracts]
+    core_questions:
+      - Can the verified inputs and the executed inputs diverge by replacement or path aliasing?
+      - Can fixture substitutions remove behavior that the result then claims to cover?
+  - name: Lifecycle and attribution
+    description: Check bounded startup, cleanup and the protected primary boundary.
+    trigger_match: [multi_party, contracts]
+    core_questions:
+      - Can a passing response come from a different listener or an earlier run?
+      - What do the result and operator instructions say when ownership, isolation or cleanup is indeterminate?
+  - name: Governance and workflow
+    description: Review authorization, state evidence and overlap with the controller contract.
+    trigger_match: [multi_party, contracts]
+    core_questions:
+      - Could the operator mistake a rehearsal result for a qualification or an authorization?
+      - Are read-only managed baselines collected outside the isolated runner, and are potential concurrent changes accounted for?
