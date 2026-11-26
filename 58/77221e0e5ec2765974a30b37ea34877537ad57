@@ -1,0 +1,30 @@
+specs/004-isolated-proxy-rehearsal/red-team-lenses.yml
+  s_8c847b7ad325b0::t_21fa1e908644b3 1-32
+specs/004-isolated-proxy-rehearsal/spec.md
+  s_8c847b7ad325b0::t_da8d014236ef96 5,7,13,15,19,29-41,45-47,49,51-54
+  s_8c847b7ad325b0::t_b9e1fd3203f966 18
+specs/004-isolated-proxy-rehearsal/checklists/requirements.md
+  s_8c847b7ad325b0::t_a9ad814d69d867 1-23
+specs/004-isolated-proxy-rehearsal/red-team-findings-2026-11-26.md
+  s_8c847b7ad325b0::t_054faa1e0cc2df 3-4
+  s_8c847b7ad325b0::t_770575999844d9 38-39
+  s_8c847b7ad325b0::t_4ed2d8de1d307d 31
+  s_8c847b7ad325b0::t_ccc3b541645af3 10
+  s_8c847b7ad325b0::t_5c4def13735df4 1-2,5-9,11-30,32-37,40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "5877221e0e5ec2765974a30b37ea34877537ad57",
+  "prompts": {},
+  "sessions": {
+    "s_8c847b7ad325b0": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261125_155706_404655",
+        "model": "gpt-6.2-sol"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
