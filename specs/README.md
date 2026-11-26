@@ -2,6 +2,7 @@
 
 ## Feature contracts on the default branch
 
+- [001 — Proxy Lifecycle Guard fail-closed follow-up](001-proxy-lifecycle-guard-plugin/spec.md): draft for bounded batch decisions and assignment handling. It does not authorize implementation or activation.
 - [002 — Hermes exact quality-eval attribution](002-hermes-eval-attribution/spec.md): design draft. No transport is qualified and implementation is not approved. See the [plan and entry gates](002-hermes-eval-attribution/plan.md).
 - [003 — Restart controller operations](003-restart-controller/spec.md): controller contract, shutdown amendment, later fixes and the operations workflow. [Plan](003-restart-controller/plan.md) · [Tasks](003-restart-controller/tasks.md) · [Offline quickstart](003-restart-controller/quickstart.md).
 - [005 — Project provisioning baseline](005-project-provisioning-baseline/spec.md): contributor setup, repository scaffolding, and opt-in release automation.
