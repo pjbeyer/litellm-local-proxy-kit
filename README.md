@@ -13,7 +13,7 @@ An experimental MIT-licensed kit for running a pinned, loopback-only LiteLLM pro
 - **First install, migration, or verified rollback:** [Managed macOS service](docs/macos-managed-service.md).
 - **Controller enrollment, qualification, or recovery:** [Restart controller operations](docs/restart-controller-operations.md); requirements and interfaces are in [Specs](specs/README.md).
 - **Runtime build and pin evidence:** [Native runtime artifact contract](docs/native-runtime-artifact-contract.md). The [example deployment inputs](deployments/personal/) are reference artifacts, not a complete install target.
-- **Optional Hermes guard:** [Lifecycle guard runbook](integrations/hermes/proxy-lifecycle-guard/README.md). The guard is separate from the proxy and controller and is not OS isolation.
+- **Optional Hermes guard:** [Routine work and refusal triage](integrations/hermes/proxy-lifecycle-guard/README.md#routine-work-in-hermes). The guard is separate from the proxy and controller and is not OS isolation.
 - **Original callback and routing experiment:** [Routing reference](docs/routing-experiment.md) and [compatibility evidence](docs/compatibility.md). Historical provider limits and recorded test results are not current entitlements or activation instructions.
 
 ## Verify without touching a deployment
