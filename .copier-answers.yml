@@ -1,0 +1,8 @@
+# Changes here will be overwritten by Copier; NEVER EDIT MANUALLY
+_commit: v0.1.4
+_src_path: https://github.com/pjbeyer/phil-ai-project-template.git
+project_description: An experimental local LiteLLM proxy kit for macOS.
+project_kind: generic
+repository_name: litellm-local-proxy-kit
+repository_owner: pjbeyer
+template_revision: v0.1.4
