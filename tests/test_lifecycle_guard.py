@@ -1058,6 +1058,26 @@ class TestVetoSurfaceBattery(GuardHarness):
              "arguments": {"action": "kill",
                            "session_id": "$SESSION"}}]})
 
+    def test_assignment_path_component_is_literal_data(self):
+        # Same tool, policy, discovery, and command; only the assigned
+        # relative path varies. Neither command is actually executed.
+        for path in ('specs/001-hermes-test-attribution',
+                     'specs/001-hermes-eval-attribution',
+                     'specs/001-hermes-eval-attribution+v2',
+                     'specs/001-hermes-eval-attribution@v2',
+                     'specs/001-hermes-eval-attribution:v2'):
+            for quote in ('', "'", '"'):
+                with self.subTest(path=path, quote=quote):
+                    args = {"command": f"feature={quote}{path}{quote}; echo \"$feature\""}
+                    self.assertIsNone(self.ev("terminal", args, policy=self.policy))
+        self.assertEqual(self.discovery_calls, [])
+
+    def test_assignment_command_values_keep_existing_refusals(self):
+        for command in ("feature='eval notes'", "feature='docs/eval'",
+                        "feature='docs/eval-notes' echo notes"):
+            with self.subTest(command=command):
+                self.assert_veto("terminal", {"command": command}, policy=self.policy)
+
     def test_eval_and_indirection_refused(self):
         # eval + variable indirection: refused, not evaluated (FR-003)
         for cmd in [

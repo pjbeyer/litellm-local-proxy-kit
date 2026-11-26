@@ -34,6 +34,11 @@ contains no arguments. Reproduce unexpected decisions only in isolated tests
 with the policy, environment and discovery inputs pinned; don't replay a
 refused operation live or add raw arguments to shared logs.
 
+A standalone assignment of a literal relative path does not infer lifecycle
+intent solely from a marker embedded between hyphens in a path component.
+Command-valued assignments and assignments attached to commands or pipelines
+retain the conservative check. Later command use is analyzed separately.
+
 ## Verify a source change
 
 From the repository root, use the [kit's offline test setup](../../../README.md#validation-boundary).

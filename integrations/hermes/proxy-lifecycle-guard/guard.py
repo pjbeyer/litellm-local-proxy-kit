@@ -2390,6 +2390,25 @@ def _redirect_writes_plugin_dir(chunk):
     return False
 
 
+# Prove a standalone assignment from raw shell text, not decoded tokens.
+# One relative path word only: no expansion, escapes, or mixed quoting.
+_LITERAL_PATH_ASSIGNMENT = re.compile(
+    r"""[ \t]*[A-Za-z_][A-Za-z0-9_]*=(?P<quote>['"]?)"""
+    r"(?P<path>[A-Za-z0-9_.@:+-]+(?:/[A-Za-z0-9_.@:+-]+)+)(?P=quote)[ \t]*"
+)
+
+
+def _assignment_value_has_lifecycle_intent(raw, value, policy):
+    literal = _LITERAL_PATH_ASSIGNMENT.fullmatch(raw)
+    if literal is None or literal['path'] != value:
+        return _full_text_kill_intent(value, policy)
+    # A marker between two hyphens is part of a path component, not a
+    # command word. Retain markers at component edges or standing alone.
+    return any(not (m.start() > 0 and m.end() < len(value)
+                    and value[m.start() - 1] == value[m.end()] == '-')
+               for m in _FULL_TEXT_INTENT_RE.finditer(value.lower()))
+
+
 def _analyze_chunk(chunk, policy, get_snapshot, depth=0, env=None):
     """Analyze one command chunk (may be a pipeline). Hazard anywhere blocks."""
     if depth > MAX_TOOL_CALL_DEPTH:
@@ -2520,6 +2539,8 @@ def _analyze_chunk(chunk, policy, get_snapshot, depth=0, env=None):
         # (2>/dev/null, 2>&1) is not a write (lpkit-z4b finding A).
         if ">" in chunk and _redirect_writes_plugin_dir(chunk):
             raise _Block()
+    # Keep the pre-normalization text for the assignment-only proof.
+    raw_chunk = chunk
     # control-flow bodies: turn keyword boundaries into chunk separators
     chunk = _normalize_control_flow(chunk)
     stages = [s for s in _split_segments(chunk, ("|",), limit=MAX_STAGES) if s.strip()]
@@ -2545,9 +2566,12 @@ def _analyze_chunk(chunk, policy, get_snapshot, depth=0, env=None):
             # variable command indirection is unresolvable — refuse (FR-006)
             if tokens and (tokens[0].startswith("$") or tokens[0].startswith("`")):
                 raise _Block()
-            # assignment whose value carries kill-family intent
+            # Preserve the conservative scan for anything other than a
+            # complete, non-truncated assignment-only chunk.
             if tokens and re.fullmatch(r"[A-Za-z_]\w*=.*", tokens[0]):
-                if _full_text_kill_intent(tokens[0].split("=", 1)[1], policy):
+                value = tokens[0].split("=", 1)[1]
+                if _assignment_value_has_lifecycle_intent(
+                        raw_chunk if not truncated else "", value, policy):
                     raise _Block()
             tokens = _strip_wrappers(tokens)
             if not tokens:
