@@ -42,3 +42,10 @@ reviews/*.transcript.md
 .beads/proxieddb/
 *.gate.lock*
 .tmp-vv/
+coverage/
+.tmp/
+.venv-tests/
+/.hermes/
+/.specify/extensions/spec-validate/local/
+/.specify/extensions/spec-validate/status/
+/.specify/workflows/runs/

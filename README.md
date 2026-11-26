@@ -26,4 +26,4 @@ complete offline suite. No provider credentials are needed:
 uv run --no-project --with pytest --with pyyaml python -m pytest -q tests
 ```
 
-The suite uses fixtures; it does not qualify a live controller, prove provider access, or approve a restart. Run the [publication checks](docs/publication-readiness.md) before sharing artifacts. Keep resolved credentials, generated workstation configuration, private issue data, and raw response or session evidence out of public Git, including its auxiliary refs.
+The suite uses fixtures; it does not qualify a live controller, prove provider access, or approve a restart. See [project tooling](docs/project-tooling.md) for contributor setup and [publication checks](docs/publication-readiness.md) before sharing artifacts. Kit Beads and Git attribution are public; keep resolved credentials, private records, generated workstation configuration, prompts, and raw response or session evidence out of public Git and its auxiliary refs.
