@@ -174,6 +174,24 @@ EOF
   exit 1
 fi
 
+# Only waiting on spec review can be overridden, after both artifacts and
+# the independent task-review disposition have passed the checks above.
+if [ "$SPEC_VALIDATION" = "passed" ] &&
+   { [ "$REVIEW_STATUS" = "pending" ] || [ "$REVIEW_STATUS" = "timed-out" ]; } &&
+   printf '%s' "$STATE" | python3 "$SCRIPT_DIR/../check-maintainer-override.py"; then
+  cat <<EOF
+{
+  "outcome": "allowed-with-warning",
+  "reason": "Recorded maintainer override permits implementation",
+  "actions_required": [],
+  "warnings": [
+    "Unresolved spec review overridden by recorded maintainer authorization"
+  ]
+}
+EOF
+  exit 0
+fi
+
 # Pending, timed-out, and unrecognized spec review states stay blocked.
 
 # Gate rule 10: Validated + no review needed or review approved — allowed

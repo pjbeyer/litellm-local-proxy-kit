@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 
 import pytest
 
@@ -35,13 +36,20 @@ def gate(request, tmp_path):
     else:
         argv = [shell, '-NoProfile', '-File', str(extension / 'scripts/powershell/check-gate.ps1'), FEATURE]
     env = {k: v for k, v in os.environ.items() if not k.startswith('SPEC_VALIDATE_')}
+    env['PATH'] = str(Path(sys.executable).parent) + os.pathsep + env['PATH']
 
-    def check(state=None):
+    def check(state=None, *, path=None):
         if state is not None:
             record = state if isinstance(state, str) else json.dumps(state)
             (status / (FEATURE + '.json')).write_text(record, encoding='utf-8')
-        result = subprocess.run(argv, cwd=tmp_path, env=env, capture_output=True, text=True, timeout=20)
-        return result.returncode, json.loads(result.stdout)['outcome']
+        check_env = env if path is None else {**env, 'PATH': str(path)}
+        result = subprocess.run(argv, cwd=tmp_path, env=check_env, capture_output=True, text=True, timeout=20)
+        output = json.loads(result.stdout)
+        assert isinstance(output['actions_required'], list)
+        assert isinstance(output['warnings'], list)
+        if output['outcome'] == 'allowed-with-warning':
+            assert output['warnings'] and not output['actions_required']
+        return result.returncode, output['outcome']
 
     return check, spec, {
         'feature': FEATURE,
@@ -108,6 +116,90 @@ def test_unresolved_review_stays_blocked(gate, status):
     check, _, state = gate
     state.update(review_status=status, override={'used': True, 'reason': 'Fixture'},
                  timeout_self_approval={'used': True, 'reason': 'Fixture'})
+    assert check(state) == (1, 'blocked')
+
+
+ENABLED = 'gate:\n  allow_maintainer_override: true\n'
+
+
+def _write_config(tmp_path, text=ENABLED):
+    config = tmp_path / '.specify/extensions/spec-validate/spec-validate-config.yml'
+    config.write_text(text, encoding='utf-8')
+
+
+def _record_override(state):
+    state.update(review_status='pending', override={
+        'used': True, 'reason': 'Schedule dependency', 'by': 'Maintainer',
+        'spec_hash': state['spec_hash'], 'tasks_hash': state['tasks_hash'],
+    })
+
+
+@pytest.mark.parametrize('status, expected', [
+    ('pending', (0, 'allowed-with-warning')),
+    ('timed-out', (0, 'allowed-with-warning')),
+    ('approved', (0, 'allowed')),
+    ('changes-requested', (1, 'blocked')),
+    ('unknown', (1, 'blocked')),
+])
+def test_override_only_applies_while_waiting_for_spec_review(gate, tmp_path, status, expected):
+    check, _, state = gate
+    _record_override(state)
+    state['review_status'] = status
+    _write_config(tmp_path)
+    assert check(state) == expected
+
+
+def test_powershell_override_can_use_python_when_python3_is_absent(request, gate, tmp_path):
+    if request.node.callspec.params['gate'] != 'pwsh' or os.name == 'nt':
+        pytest.skip('POSIX-hosted PowerShell fallback fixture')
+    check, _, state = gate
+    _record_override(state)
+    _write_config(tmp_path)
+    bin_dir = tmp_path / 'bin'
+    bin_dir.mkdir()
+    (bin_dir / 'pwsh').symlink_to(shutil.which('pwsh'))
+    (bin_dir / 'python').symlink_to(sys.executable)
+    assert check(state, path=bin_dir) == (0, 'allowed-with-warning')
+
+
+@pytest.mark.parametrize('key, value', [
+    ('used', 'true'), ('used', False), ('reason', ' '), ('by', None),
+    ('spec_hash', None), ('tasks_hash', 'sha256:' + '0' * 64),
+])
+def test_invalid_or_stale_override_blocks(gate, tmp_path, key, value):
+    check, _, state = gate
+    _record_override(state)
+    state['override'][key] = value
+    _write_config(tmp_path)
+    assert check(state) == (1, 'blocked')
+
+
+@pytest.mark.parametrize('text', [
+    None,
+    'gate:\n  allow_maintainer_override: false\n',
+    'review:\n  allow_maintainer_override: true\n',
+    'gate:\n  allow_maintainer_override: "true"\n',
+    ENABLED + '  allow_maintainer_override: false\n',
+    'gate: [\n',
+])
+def test_override_requires_config_permission(gate, tmp_path, text):
+    check, _, state = gate
+    _record_override(state)
+    if text is not None:
+        _write_config(tmp_path, text)
+    assert check(state) == (1, 'blocked')
+
+
+@pytest.mark.parametrize('key, value', [
+    ('spec_hash', 'sha256:' + '0' * 64), ('tasks_hash', 'sha256:' + '0' * 64),
+    ('spec_self_validation', 'failed'), ('tasks_self_validation', 'failed'),
+    ('tasks_review_status', 'pending'), ('reviewed_tasks_hash', None),
+])
+def test_override_preserves_validation_and_task_review(gate, tmp_path, key, value):
+    check, _, state = gate
+    state[key] = value
+    _record_override(state)
+    _write_config(tmp_path)
     assert check(state) == (1, 'blocked')
 
 

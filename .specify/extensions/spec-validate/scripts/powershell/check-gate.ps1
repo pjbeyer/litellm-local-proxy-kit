@@ -37,8 +37,8 @@ function Output-Gate {
     $result = @{
         outcome = $Outcome
         reason = $Reason
-        actions_required = if ($Actions) { $Actions } else { @() }
-        warnings = if ($Warnings) { $Warnings } else { @() }
+        actions_required = @(if ($Actions) { $Actions })
+        warnings = @(if ($Warnings) { $Warnings })
     }
     $result | ConvertTo-Json -Depth 3
     if ($Outcome -eq "blocked") { exit 1 } else { exit 0 }
@@ -98,7 +98,25 @@ if ($state.tasks_review_status -isnot [string] -or
     Output-Gate "blocked" "Task review is unresolved or does not match the current tasks digest" @("Complete the task review requirement for current tasks.md")
 }
 
-# Pending, timed-out, and unrecognized spec review states stay blocked.
+# The shared policy only authorizes waiting spec review, never task review.
+if ($state.spec_self_validation -is [string] -and $state.spec_self_validation -ceq 'passed' -and
+    $state.review_status -is [string] -and $state.review_status -cin @('pending', 'timed-out')) {
+    $python = Get-Command python3 -CommandType Application -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if (-not $python) {
+        $python = Get-Command python -CommandType Application -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+    }
+    if ($python) {
+        $policy = Join-Path $ScriptDir '../check-maintainer-override.py'
+        $stateJson | & $python.Source $policy
+        if ($LASTEXITCODE -eq 0) {
+            Output-Gate "allowed-with-warning" "Recorded maintainer override permits implementation" @() @(
+                "Unresolved spec review overridden by recorded maintainer authorization"
+            )
+        }
+    }
+}
 
 # Rule 10: Validated + review met
 if ($state.spec_self_validation -is [string] -and $state.spec_self_validation -ceq 'passed' -and
