@@ -1,0 +1,51 @@
+.specify/extensions/spec-validate/scripts/powershell/check-gate.ps1
+  s_1a8a76a61d90b8::t_1857fb5f1a7a3e 101-107,109-116
+  s_9b5df811383569::t_0c9e99eb5e2269 108,117-119
+  s_1a8a76a61d90b8::t_75747e1b06670d 40-41
+.specify/extensions/spec-validate/spec-validate-config.yml
+  s_1a8a76a61d90b8::t_6196be7c59a75c 23
+.specify/extensions/spec-validate/CHANGELOG.md
+  s_1a8a76a61d90b8::t_489504fea65975 8-11
+.specify/extensions/spec-validate/scripts/bash/check-gate.sh
+  s_9b5df811383569::t_22e54f509a46e6 182-194
+  s_1a8a76a61d90b8::t_26fe6f52a471af 177-181
+.specify/extensions/spec-validate/commands/gate.md
+  s_9b5df811383569::t_424a83fe674a20 37-39
+.specify/extensions/spec-validate/README.md
+  s_9b5df811383569::t_9348803a16aeea 42
+  s_9b5df811383569::t_c79b0df1543c7f 108
+  s_9b5df811383569::t_14159f7982ff9c 43
+  s_1a8a76a61d90b8::t_89253cd6ce4fd1 114
+docs/project-tooling.md
+  s_1a8a76a61d90b8::t_309332d013822f 85-88
+specs/README.md
+  s_1a8a76a61d90b8::t_a9bd6a0dcbd0c4 12
+.specify/extensions/spec-validate/scripts/check-maintainer-override.py
+  s_1a8a76a61d90b8::t_88156c2131f62d 16-18,21-25
+  s_1a8a76a61d90b8::t_3025b2f572c216 1-15,19-20,26-54
+  s_1a8a76a61d90b8::t_e5019cdb072efb 55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "d56d367b8aa0d33d3438c7a4902e7d62972601eb",
+  "prompts": {},
+  "sessions": {
+    "s_1a8a76a61d90b8": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261126_165231_8defac",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_9b5df811383569": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261126_151458_e234be",
+        "model": "smart-router"
+      },
+      "human_author": null
+    }
+  }
+}
