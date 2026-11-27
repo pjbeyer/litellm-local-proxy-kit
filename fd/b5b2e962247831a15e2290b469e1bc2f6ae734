@@ -1,0 +1,19 @@
+specs/007-guard-maintenance/spec.md
+  s_bb8ff44872c80b::t_83a94a6f6a8461 1-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "fdb5b2e962247831a15e2290b469e1bc2f6ae734",
+  "prompts": {},
+  "sessions": {
+    "s_bb8ff44872c80b": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261127_061903_36f560",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
