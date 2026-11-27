@@ -6,7 +6,8 @@
 #
 # The script detects review_type, assessment_date, and risk values from the document body
 # and prepends a populated YAML frontmatter block. Documents that already have frontmatter
-# are skipped unless --force is passed.
+# are skipped unless --force is passed. Only a project slug is copied into
+# the header; other values become "unknown". The report body is not sanitized.
 
 set -euo pipefail
 
@@ -81,7 +82,10 @@ process_file() {
   # ── Detect codebase_analyzed ─────────────────────────────────────────────
   local codebase
   codebase=$(extract_field 'Codebase Analyzed' "$file")
-  codebase="${codebase:-unknown}"
+  # Copy only a project slug, never a path or arbitrary report prose.
+  if [[ ! "$codebase" =~ ^[abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789][abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-]*$ ]]; then
+    codebase="unknown"
+  fi
 
   # ── Detect overall_risk ──────────────────────────────────────────────────
   local overall_risk="INFORMATIONAL"
@@ -146,7 +150,7 @@ process_file() {
 document_type: security-review
 review_type: ${review_type}
 assessment_date: "${assessment_date}"
-codebase_analyzed: ${codebase}
+codebase_analyzed: "${codebase}"
 total_files_analyzed: 0
 total_findings: ${total_findings}
 overall_risk: ${overall_risk}

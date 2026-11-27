@@ -12,8 +12,8 @@ scripts:
 1. **Identify Aspects**: Parse "$ARGUMENTS" to identify specific security `aspects` (e.g., `auth`, `injection`, `data-leakage`, `supply-chain`) or `all`.
 2. **Identify Target & Base**:
    - If the user provided branch names (e.g., `feature/auth main`), use them.
-   - Otherwise, you **MUST** execute the `{SCRIPT}` with `--json` to detect changed files between the feature branch and the default branch (`Mode A`).
-   - Use the `changed_files` list as the primary audit set.
+   - Otherwise, run the mapped Bash helper with `--json --require-branch` or the PowerShell helper with `-Json -RequireBranch` to collect feature-branch changes against the default branch (`Mode A`).
+   - Use `changed_files` as the audit set. Exit 1 means the scope is unavailable: stop and request explicit refs or sufficient history. Exit 2 means the verified scope is empty. Never substitute a working-directory-only scan.
 
 ## Objective
 
@@ -79,7 +79,7 @@ This command is the right fit for a branch, pull request, or merge request diff.
 
 ## Steps
 
-1. **Identify Scope**: Run `{SCRIPT}` or use user-provided branch names to identify the changed files. If using branches, determine `<base>` and `<target>`.
+1. **Identify Scope**: Follow the branch-scope procedure above, or use explicit `<base>` and `<target>` refs.
 2. **Retrieve Diff**: Run `git diff <base>..<target>` (or run `git diff` restricted to the identified changed files) to retrieve the actual code changes.
 3. **Analyze Diff**: Analyze only the diff for security issues across these domains (focusing on requested aspects):
    - Injection vulnerabilities (SQL, NoSQL, command, template)
@@ -126,7 +126,7 @@ Before writing the report body, emit a YAML frontmatter block at the very start 
 document_type: security-review
 review_type: branch
 assessment_date: <YYYY-MM-DD>
-codebase_analyzed: <project name or path>
+codebase_analyzed: <public project slug or unknown; never a checkout path>
 total_files_analyzed: <integer>
 total_findings: <integer>
 overall_risk: <CRITICAL|HIGH|MODERATE|LOW|INFORMATIONAL>

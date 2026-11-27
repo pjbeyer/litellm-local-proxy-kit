@@ -120,7 +120,7 @@ Before writing the report body, emit a YAML frontmatter block at the very start 
 document_type: security-review
 review_type: staged
 assessment_date: <YYYY-MM-DD>
-codebase_analyzed: <project name or path>
+codebase_analyzed: <public project slug or unknown; never a checkout path>
 total_files_analyzed: <integer>
 total_findings: <integer>
 overall_risk: <CRITICAL|HIGH|MODERATE|LOW|INFORMATIONAL>

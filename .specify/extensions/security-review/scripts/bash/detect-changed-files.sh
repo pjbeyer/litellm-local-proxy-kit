@@ -9,7 +9,8 @@
 # Usage: ./detect-changed-files.sh [OPTIONS]
 #
 # OPTIONS:
-#   --json        Output in JSON format (for machine consumption)
+#   --json            Output in JSON format (for machine consumption)
+#   --require-branch  Refuse working-directory-only scope
 #   --help, -h    Show this help message
 #
 # EXIT CODES:
@@ -33,10 +34,12 @@ set -e
 
 # --- Argument parsing ---
 JSON_MODE=false
+REQUIRE_BRANCH=false
 
 for arg in "$@"; do
     case "$arg" in
         --json) JSON_MODE=true ;;
+        --require-branch) REQUIRE_BRANCH=true ;;
         --help|-h)
             cat << 'EOF'
 Usage: detect-changed-files.sh [OPTIONS]
@@ -44,7 +47,8 @@ Usage: detect-changed-files.sh [OPTIONS]
 Detect changed files for code review via git diff.
 
 OPTIONS:
-  --json        Output in JSON format
+  --json            Output in JSON format
+  --require-branch  Refuse working-directory-only scope
   --help, -h    Show this help message
 
 EXIT CODES:
@@ -129,6 +133,18 @@ fi
 if [[ -z "$DEFAULT_BRANCH" ]]; then
     if git rev-parse --verify origin/master >/dev/null 2>&1; then
         DEFAULT_BRANCH="master"
+    fi
+fi
+
+if $REQUIRE_BRANCH; then
+    if [[ -z "$CURRENT_BRANCH" ]]; then
+        error_exit "Branch review requires an attached HEAD. Check out the feature branch or supply an explicit base and target." 1
+    fi
+    if [[ -z "$DEFAULT_BRANCH" ]]; then
+        error_exit "Cannot determine the default branch. Fetch its tracking ref or supply an explicit base and target." 1
+    fi
+    if [[ "$CURRENT_BRANCH" == "$DEFAULT_BRANCH" ]]; then
+        error_exit "Branch review requires a feature branch distinct from the default branch. Supply an explicit base and target if needed." 1
     fi
 fi
 

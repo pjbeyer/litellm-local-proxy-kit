@@ -425,7 +425,7 @@ Before writing the report body, emit a YAML frontmatter block at the very start 
 document_type: security-review
 review_type: audit
 assessment_date: <YYYY-MM-DD>
-codebase_analyzed: <project name or path>
+codebase_analyzed: <public project slug or unknown; never a checkout path>
 total_files_analyzed: <integer>
 total_findings: <integer>
 overall_risk: <CRITICAL|HIGH|MODERATE|LOW|INFORMATIONAL>
@@ -472,7 +472,7 @@ Produce a comprehensive **SECURITY REVIEW REPORT** with the following structure:
 
 **Overall Security Posture:** [CRITICAL RISK | HIGH RISK | MODERATE RISK | LOW RISK | SECURE]
 **Assessment Date:** [DATE]
-**Codebase Analyzed:** [PROJECT NAME/PATH]
+**Codebase Analyzed:** [PUBLIC PROJECT SLUG OR UNKNOWN]
 **Total Files Analyzed:** [COUNT]
 **Total Findings:** [COUNT]
 
