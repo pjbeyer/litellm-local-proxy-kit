@@ -1,0 +1,32 @@
+docs/macos-managed-service.md
+  s_7364d6df9ae799::t_01c55161d8fcf0 46-49
+core/render_config.py
+  s_7364d6df9ae799::t_8be6edbf18418b 67,69-75
+tests/test_core.py
+  s_ba0835770d1671::t_c3b67622ae0f82 14-16
+  s_ba0835770d1671::t_cf0d544653249c 102-151
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "558ec8e6f381819405bcdff57532a7888110f30f",
+  "prompts": {},
+  "sessions": {
+    "s_7364d6df9ae799": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261127_182418_292319",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_ba0835770d1671": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261127_181919_908fef",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
