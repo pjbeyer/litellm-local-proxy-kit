@@ -11,6 +11,9 @@
 .PARAMETER Json
     Output in JSON format (for machine consumption).
 
+.PARAMETER RequireBranch
+    Refuse working-directory-only scope.
+
 .PARAMETER Help
     Show help message and exit.
 
@@ -32,6 +35,7 @@
 [CmdletBinding()]
 param(
     [switch]$Json,
+    [switch]$RequireBranch,
     [Alias("h")]
     [switch]$Help
 )
@@ -46,7 +50,8 @@ Usage: detect-changed-files.ps1 [OPTIONS]
 Detect changed files for code review via git diff.
 
 OPTIONS:
-  -Json         Output in JSON format
+  -Json           Output in JSON format
+  -RequireBranch  Refuse working-directory-only scope
   -Help, -h     Show this help message
 
 EXIT CODES:
@@ -121,12 +126,24 @@ if (-not $DefaultBranch) {
     }
 }
 
+if ($RequireBranch) {
+    if (-not $CurrentBranch) {
+        Write-ErrorAndExit "Branch review requires an attached HEAD. Check out the feature branch or supply an explicit base and target." 1
+    }
+    if (-not $DefaultBranch) {
+        Write-ErrorAndExit "Cannot determine the default branch. Fetch its tracking ref or supply an explicit base and target." 1
+    }
+    if ($CurrentBranch -ceq $DefaultBranch) {
+        Write-ErrorAndExit "Branch review requires a feature branch distinct from the default branch. Supply an explicit base and target if needed." 1
+    }
+}
+
 # --- 1c. Get Changed Files ---
 
 $ChangedFiles = @()
 $Mode = ""
 
-if ($CurrentBranch -and $DefaultBranch -and ($CurrentBranch -ne $DefaultBranch)) {
+if ($CurrentBranch -and $DefaultBranch -and ($CurrentBranch -cne $DefaultBranch)) {
     # Mode A - Feature Branch
     $MergeBase = ""
     try {

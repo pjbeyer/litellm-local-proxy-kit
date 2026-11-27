@@ -376,13 +376,17 @@ def test_bash_state_writer_preserves_literal_path(tmp_path):
 SECURITY_SCRIPTS = EXTENSION.parent / 'security-review/scripts'
 
 
-def review_scope_args(shell):
+def review_scope_args(shell, *, require_branch=False):
     if not shutil.which(shell):
         pytest.skip(f'{shell} is not installed')
     if shell == 'bash':
-        return [shell, str(SECURITY_SCRIPTS / 'bash/detect-changed-files.sh'), '--json']
+        return [shell, str(SECURITY_SCRIPTS / 'bash/detect-changed-files.sh'), '--json'] + (
+            ['--require-branch'] if require_branch else []
+        )
     return [shell, '-NoProfile', '-File',
-            str(SECURITY_SCRIPTS / 'powershell/detect-changed-files.ps1'), '-Json']
+            str(SECURITY_SCRIPTS / 'powershell/detect-changed-files.ps1'), '-Json'] + (
+        ['-RequireBranch'] if require_branch else []
+    )
 
 
 @pytest.mark.parametrize('shell', ['bash', 'pwsh'])
@@ -406,6 +410,27 @@ def test_review_scope_requires_merge_base_for_feature_branch(tmp_path, shell):
     result = subprocess.run(argv, cwd=tmp_path, capture_output=True, text=True, timeout=20)
     assert result.returncode == 0, result.stdout
     assert json.loads(result.stdout)['changed_files'] == ['committed.txt']
+
+    strict_argv = review_scope_args(shell, require_branch=True)
+    strict = subprocess.run(strict_argv, cwd=tmp_path, capture_output=True, text=True, timeout=20)
+    assert strict.returncode == 0, strict.stdout
+    assert json.loads(strict.stdout)['changed_files'] == ['committed.txt']
+
+    git('checkout', '--detach', '-q')
+    strict = subprocess.run(strict_argv, cwd=tmp_path, capture_output=True, text=True, timeout=20)
+    assert strict.returncode == 1, strict.stdout
+    assert 'attached' in json.loads(strict.stdout)['error']
+    git('checkout', '-q', 'main')
+    strict = subprocess.run(strict_argv, cwd=tmp_path, capture_output=True, text=True, timeout=20)
+    assert strict.returncode == 1, strict.stdout
+    assert 'feature branch' in json.loads(strict.stdout)['error']
+    git('checkout', '-q', 'feature')
+    base = git('rev-parse', 'refs/remotes/origin/main')
+    git('update-ref', '-d', 'refs/remotes/origin/main')
+    strict = subprocess.run(strict_argv, cwd=tmp_path, capture_output=True, text=True, timeout=20)
+    assert strict.returncode == 1, strict.stdout
+    assert 'default branch' in json.loads(strict.stdout)['error']
+    git('update-ref', 'refs/remotes/origin/main', base)
 
     # A shallow history boundary leaves both refs present but no common ancestor.
     (tmp_path / '.git/shallow').write_text(git('rev-parse', 'HEAD') + '\n', encoding='utf-8')
@@ -450,3 +475,22 @@ def test_review_header_counts_findings(tmp_path, body, count, category):
     header = report.read_text(encoding='utf-8').split('---', 2)[1].splitlines()
     assert f'total_findings: {count}' in header
     assert f'owasp_categories: {category}' in header
+
+
+@pytest.mark.parametrize(('source', 'expected'), [
+    ('example-kit', 'example-kit'),
+    ('true', 'true'),
+    ('', 'unknown'),
+    ('/fixture/private/checkout', 'unknown'),
+    (r'C:\fixture\checkout', 'unknown'),
+    (r'\\fixture\share\checkout', 'unknown'),
+    ('~/fixture/checkout', 'unknown'),
+    ('checkout at `/fixture/private/checkout`', 'unknown'),
+])
+def test_review_header_only_copies_project_labels(tmp_path, source, expected):
+    report = tmp_path / 'review.md'
+    report.write_text(f'# Review\n\n**Codebase Analyzed:** {source}\n', encoding='utf-8')
+    subprocess.run(['bash', str(SECURITY_SCRIPTS / 'update-document-headers.sh'), str(report)],
+                   env=dict(os.environ, TMPDIR=str(tmp_path)), check=True, capture_output=True, timeout=20)
+    header = report.read_text(encoding='utf-8').split('---', 2)[1].splitlines()
+    assert f'codebase_analyzed: "{expected}"' in header
