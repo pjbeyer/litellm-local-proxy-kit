@@ -1,0 +1,22 @@
+tests/test_controller_shutdown.py
+  s_27f59738405895::t_63dc96784518c0 811
+  s_27f59738405895::t_bfa483008acc56 723-741
+  s_27f59738405895::t_3a0cb9e3f41ddf 777,839,871
+  s_27f59738405895::t_cbac5b92aa87c1 760,799
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "21ab4389f9d3554b75ba9fce0a4592c9b7537148",
+  "prompts": {},
+  "sessions": {
+    "s_27f59738405895": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261127_065638_2c0b46",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
