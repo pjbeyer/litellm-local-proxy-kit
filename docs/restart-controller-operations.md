@@ -15,7 +15,9 @@ actors; they are not OS isolation.
 ## Existing deployment: before you prepare
 
 `make check-binding` requires `python3` 3.11 or newer on `PATH`. It uses the
-standard library and does not invoke the installed controller's interpreter.
+standard library and does not invoke the installed controller’s interpreter.
+Run the check without `REQUEST_ID` or `ASSET_DIGEST` in the environment;
+those values are for `make restart` only.
 If the command reports a different binding helper, update the maintenance
 worktree to a revision with the same helper as the policy-bound kit. Do not
 repoint the policy or change the stored receipt to make the check pass.
@@ -26,11 +28,16 @@ repoint the policy or change the stored receipt to make the check pass.
 | Check the primary listener | `make health` | Checks loopback liveness, readiness and unauthenticated models access; not provenance, owner approval or upstream model acceptance. |
 | Preview reviewed deployment changes | `make preview` | Installer dry run, not a credential-free check. Use only reviewed deployment inputs; it does not stage or activate. |
 | Stage reviewed changes | `make apply` | Writes and verifies managed files after preview and review. No service reload; stop on error and reconcile any partial staging. |
-| Compare the controller’s on-disk binding | `make check-binding` | Compares the policy digest and the byte hashes and modes of kit and installed controller files against the install receipt. No service contact or writes. Not plist parity, loaded-job evidence, or approval. |
+| Compare the controller’s on-disk binding | `make check-binding` | Compares the policy digest and the byte hashes and modes of kit and installed controller files against the install receipt. No service contact or writes. See the limits below. |
 | Check proxy files and drift | `make verify` | Installer verify plus deployment drift via the pinned Python; not controller bundle parity. |
 | Check controller bundle parity | [Install verifier](#provision-and-install) | Stay in your worktree and run the policy-bound installer by absolute path with `--verify`. Compares installed files and generated plist; does not validate the loaded job or qualify the daemon. |
 | Ask for a restart plan | `make prepare` | Real candidate rehearsal; may use credentials and shared DB, cache and inference. Does not approve or restart. |
 | Submit an approved plan | `make restart REQUEST_ID=… ASSET_DIGEST=…` | Owner-only step after exact fresh approval and matching record. It does not create approval. Never retry after timeout or refusal without reconciling the outcome. |
+
+A binding `match` does not validate the full policy schema, audit directory
+ownership or permissions, or detect extra source modules outside the controller
+input registry. It does not check plist parity, the loaded job, or qualification,
+and grants no approval.
 
 **Routine order:**
 

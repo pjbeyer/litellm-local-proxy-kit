@@ -4,7 +4,7 @@
 
 ## Summary
 
-Reconcile the existing controller under `specs/`, consolidate recurring operations around the existing dispatcher, and plan a narrower read-only on-disk diagnostic. Do not modify the production controller or guard inventory.
+Reconcile the existing controller under `specs/`, consolidate recurring operations around the existing dispatcher, and provide a narrower read-only on-disk diagnostic. Do not modify the production controller or guard inventory.
 
 ## Technical context
 
@@ -20,7 +20,7 @@ Keep private identifiers and deployment data out of public artifacts (I). Preser
 |---|---|---|
 | FR-001 | `AGENTS.md`, `docs/restart-controller-operations.md`, `Makefile` | Consolidate navigation and document one-command authority boundaries; help and fixture test |
 | FR-002 | `owner_maintenance.py`, `core/installer.sh` | Inherited; test explicit policy dispatch, stage verification, fixed client and no activation |
-| FR-003 | `owner_maintenance.py` (proposed) | New convenience check; existing install verifier is distinct and remains supported. Await approval before changing code |
+| FR-003 | `owner_maintenance.py`, `Makefile` | Implemented as `make check-binding`; the distinct install verifier remains supported. See [offline closeout](analysis.md#offline-closeout) |
 | FR-004 | Controller contract, `engine.py`, `wire.py`, `runtime.py` | Inherited; controller, qualification and interruption fixtures |
 | FR-005 | Shutdown and reconciliation contracts, `runtime.py`, `recovery.py`, `startup.py` | Inherited; shutdown, canary and recovery fixtures |
 | FR-006 | This feature, historical plans and `docs/evidence/` | Codify and link; Spec Kit artifact and coverage checks |
@@ -59,7 +59,7 @@ No new service, dependency or runtime schema.
 |---|---|
 | Pre-plan adversarial review | [Recorded for the draft](red-team-findings-2026-11-25.md); findings addressed. Not an approval of the current candidate. |
 | Shared Spec Kit scaffold | Use the checked-in Hermes-first scaffold and [kit extension workflow](../../docs/project-tooling.md#install-hermes-commands-separately). Do not copy a bootstrap or another feature’s approval state. |
-| Spec Validate comprehension and applicable peer review | **Open.** Validate the current spec and task bytes with the operator, complete applicable peer review, and run the checked-in gate before T004. A structure pass is not approval. |
-| Plan/tasks security review | **Open.** Review the current design and acceptance criteria before starting T004. |
-| Diagnostic verification | Pending T004. Run the offline acceptance fixtures before marking T004 complete. |
+| Spec Validate comprehension and applicable peer review | For the implementation revisions, the preparation gate allowed work with warnings under separate revision-bound maintainer waivers. This was not peer approval; see [implementation admission](analysis.md#implementation-admission). |
+| Plan/tasks security review | Independent follow-up found no remaining blockers on the [pinned pre-implementation design and acceptance criteria](analysis.md#pre-implementation-security-review). |
+| Diagnostic verification | Completed offline; see [closeout evidence](analysis.md#offline-closeout). |
 | Live activation, qualification and approval | Out of scope. Historical receipts and offline results confer no live authority. |

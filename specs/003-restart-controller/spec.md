@@ -2,7 +2,7 @@
 
 **Feature**: `003-restart-controller` · **Branch**: `docs/controller-routine-work` · **Created**: 2026-11-25
 
-**Status**: Retrospective baseline plus one proposed maintenance check. Neither the historical design nor this feature authorizes live work. Select `specs/003-restart-controller` in your own worktree; do not commit the local feature pointer.
+**Status**: Implemented and verified offline. See the [closeout record](analysis.md#offline-closeout) for the implementation and review evidence. This specification does not authorize live work. Select `specs/003-restart-controller` in your own worktree; do not commit the local feature pointer.
 
 ## User Scenarios & Testing
 
@@ -20,7 +20,7 @@ After preflight, the session requests a rehearsal and provides the exact prepare
 
 ### US4 — Find the normative controller contract (P2)
 
-A later session starts in `specs/`, finds the operative contracts and current requirements, and can distinguish historical plans and receipts from instructions. Test by following links from the repository and mapping requirements to code or planned changes and tests.
+A later session starts in `specs/`, finds the operative contracts and current requirements, and can distinguish historical plans and receipts from instructions. Test by following links from the repository and mapping requirements to code, documentation and tests.
 
 ### Edge cases and error handling
 
@@ -60,5 +60,5 @@ This feature owns controller behavior and owner maintenance. The [guard's incide
 ## Clarifications
 
 - Use the installed policy as the only runtime routing input; never derive the deployment from the caller's working directory.
-- The proposed binding diagnostic compares on-disk facts only. Until it is implemented, the existing install verifier is the supported controller parity check. The daemon remains authoritative for live admission, recovery and boot-time bindings.
+- `make check-binding` compares on-disk facts only. Use the install verifier for bundle and plist parity. The daemon remains authoritative for live admission, recovery and boot-time bindings. See the [runbook](../../docs/restart-controller-operations.md#existing-deployment-before-you-prepare) for the diagnostic’s limits.
 - Preserve dated owner packages as evidence, not templates or runnable instructions for the current host.
