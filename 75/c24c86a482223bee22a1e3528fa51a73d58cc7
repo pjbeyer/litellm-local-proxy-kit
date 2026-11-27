@@ -1,0 +1,23 @@
+specs/README.md
+  s_10dee469e9f750::t_b10f4ec8a7e976 8
+specs/004-isolated-proxy-rehearsal/security-review.md
+  s_10dee469e9f750::t_98c0a730a8b88c 20
+  s_10dee469e9f750::t_bbc6806a312361 17-19
+  s_10dee469e9f750::t_888b01d5a49785 21-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "75c24c86a482223bee22a1e3528fa51a73d58cc7",
+  "prompts": {},
+  "sessions": {
+    "s_10dee469e9f750": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261127_074117_d4943d",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
