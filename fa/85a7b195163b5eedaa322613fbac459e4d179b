@@ -1,0 +1,36 @@
+specs/002-prod-db-virtual-key-adoption/red-team-findings-2026-11-27.md
+  h_c5be3b3dad7ca8 1-83
+specs/002-prod-db-virtual-key-adoption/checklists/security.md
+  h_c5be3b3dad7ca8 1-31
+specs/002-prod-db-virtual-key-adoption/research.md
+  h_c5be3b3dad7ca8 1-75
+specs/002-prod-db-virtual-key-adoption/contracts/provisioning.md
+  h_c5be3b3dad7ca8 1-67
+specs/002-prod-db-virtual-key-adoption/plan.md
+  h_c5be3b3dad7ca8 1-113
+specs/002-prod-db-virtual-key-adoption/red-team-findings-2026-11-03.md
+  h_c5be3b3dad7ca8 1-47
+specs/002-prod-db-virtual-key-adoption/contracts/wrapper-db-gate.md
+  h_c5be3b3dad7ca8 1-54
+specs/002-prod-db-virtual-key-adoption/contracts/telemetry-record.md
+  h_c5be3b3dad7ca8 1-49
+specs/002-prod-db-virtual-key-adoption/spec.md
+  h_c5be3b3dad7ca8 1-196
+specs/002-prod-db-virtual-key-adoption/tasks.md
+  h_c5be3b3dad7ca8 1-114
+specs/002-prod-db-virtual-key-adoption/contracts/validation-matrix.md
+  h_c5be3b3dad7ca8 1-154
+specs/002-prod-db-virtual-key-adoption/red-team-lenses.yml
+  h_c5be3b3dad7ca8 1-103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "fa85a7b195163b5eedaa322613fbac459e4d179b",
+  "prompts": {},
+  "humans": {
+    "h_c5be3b3dad7ca8": {
+      "author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
