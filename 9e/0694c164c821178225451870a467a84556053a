@@ -1,0 +1,19 @@
+specs/004-isolated-proxy-rehearsal/security-review.md
+  s_5c5ad0db7a0934::t_ff77b1d03fa8a2 32-39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "9e0694c164c821178225451870a467a84556053a",
+  "prompts": {},
+  "sessions": {
+    "s_5c5ad0db7a0934": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261127_183718_e0a708",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
