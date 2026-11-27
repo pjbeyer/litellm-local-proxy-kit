@@ -1,0 +1,31 @@
+specs/006-task-review-override/tasks.md
+  s_c78f7507ec0844::t_a670ec3a85026d 6
+  s_c78f7507ec0844::t_3f57edd6a8432b 3-5
+  s_c78f7507ec0844::t_f37a18af249498 7-9
+specs/006-task-review-override/spec.md
+  s_3e859afceb3fa8::t_c9461ec91ab927 1-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "5dfd1032c3cdea1ab83a79ae14cbbc49d9c7e61c",
+  "prompts": {},
+  "sessions": {
+    "s_3e859afceb3fa8": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261126_205142_1dc853",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_c78f7507ec0844": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261126_205935_9a1cc0",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
