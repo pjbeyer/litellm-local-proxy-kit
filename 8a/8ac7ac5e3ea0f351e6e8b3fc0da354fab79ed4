@@ -1,0 +1,24 @@
+specs/README.md
+  s_f40ec4753db2da::t_16fdcfd2da25dc 12
+specs/001-proxy-lifecycle-guard-plugin/quickstart.md
+  s_f40ec4753db2da::t_47c1e9edd593e6 8
+  s_f40ec4753db2da::t_21dcbf68ca36a0 11-13
+specs/001-proxy-lifecycle-guard-plugin/checklists/requirements.md
+  s_f40ec4753db2da::t_63eb7689c5a0be 10-13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "8a8ac7ac5e3ea0f351e6e8b3fc0da354fab79ed4",
+  "prompts": {},
+  "sessions": {
+    "s_f40ec4753db2da": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261127_054157_1af25e",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
