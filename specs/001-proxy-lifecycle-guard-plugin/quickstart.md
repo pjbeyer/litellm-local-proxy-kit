@@ -5,10 +5,12 @@ Use this guide after implementation is authorized. The cases below are acceptanc
 ## Setup and commands
 
 1. Use a dedicated worktree and a short, resolved temporary directory as described in the [kit's offline instructions](../../README.md). Reuse the test harness for isolated input, policy, and discovery. In the host-boundary test, register the existing adapter with a fake host, run its hook against the real evaluator with isolated policy and discovery, and record dispatch attempts. Include an otherwise harmless synthetic operation designated protected by the isolated fixture, alongside a safe control that reaches the dispatch recorder exactly once. Use inert outcomes for the batch precedence matrix, not in place of this hook-level check. Add a sentinel for each external execution or service interaction the fixture could reach. A sentinel invocation fails the test; it never calls the external operation.
-2. After adding the new tests, run the focused checks as in the [implementation plan](plan.md). Capture baseline failures for the targeted contract assertions before changing the evaluator; a failed setup or missing test is not red evidence. Other controls may already pass. Do not execute inspected inputs or replay live requests.
+2. Run the focused checks for each increment before changing the evaluator: the relevant contract test file plus `tests/test_lifecycle_guard.py`. Capture targeted assertion failures; a failed setup or missing test is not red evidence. Other controls may already pass. Do not execute inspected inputs or replay live requests. After both increments, run all three focused files together:
 
    ```sh
-   uv run --no-project --with pytest --with pyyaml python -m pytest -q tests/test_guard_batch_contract.py tests/test_guard_assignment_contract.py
+   uv run --no-project --with pytest --with pyyaml python -m pytest -q \
+     tests/test_guard_batch_contract.py tests/test_guard_assignment_contract.py \
+     tests/test_lifecycle_guard.py
    ```
 
 3. Once the focused checks pass, run the full offline suite. Require the macOS and Linux checks for the exact source candidate; a local pass covers only the local platform.
