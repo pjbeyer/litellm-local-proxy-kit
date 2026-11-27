@@ -4,7 +4,9 @@
 
 The original draft review covered the [specification](spec.md), its source project's proposed constitution, the [plan](plan.md), [research](research.md), [data model](data-model.md), [contract](contracts/attribution.md), [validation guide](quickstart.md), and [task order](tasks.md). The specification SHA-256 recorded by that review was `495aa601e5ca43b9f3c638989ecc91e1b74bc6e018eb6ed2a0e2913defc7ec70`. The [kit constitution](../../.specify/memory/constitution.md) governs the import; it is not the source project's proposed text.
 
-**Import gate:** `check-gate.sh 002-hermes-eval-attribution` exited 1: `Spec has not been validated`. The recovered tooling and this historical gate result do not establish that the required hooks run in a fresh checkout. Verify the reviewed extension setup before using it for future phases. The draft review below does not satisfy the registered Red Team, security review, or implementation gates.
+**Import gate (former feature 002):** `check-gate.sh 002-hermes-eval-attribution` exited 1: `Spec has not been validated`. The recovered tooling and this historical gate result do not establish that the required hooks run in a fresh checkout. Verify the reviewed extension setup before using it for future phases. The draft review below does not satisfy the registered Red Team, security review, or implementation gates.
+
+**Renumbering to 008:** `check-gate.sh 008-hermes-eval-attribution` also exits 1: `Spec has not been validated`. The move does not carry forward any approval or change the implementation prerequisites.
 
 ## Findings and dispositions
 
