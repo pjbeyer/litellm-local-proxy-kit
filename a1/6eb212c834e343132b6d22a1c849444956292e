@@ -1,0 +1,24 @@
+tests/test_controller_canary.py
+  s_51a0bff292df71::t_9f0deafc85177b 426-440
+core/restart_control/canary.py
+  s_51a0bff292df71::t_ae96d5f17a05aa 232
+  s_51a0bff292df71::t_c6128698e2ff87 173-181
+  s_51a0bff292df71::t_552911fad63837 240,242
+  s_51a0bff292df71::t_81db55101f539c 21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "a16eb212c834e343132b6d22a1c849444956292e",
+  "prompts": {},
+  "sessions": {
+    "s_51a0bff292df71": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261127_064210_c21a99",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
