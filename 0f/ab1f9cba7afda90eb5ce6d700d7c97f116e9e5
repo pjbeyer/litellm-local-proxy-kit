@@ -1,0 +1,14 @@
+docs/validation/2026-11-20-t008-preflight-status.md
+  h_c5be3b3dad7ca8 1-54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "0fab1f9cba7afda90eb5ce6d700d7c97f116e9e5",
+  "prompts": {},
+  "humans": {
+    "h_c5be3b3dad7ca8": {
+      "author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
