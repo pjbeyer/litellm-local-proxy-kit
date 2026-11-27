@@ -1,0 +1,41 @@
+specs/004-isolated-proxy-rehearsal/spec.md
+  s_38e779c14c587c::t_1c6cc22df990fe 54,61-63
+  s_38e779c14c587c::t_5a645524ed43fb 29,31,35-36
+  s_38e779c14c587c::t_b4acd0853adca4 41
+  s_38e779c14c587c::t_fb3874dff4cdbb 9-10
+  s_38e779c14c587c::t_49f3b4202950e7 15-17,19,21-22,24-25
+  s_38e779c14c587c::t_5eb81bcdc7412d 45,48
+specs/004-isolated-proxy-rehearsal/contracts/rehearsal.md
+  s_38e779c14c587c::t_fa251ab1bf9504 28-31
+  s_38e779c14c587c::t_b9d7a95231166b 5-7
+specs/004-isolated-proxy-rehearsal/quickstart.md
+  s_38e779c14c587c::t_845f07c8dac539 7
+  s_38e779c14c587c::t_293e918bdc0456 8-9
+specs/004-isolated-proxy-rehearsal/data-model.md
+  s_38e779c14c587c::t_3da4d0a7797368 7
+specs/004-isolated-proxy-rehearsal/plan.md
+  s_38e779c14c587c::t_936c0ce2c45c39 9
+  s_38e779c14c587c::t_b0eec2f4e47bb5 49
+specs/004-isolated-proxy-rehearsal/tasks.md
+  s_38e779c14c587c::t_daf680ee082540 32,42
+  s_38e779c14c587c::t_d210285d0ba068 3-7,10
+  s_38e779c14c587c::t_08f26dbef41261 22
+specs/004-isolated-proxy-rehearsal/research.md
+  s_38e779c14c587c::t_0fec09fd9685f5 3-10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "ab08fd70dcf04aceede2eee75d9bff918270a647",
+  "prompts": {},
+  "sessions": {
+    "s_38e779c14c587c": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261127_055023_071878",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
