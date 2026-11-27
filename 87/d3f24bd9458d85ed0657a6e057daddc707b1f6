@@ -1,0 +1,25 @@
+specs/008-hermes-eval-attribution/tasks.md
+  s_75acb25c482127::t_4ad777ee5afcc6 7-41
+specs/008-hermes-eval-attribution/analysis.md
+  s_75acb25c482127::t_66aaa13ca9c1c1 9-10
+  s_75acb25c482127::t_3d56e6616af63d 7
+  s_75acb25c482127::t_def5729e1e6b5f 8
+specs/README.md
+  s_75acb25c482127::t_ec73eb0e36ff46 10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "87d3f24bd9458d85ed0657a6e057daddc707b1f6",
+  "prompts": {},
+  "sessions": {
+    "s_75acb25c482127": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261127_093554_8e4529",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
