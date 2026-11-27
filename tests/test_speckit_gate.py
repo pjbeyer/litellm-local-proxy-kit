@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 import sys
@@ -38,7 +39,7 @@ def gate(request, tmp_path):
     env = {k: v for k, v in os.environ.items() if not k.startswith('SPEC_VALIDATE_')}
     env['PATH'] = str(Path(sys.executable).parent) + os.pathsep + env['PATH']
 
-    def check(state=None, *, path=None):
+    def check(state=None, *, path=None, full=False):
         if state is not None:
             record = state if isinstance(state, str) else json.dumps(state)
             (status / (FEATURE + '.json')).write_text(record, encoding='utf-8')
@@ -49,7 +50,7 @@ def gate(request, tmp_path):
         assert isinstance(output['warnings'], list)
         if output['outcome'] == 'allowed-with-warning':
             assert output['warnings'] and not output['actions_required']
-        return result.returncode, output['outcome']
+        return result.returncode, output if full else output['outcome']
 
     return check, spec, {
         'feature': FEATURE,
@@ -149,16 +150,24 @@ def test_override_only_applies_while_waiting_for_spec_review(gate, tmp_path, sta
     assert check(state) == expected
 
 
-def test_powershell_override_can_use_python_when_python3_is_absent(request, gate, tmp_path):
+@pytest.mark.parametrize('review', ['spec', 'tasks'])
+def test_powershell_override_can_use_python_when_python3_is_absent(request, gate, tmp_path, review):
     if request.node.callspec.params['gate'] != 'pwsh' or os.name == 'nt':
         pytest.skip('POSIX-hosted PowerShell fallback fixture')
     check, _, state = gate
-    _record_override(state)
-    _write_config(tmp_path)
+    if review == 'spec':
+        _record_override(state)
+        _write_config(tmp_path)
+    else:
+        _record_task_override(state)
+        _write_config(tmp_path, TASK_OVERRIDE_ENABLED)
     bin_dir = tmp_path / 'bin'
     bin_dir.mkdir()
     (bin_dir / 'pwsh').symlink_to(shutil.which('pwsh'))
-    (bin_dir / 'python').symlink_to(sys.executable)
+    # A symlink outside the venv can lose its pyvenv.cfg and thus PyYAML.
+    python = bin_dir / 'python'
+    python.write_text('#!/bin/sh\nexec ' + shlex.quote(sys.executable) + ' "$@"\n', encoding='utf-8')
+    python.chmod(0o700)
     assert check(state, path=bin_dir) == (0, 'allowed-with-warning')
 
 
@@ -201,6 +210,123 @@ def test_override_preserves_validation_and_task_review(gate, tmp_path, key, valu
     _record_override(state)
     _write_config(tmp_path)
     assert check(state) == (1, 'blocked')
+
+
+TASK_OVERRIDE_ENABLED = 'gate:\n  allow_task_review_override: true\n'
+
+
+def _record_task_override(state):
+    state.update(tasks_review_status='pending', task_review_override={
+        'used': True, 'reason': 'Schedule dependency', 'by': 'Maintainer',
+        'feature': FEATURE, 'spec_hash': state['spec_hash'], 'tasks_hash': state['tasks_hash'],
+    })
+    state.pop('reviewed_tasks_hash', None)
+
+
+@pytest.mark.parametrize('disposition, expected', [
+    ('pending', (0, 'allowed-with-warning')),
+    ('timed-out', (1, 'blocked')),
+    ('changes-requested', (1, 'blocked')),
+    ('unknown', (1, 'blocked')),
+    (None, (1, 'blocked')),
+    ('approved', (1, 'blocked')),  # No matching peer-review digest.
+    ('not-required', (0, 'allowed')),
+])
+def test_task_override_only_applies_to_pending_review(gate, tmp_path, disposition, expected):
+    check, _, state = gate
+    _record_task_override(state)
+    state['tasks_review_status'] = disposition
+    _write_config(tmp_path, TASK_OVERRIDE_ENABLED)
+    assert check(state) == expected
+
+
+@pytest.mark.parametrize('config', [
+    None,
+    ENABLED,
+    'gate:\n  allow_task_review_override: false\n',
+    'gate:\n  allow_task_review_override: "true"\n',
+    'review:\n  allow_task_review_override: true\n',
+    TASK_OVERRIDE_ENABLED + '  allow_task_review_override: true\n',
+    TASK_OVERRIDE_ENABLED + 'gate: {}\n',
+    'gate: [\n',
+])
+def test_task_override_requires_separate_opt_in(gate, tmp_path, config):
+    check, _, state = gate
+    _record_task_override(state)
+    if config is not None:
+        _write_config(tmp_path, config)
+    assert check(state) == (1, 'blocked')
+
+
+@pytest.mark.parametrize('field, value', [
+    ('used', 'true'), ('used', False), ('by', ''), ('reason', '   '),
+    ('feature', '002-other-feature'), ('spec_hash', None), ('tasks_hash', 'sha256:' + '0' * 64),
+])
+def test_task_override_requires_complete_matching_receipt(gate, tmp_path, field, value):
+    check, _, state = gate
+    _record_task_override(state)
+    state['task_review_override'][field] = value
+    _write_config(tmp_path, TASK_OVERRIDE_ENABLED)
+    assert check(state) == (1, 'blocked')
+
+
+@pytest.mark.parametrize('field, value', [
+    ('feature', '002-other-feature'), ('feature', None),
+    ('spec_self_validation', 'failed'), ('tasks_self_validation', 'failed'),
+    ('review_status', 'pending'), ('review_status', 'timed-out'),
+    ('review_status', 'changes-requested'), ('review_status', 'unknown'),
+    ('reviewed_spec_hash', 'sha256:' + '0' * 64),
+])
+def test_task_override_preserves_other_gate_requirements(gate, tmp_path, field, value):
+    check, _, state = gate
+    _record_task_override(state)
+    state[field] = value
+    _write_config(tmp_path, TASK_OVERRIDE_ENABLED)
+    assert check(state) == (1, 'blocked')
+
+
+@pytest.mark.parametrize('artifact', ['spec', 'tasks'])
+@pytest.mark.parametrize('revalidated', [False, True])
+def test_task_override_cannot_survive_artifact_change(gate, tmp_path, artifact, revalidated):
+    check, spec, state = gate
+    state['review_status'] = 'not-required'
+    _record_task_override(state)
+    path = spec.with_name(f'{artifact}.md')
+    path.write_text('# Revised artifact\n', encoding='utf-8')
+    if revalidated:
+        state[f'{artifact}_hash'] = 'sha256:' + hashlib.sha256(path.read_bytes()).hexdigest()
+    _write_config(tmp_path, TASK_OVERRIDE_ENABLED)
+    assert check(state) == (1, 'blocked')
+
+
+def test_independent_overrides_report_each_waiver_without_writing_state(gate, tmp_path):
+    check, _, state = gate
+    _record_override(state)
+    _record_task_override(state)
+    _write_config(tmp_path, ENABLED + '  allow_task_review_override: true\n')
+    code, result = check(state, full=True)
+    assert code == 0 and result['outcome'] == 'allowed-with-warning'
+    assert len(result['warnings']) == 2
+    assert 'Unresolved spec review overridden by recorded maintainer authorization' in result['warnings']
+    assert 'Pending task review overridden by recorded maintainer authorization' in result['warnings']
+    status_path = tmp_path / f'.specify/extensions/spec-validate/status/{FEATURE}.json'
+    assert status_path.read_text(encoding='utf-8') == json.dumps(state)
+
+
+def test_task_opt_in_does_not_reuse_spec_receipt(gate, tmp_path):
+    check, _, state = gate
+    _record_override(state)
+    state.update(review_status='approved', tasks_review_status='pending')
+    _write_config(tmp_path, ENABLED + '  allow_task_review_override: true\n')
+    assert check(state) == (1, 'blocked')
+
+
+def test_task_override_does_not_downgrade_current_peer_approval(gate, tmp_path):
+    check, _, state = gate
+    _record_task_override(state)
+    state.update(tasks_review_status='approved', reviewed_tasks_hash=state['tasks_hash'])
+    _write_config(tmp_path, TASK_OVERRIDE_ENABLED)
+    assert check(state) == (0, 'allowed')
 
 
 def test_review_not_required_allows_current_validation(gate):

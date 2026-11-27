@@ -90,38 +90,46 @@ if ($state.review_status -eq "approved" -and $state.reviewed_spec_hash -cne $cur
     Output-Gate "blocked" "Peer review does not match the current spec digest" @("Obtain peer review of current spec.md")
 }
 
-# Task review must be decided separately and bound to the current task bytes.
-if ($state.tasks_review_status -isnot [string] -or
-    $state.tasks_review_status -cnotin @('not-required', 'approved') -or
-    ($state.tasks_review_status -ceq 'approved' -and
-     ($state.reviewed_tasks_hash -isnot [string] -or $state.reviewed_tasks_hash -cne $currentTasksHash))) {
-    Output-Gate "blocked" "Task review is unresolved or does not match the current tasks digest" @("Complete the task review requirement for current tasks.md")
-}
-
-# The shared policy only authorizes waiting spec review, never task review.
-if ($state.spec_self_validation -is [string] -and $state.spec_self_validation -ceq 'passed' -and
-    $state.review_status -is [string] -and $state.review_status -cin @('pending', 'timed-out')) {
+function Test-MaintainerOverride {
+    param([string[]]$PolicyArguments)
     $python = Get-Command python3 -CommandType Application -ErrorAction SilentlyContinue |
         Select-Object -First 1
     if (-not $python) {
         $python = Get-Command python -CommandType Application -ErrorAction SilentlyContinue |
             Select-Object -First 1
     }
-    if ($python) {
-        $policy = Join-Path $ScriptDir '../check-maintainer-override.py'
-        $stateJson | & $python.Source $policy
-        if ($LASTEXITCODE -eq 0) {
-            Output-Gate "allowed-with-warning" "Recorded maintainer override permits implementation" @() @(
-                "Unresolved spec review overridden by recorded maintainer authorization"
-            )
-        }
-    }
+    if (-not $python) { return $false }
+    $policy = Join-Path $ScriptDir '../check-maintainer-override.py'
+    $stateJson | & $python.Source $policy @PolicyArguments | Out-Null
+    return ($? -and $LASTEXITCODE -eq 0)
 }
 
-# Rule 10: Validated + review met
-if ($state.spec_self_validation -is [string] -and $state.spec_self_validation -ceq 'passed' -and
-    $state.review_status -is [string] -and $state.review_status -cin @('not-required', 'approved')) {
-    Output-Gate "allowed" "Spec and tasks validated and review requirements met" @()
+$warnings = @()
+$specValidated = $state.spec_self_validation -is [string] -and $state.spec_self_validation -ceq 'passed'
+
+# Review dispositions are independent; a waiver applies only to its own review.
+if ($state.tasks_review_status -is [string] -and $state.tasks_review_status -ceq 'pending' -and
+    $specValidated -and (Test-MaintainerOverride -PolicyArguments @('tasks', $Feature))) {
+    $warnings += "Pending task review overridden by recorded maintainer authorization"
+} elseif ($state.tasks_review_status -isnot [string] -or
+          $state.tasks_review_status -cnotin @('not-required', 'approved') -or
+          ($state.tasks_review_status -ceq 'approved' -and
+           ($state.reviewed_tasks_hash -isnot [string] -or $state.reviewed_tasks_hash -cne $currentTasksHash))) {
+    Output-Gate "blocked" "Task review is unresolved or does not match the current tasks digest" @("Complete the task review requirement for current tasks.md")
+}
+
+if ($specValidated -and $state.review_status -is [string]) {
+    $specReviewed = $state.review_status -cin @('not-required', 'approved')
+    if ($state.review_status -cin @('pending', 'timed-out') -and (Test-MaintainerOverride)) {
+        $warnings = @("Unresolved spec review overridden by recorded maintainer authorization") + $warnings
+        $specReviewed = $true
+    }
+    if ($specReviewed) {
+        if ($warnings.Count -gt 0) {
+            Output-Gate "allowed-with-warning" "Recorded maintainer override permits implementation" @() $warnings
+        }
+        Output-Gate "allowed" "Spec and tasks validated and review requirements met" @()
+    }
 }
 
 # Fallback

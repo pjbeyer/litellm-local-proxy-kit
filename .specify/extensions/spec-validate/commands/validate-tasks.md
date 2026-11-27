@@ -36,7 +36,7 @@ This command follows the [spec validation workflow](validate.md), with these dif
 
 ### State Update
 
-Apply the review rules in `validate.md` to the tasks independently of the spec. Merge the task digest, validation result and timestamp, critical count and missed IDs, and `tasks_review_status` (`pending` or `not-required`) into the current record. For required review, record `tasks_review_requested_at`. Clear prior task review decisions when the digest changes or a new review is required, including `reviewed_tasks_hash`. Use `tasks_critical_count` and `tasks_missed_items` for reviewer context. Preserve all spec validation and review fields. Record the task validator as `tasks_validated_by` in private state; preserve `validated_by` for the spec. Keep the legacy `approval_status` field `blocked`; run the gate for the combined verdict.
+Apply the review rules in `validate.md` to the tasks independently of the spec. Merge the task digest, validation result and timestamp, critical count and missed IDs, and `tasks_review_status` (`pending` or `not-required`) into the current record. For required review, record `tasks_review_requested_at`. Clear prior task review decisions when the digest changes or a new review is required, including `reviewed_tasks_hash` and `task_review_override`. Use `tasks_critical_count` and `tasks_missed_items` for reviewer context. Preserve all spec validation and review fields. Record the task validator as `tasks_validated_by` in private state; preserve `validated_by` for the spec. Keep the legacy `approval_status` field `blocked`; run the gate for the combined verdict.
 
 ## Important Constraints
 

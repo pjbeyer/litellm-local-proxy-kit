@@ -21,6 +21,7 @@ gate:
   block_without_validation: true
   allow_when_peer_review_approved_even_if_self_validation_stale: false
   allow_maintainer_override: true # Owner opt-in; each override still requires a revision-bound local record.
+  allow_task_review_override: false
 
 privacy:
   git_store: none

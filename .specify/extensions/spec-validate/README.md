@@ -40,7 +40,7 @@ Hard gate before implementation. Runs automatically as a mandatory `before_imple
 
 - **Blocks** when: no validation, failed validation, stale hash, pending review, changes requested
 - **Allows** when the current spec and task digests match their respective validations and either the applicable peer review is recorded or peer review is not required. Peer approval must independently record the current `reviewed_spec_hash` or `reviewed_tasks_hash` for the artifact reviewed. Legacy records missing the task review disposition must go through the current task validation and review workflow.
-- **Allows with warning** when a [recorded maintainer override](commands/gate.md) waives pending or timed-out spec review for the validated spec and tasks revisions. Task review, validation, and change requests are not waived.
+- **Allows with warning** when a [recorded maintainer override](commands/gate.md) waives pending or timed-out spec review or, under a separate opt-in, pending task review. Both validations and all other gates still apply.
 
 ### `/speckit.spec-validate.review`
 
@@ -105,13 +105,14 @@ Edit `.specify/extensions/spec-validate/spec-validate-config.yml`:
 | `review.sla_hours` | 24 | Hours before review times out |
 | `review.timeout_policy` | block | An overdue required review still blocks |
 | `gate.block_without_validation` | true | Block if not validated |
-| `gate.allow_maintainer_override` | false | Permit implementation on a recorded, complete maintainer override |
+| `gate.allow_maintainer_override` | false | Permit a recorded waiver of spec review |
+| `gate.allow_task_review_override` | false | Permit a separate, feature- and revision-bound waiver of pending task review |
 | `privacy.personal_metrics_visibility` | self-and-maintainers | Who sees personal metrics |
 | `question_generation.mode` | deterministic-first | Distractor generation strategy |
 
 ## Solo Developer Mode
 
-Current spec and task validations are both required. A solo workflow or expired SLA does not waive review. Only an explicit [maintainer override](commands/gate.md) can waive waiting on spec review.
+Current spec and task validations are both required. A solo workflow or expired SLA does not waive review. A maintainer must explicitly [record and enable a waiver](commands/gate.md) for the applicable review.
 
 ## Troubleshooting
 

@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- Allow an explicitly enabled, revision-bound maintainer override for pending or timed-out spec review. Validation, task review, and change requests continue to block when unmet.
+- Allow a separately enabled, feature- and revision-bound maintainer override for pending task review. Pending or timed-out spec review retains its existing override. Neither waiver replaces validation or overrides change requests.
 
 ## [1.0.1] - 2026-04-20
 

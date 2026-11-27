@@ -84,7 +84,7 @@ bash .specify/extensions/spec-validate/scripts/bash/check-gate.sh 003-restart-co
 The prerequisite check only locates artifacts. The gate requires current spec
 and task hashes and separate review dispositions. An explicit, revision-bound
 [maintainer override](../.specify/extensions/spec-validate/commands/gate.md) can
-waive waiting on spec review only. Keep validation state and quiz answers out
+waive waiting on the specified review only. Keep validation state and quiz answers out
 of Git. A missing gate or missing approval is not clearance.
 
 ## Release setup

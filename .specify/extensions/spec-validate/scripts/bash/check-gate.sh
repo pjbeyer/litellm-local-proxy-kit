@@ -160,9 +160,14 @@ EOF
   exit 1
 fi
 
-# Task review must be decided separately and bound to the current task bytes.
-if { [ "$TASKS_REVIEW_STATUS" != "not-required" ] && [ "$TASKS_REVIEW_STATUS" != "approved" ]; } ||
-   { [ "$TASKS_REVIEW_STATUS" = "approved" ] && [ "$REVIEWED_TASKS_HASH" != "$CURRENT_TASKS_HASH" ]; }; then
+# Review dispositions are independent; a waiver applies only to its own review.
+TASK_WARNING=""
+if [ "$TASKS_REVIEW_STATUS" = "pending" ] &&
+   [ "$SPEC_VALIDATION" = "passed" ] &&
+   printf '%s' "$STATE" | python3 "$SCRIPT_DIR/../check-maintainer-override.py" tasks "$FEATURE"; then
+  TASK_WARNING='"Pending task review overridden by recorded maintainer authorization"'
+elif { [ "$TASKS_REVIEW_STATUS" != "not-required" ] && [ "$TASKS_REVIEW_STATUS" != "approved" ]; } ||
+     { [ "$TASKS_REVIEW_STATUS" = "approved" ] && [ "$REVIEWED_TASKS_HASH" != "$CURRENT_TASKS_HASH" ]; }; then
   cat <<EOF
 {
   "outcome": "blocked",
@@ -174,35 +179,33 @@ EOF
   exit 1
 fi
 
-# Only waiting on spec review can be overridden, after both artifacts and
-# the independent task-review disposition have passed the checks above.
-if [ "$SPEC_VALIDATION" = "passed" ] &&
-   { [ "$REVIEW_STATUS" = "pending" ] || [ "$REVIEW_STATUS" = "timed-out" ]; } &&
-   printf '%s' "$STATE" | python3 "$SCRIPT_DIR/../check-maintainer-override.py"; then
-  cat <<EOF
-{
-  "outcome": "allowed-with-warning",
-  "reason": "Recorded maintainer override permits implementation",
-  "actions_required": [],
-  "warnings": [
-    "Unresolved spec review overridden by recorded maintainer authorization"
-  ]
-}
-EOF
-  exit 0
+SPEC_WARNING=""
+if [ "$SPEC_VALIDATION" = "passed" ]; then
+  case "$REVIEW_STATUS" in
+    not-required|approved) OUTCOME="allowed" ;;
+    pending|timed-out)
+      if printf '%s' "$STATE" | python3 "$SCRIPT_DIR/../check-maintainer-override.py"; then
+        SPEC_WARNING='"Unresolved spec review overridden by recorded maintainer authorization"'
+        OUTCOME="allowed"
+      fi
+      ;;
+  esac
 fi
 
-# Pending, timed-out, and unrecognized spec review states stay blocked.
-
-# Gate rule 10: Validated + no review needed or review approved — allowed
-if [ "$SPEC_VALIDATION" = "passed" ] && { [ "$REVIEW_STATUS" = "not-required" ] || [ "$REVIEW_STATUS" = "approved" ]; }; then
+if [ "$OUTCOME" = "allowed" ]; then
   REASON="Spec and tasks validated and review requirements met"
+  if [ -n "$SPEC_WARNING$TASK_WARNING" ]; then
+    OUTCOME="allowed-with-warning"
+    REASON="Recorded maintainer override permits implementation"
+    [ -z "$SPEC_WARNING" ] || [ -z "$TASK_WARNING" ] || SPEC_WARNING="$SPEC_WARNING, "
+    WARNINGS="[$SPEC_WARNING$TASK_WARNING]"
+  fi
   cat <<EOF
 {
-  "outcome": "allowed",
+  "outcome": "$OUTCOME",
   "reason": "$REASON",
   "actions_required": [],
-  "warnings": []
+  "warnings": $WARNINGS
 }
 EOF
   exit 0

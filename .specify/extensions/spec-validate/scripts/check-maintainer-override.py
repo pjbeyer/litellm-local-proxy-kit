@@ -5,9 +5,24 @@ from pathlib import Path
 import sys
 
 
-def allows_override(state, config):
-    override = state.get('override') if isinstance(state, dict) else None
+def allows_override(state, config, review, feature=None):
+    if not isinstance(state, dict):
+        return False
+    if review == 'tasks':
+        record_key = 'task_review_override'
+        config_key = 'allow_task_review_override'
+        if not feature or state.get('feature') != feature or state.get('tasks_review_status') != 'pending':
+            return False
+    elif review == 'spec':
+        record_key = 'override'
+        config_key = 'allow_maintainer_override'
+    else:
+        return False
+
+    override = state.get(record_key)
     if not isinstance(override, dict) or override.get('used') is not True:
+        return False
+    if review == 'tasks' and override.get('feature') != feature:
         return False
     if not all(isinstance(override.get(key), str) and override[key].strip()
                for key in ('reason', 'by')):
@@ -38,15 +53,19 @@ def allows_override(state, config):
             data = yaml.compose(stream, Loader=yaml.SafeLoader)
     except yaml.YAMLError:
         return False
-    setting = lookup(lookup(data, 'gate'), 'allow_maintainer_override')
+    setting = lookup(lookup(data, 'gate'), config_key)
     return (isinstance(setting, yaml.ScalarNode)
             and setting.tag == 'tag:yaml.org,2002:bool' and setting.value == 'true')
 
 
 def main():
+    args = sys.argv[1:]
+    if args and (len(args) != 2 or args[0] != 'tasks'):
+        return 1
+    review, feature = args or ('spec', None)
     config = Path(__file__).resolve().parent.parent / 'spec-validate-config.yml'
     try:
-        return 0 if allows_override(json.load(sys.stdin), config) else 1
+        return 0 if allows_override(json.load(sys.stdin), config, review, feature) else 1
     except (OSError, ValueError, RecursionError):
         return 1
 

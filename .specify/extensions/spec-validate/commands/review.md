@@ -15,7 +15,7 @@ Record independent review for one validated artifact. Default to `spec`. Never u
 3. Read and hash the complete artifact to be presented. If the digest is missing or differs from the stored validation hash, stop and request fresh validation. Show the artifact, missed item IDs, first-attempt accuracy from the relevant counts, and existing review notes. Do not show private selections or analytics.
 4. Ask the reviewer to **approve**, **request changes**, or **add notes**. Before saving any decision, recheck the artifact hash and confirm the current record still refers to the same validation. Re-read and merge into the current record; preserve the other artifact’s fields.
    - **Approve:** set the selected review status to `approved` and its reviewed digest to the verified digest.
-   - **Request changes:** set the selected review status to `changes-requested`, remove its reviewed digest, and record the comments.
+   - **Request changes:** set the selected review status to `changes-requested`, remove its reviewed digest, and record the comments. For tasks, also remove `task_review_override`.
    - **Add notes:** record the notes without changing the review decision or digest.
    - Store reviewer, timestamp and comments in `reviewer`, `reviewed_at` and `review_comments` for the spec, or the corresponding `tasks_` fields for tasks. Keep the legacy `approval_status` field `blocked`; it is not the current verdict.
 5. Write only to the ignored local record with `write-approval-state.sh`. An overdue review stays blocked until a decision; it is not self-approval. Report the decision and use the gate to report overall implementation eligibility.
