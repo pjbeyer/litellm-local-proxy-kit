@@ -1,0 +1,20 @@
+tests/test_restart_controller.py
+  s_51a0bff292df71::t_d7a1daadbd9914 365
+  s_51a0bff292df71::t_2977d2fd19b4f9 351-357,359-363
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "a661b37f7efd56b82f7f31e8bfd7382c540e342f",
+  "prompts": {},
+  "sessions": {
+    "s_51a0bff292df71": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261127_064210_c21a99",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
