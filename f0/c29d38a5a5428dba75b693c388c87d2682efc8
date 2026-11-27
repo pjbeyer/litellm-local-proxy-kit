@@ -1,0 +1,27 @@
+.specify/extensions/security-review/CHANGELOG.md
+  s_cf2554aaa22366::t_b013ab41e9e2ec 3-6
+.specify/extensions/security-review/scripts/powershell/detect-changed-files.ps1
+  s_cf2554aaa22366::t_03f7bc7ae9ff60 167
+.specify/extensions/security-review/scripts/bash/detect-changed-files.sh
+  s_cf2554aaa22366::t_5c448420cf9c8c 181
+tests/test_speckit_gate.py
+  s_cf2554aaa22366::t_528a921b9ca556 419
+  s_cf2554aaa22366::t_ea2ecd7b29fbe6 379,382-417
+  s_cf2554aaa22366::t_146244e0444b9c 418
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "f0c29d38a5a5428dba75b693c388c87d2682efc8",
+  "prompts": {},
+  "sessions": {
+    "s_cf2554aaa22366": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261127_053905_cd4bca",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
