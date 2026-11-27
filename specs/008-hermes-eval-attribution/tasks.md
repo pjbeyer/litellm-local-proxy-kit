@@ -4,9 +4,9 @@ This is the dependency-ordered execution plan, not the project backlog or author
 
 ## Phase 1: Entry gates
 
-- [ ] T001 [P] Obtain and record maintainer design review against the kit constitution, the applicable extension reviews, and operator comprehension against `specs/002-hermes-eval-attribution/spec.md` and `specs/002-hermes-eval-attribution/plan.md` (FR-011, FR-012).
-- [ ] T002 [P] Investigate each mode on both required endpoints; demonstrate supported final dispatch, non-egress, accepted response capture, exact physical row identities and same-UID revision or immutability evidence. Record build/configuration and evidence or the blocking gap in `specs/002-hermes-eval-attribution/research.md` (FR-002, FR-004, FR-005, FR-006, FR-011, SC-003).
-- [ ] T003 Validate token-independent roster/outcome identity, authenticated client/route and exchange/billing census, complete reads, coherent verdict point and bounded lag on the same candidate path; record evidence or stop in `specs/002-hermes-eval-attribution/research.md` (FR-008, FR-009, SC-002) (depends on T002)
+- [ ] T001 [P] Obtain and record maintainer design review against the kit constitution, the applicable extension reviews, and operator comprehension against `specs/008-hermes-eval-attribution/spec.md` and `specs/008-hermes-eval-attribution/plan.md` (FR-011, FR-012).
+- [ ] T002 [P] Investigate each mode on both required endpoints; demonstrate supported final dispatch, non-egress, accepted response capture, exact physical row identities and same-UID revision or immutability evidence. Record build/configuration and evidence or the blocking gap in `specs/008-hermes-eval-attribution/research.md` (FR-002, FR-004, FR-005, FR-006, FR-011, SC-003).
+- [ ] T003 Validate token-independent roster/outcome identity, authenticated client/route and exchange/billing census, complete reads, coherent verdict point and bounded lag on the same candidate path; record evidence or stop in `specs/008-hermes-eval-attribution/research.md` (FR-008, FR-009, SC-002) (depends on T002)
 
 ## Phase 2: Foundational red tests and package
 
@@ -38,7 +38,7 @@ This is the dependency-ordered execution plan, not the project backlog or author
 ## Phase 6: Packaging, qualification and handoff
 
 - [ ] T013 Document install, validation, compatibility, separate controls, diagnostics, state retention and rollback including residual SpendLog tags in `integrations/hermes/quality-attribution/README.md`; run package validation, offline tests and independent review (FR-001, FR-010, FR-012, SC-004) (depends on T012)
-- [ ] T014 With separate operator authorization, run bounded installed-plugin canaries using `specs/002-hermes-eval-attribution/quickstart.md`; record sanitized receipts for one COMPLEX success on each endpoint, each advertised mode, and non-egress and rollback controls. Leave unsupported modes disabled and scoring unavailable (FR-004, FR-010, FR-011, FR-012, SC-003, SC-004) (depends on T013)
+- [ ] T014 With separate operator authorization, run bounded installed-plugin canaries using `specs/008-hermes-eval-attribution/quickstart.md`; record sanitized receipts for one COMPLEX success on each endpoint, each advertised mode, and non-egress and rollback controls. Leave unsupported modes disabled and scoring unavailable (FR-004, FR-010, FR-011, FR-012, SC-003, SC-004) (depends on T013)
 
 ## Execution Wave DAG
 
