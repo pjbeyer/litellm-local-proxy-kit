@@ -1,5 +1,13 @@
 # Research: isolated proxy rehearsal
 
+## Configuration checking is the routine default (operator decision, 2026-11-27)
+
+**Decision:** Routine use is the configuration-check lane (`make rehearse-check`), which needs no guest, no VM image, no external drive, and no extra hardware on this machine. The isolated macOS guest remains the opt-in backend for exercising the actual candidate runtime, requested explicitly by name and never selected automatically or as a fallback. An external drive or a separate macOS runner may host the opt-in lane; neither is required for routine use.
+
+**Rationale:** Owner confirmed that configuration checking is enough for routine use and declined to commit 40–60 GiB on this machine to rehearsal. This resolves the former T001 storage deadlock: the guest-lane feasibility work (T001) remains gated and opt-in, while the default workflow ships without it.
+
+**Consequences:** The check result must be typed (`checked`, `runtime_not_exercised`) so it cannot be mistaken for rehearsal evidence; `make rehearse` must refuse, not downgrade, when the backend is absent. T001's storage blocker no longer gates the default path.
+
 ## Use an offline macOS guest for the first backend
 
 **Decision:** Plan one Apple Silicon macOS VM with zero network devices, no shared folders, no host sockets or credential/share integration, and a local fixture dependency set. Attach a read-only input image and separate disposable guest state. A narrowly scoped virtual serial result channel carries a closed record, never executable requests.

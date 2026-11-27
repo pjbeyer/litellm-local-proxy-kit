@@ -6,7 +6,7 @@
 
 ## Summary
 
-Add `make rehearse` as a separate host entry point. A short-lived supervisor owns a disposable offline macOS guest. A guest worker uses the kit's existing renderer, exact runtime proof, and patch sentinel to test a proposed overlay and pinned patched build against local fixtures. Nothing enrolls or contacts the managed controller, modifies installed files, or promotes a result.
+Rehearsal support has two tiers. The routine default is `make rehearse-check`: it verifies reviewed inputs and renders the proposed overlay with the kit's trusted renderer, reporting what would change — no guest, no candidate execution, no managed contact, and no extra hardware. The opt-in is `make rehearse`: a short-lived supervisor owns a disposable offline macOS guest whose worker uses the kit's existing renderer, exact runtime proof, and patch sentinel to test a proposed overlay and pinned patched build against local fixtures. Nothing enrolls or contacts the managed controller, modifies installed files, or promotes a result. The opt-in lane may run on an external drive or a separate macOS runner, but routine use never requires extra local hardware.
 
 ## Technical Context
 
@@ -46,6 +46,7 @@ See [research](research.md), [CLI and runner contract](contracts/rehearsal.md), 
 ## Gates and evidence
 
 - Red-team gate: findings resolved; independent amended-spec re-review approved. Current operator answers received. **Spec Validate execution gate: Blocked.** The task-local receipt write was authorized but refused by the lifecycle guard; the gate still reports that the spec has not been validated. Before implementation, record the spec result through the supported route, satisfy the required peer review, validate the current tasks separately, and verify the implementation gate. This plan does not substitute for the receipt or authorize execution.
+- Configuration-check lane (T011, T012): the routine default, independent of the guest backend; it does not require the Spec Validate guest-lane gate to proceed with its own review cycle. Its result is advisory and never substitutes for a rehearsal receipt.
 - Plan/tasks security review: independent reviews found gaps in guest admission, input/receipt binding and ownership sequencing. See [dispositions](security-review.md); these are design corrections, not proof of the backend. Owner plan review and selection of the execution method remain separate from spec comprehension.
 - VM feasibility: **Open**, owner/implementer. Prove no NIC/host channels, constrained result transport and fail-stop lifetime on the target Mac with inert inputs before any candidate import. If the selected backend cannot prove these, do not launch or advertise a working candidate lane.
 - Distinct real patched build acceptance: **Open**, operator plus independent read-only observer. No live acceptance run while controller reconciliation makes attribution ambiguous. Existing maintenance regressions must pass independently.
