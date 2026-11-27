@@ -64,9 +64,15 @@ def render(overlay: dict, template: str, *, home: str | None = None) -> str:  # 
     }
     for m in overlay["upstream"].get("models", []):
         params: dict = dict(base)
-        params.update({k: v for k, v in m.items() if k != "name"})
+        params.update({k: v for k, v in m.items() if k not in {"name", "model_info"}})
         params["model"] = f"openai/{m['name']}"
-        models.append({"model_name": m["name"], "litellm_params": params})
+        entry = {"model_name": m["name"], "litellm_params": params}
+        model_info = m.get("model_info")
+        if model_info is not None:
+            if not isinstance(model_info, dict):
+                raise ValueError("upstream.models[].model_info must be a mapping")
+            entry["model_info"] = model_info
+        models.append(entry)
     if overlay["upstream"].get("wildcard"):
         wildcard_params: dict = {"model": "openai/*", **base}
         # The live wildcard entry carries NO timeouts (deliberate: unlisted

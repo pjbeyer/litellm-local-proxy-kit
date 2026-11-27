@@ -43,6 +43,10 @@ or for an explicitly authorized handoff.
 - List additional MCP stdio executable **basenames** as a comma-separated value.
   This controls executable admission, not server or tool authorization. Preserve
   only commands required by the reviewed deployment.
+- Under `upstream.models`, use `model_info` for LiteLLM model metadata such
+  as `reasoning_effort_levels`. The renderer puts the mapping beside
+  `litellm_params`, not inside it. Omit it or use `null` for no metadata;
+  other non-mapping values are rejected.
 - The renderer never reads live state. Check old/new runtime environment parity
   separately from YAML parity: omitting the database disables persistent MCP
   OAuth state, virtual-key lookup and usage accounting; omitting the allowlist

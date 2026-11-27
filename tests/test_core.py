@@ -11,6 +11,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+import yaml
+
 REPO = Path(__file__).resolve().parent.parent
 CORE = REPO / "core"
 
@@ -94,6 +97,56 @@ def test_render_deterministic_and_refs_only(tmp_path):
     text = out1.read_text()
     assert "os.environ/LITELLM_API_KEY" in text, "refs-only output (FR-004)"
     assert "sk-" not in text.lower()
+
+
+@pytest.mark.parametrize(
+    ("metadata", "expected"),
+    [
+        ("", None),
+        ("      model_info: null\n", None),
+        ("      model_info: {}\n", {}),
+        ("      model_info:\n        reasoning_effort_levels: [low, high]\n",
+         {"reasoning_effort_levels": ["low", "high"]}),
+    ],
+)
+def test_render_upstream_model_info_is_sibling(tmp_path, metadata, expected):
+    result, out = _render_upstream_model(tmp_path, metadata)
+    assert result.returncode == 0, result.stderr
+    entry, = yaml.safe_load(out.read_text())["model_list"]
+    assert "model_info" not in entry["litellm_params"]
+    assert entry["model_name"] == "test-model"
+    assert entry["litellm_params"]["model"] == "openai/test-model"
+    assert entry["litellm_params"]["timeout"] == 90
+    if expected is None:
+        assert "model_info" not in entry
+    else:
+        assert entry["model_info"] == expected
+
+
+@pytest.mark.parametrize("metadata", ["invalid", "[low]", "false"])
+def test_render_rejects_non_mapping_upstream_model_info(tmp_path, metadata):
+    result, out = _render_upstream_model(tmp_path, f"      model_info: {metadata}\n")
+    assert result.returncode != 0
+    assert "upstream.models[].model_info must be a mapping" in result.stderr
+    assert not out.exists()
+
+
+def _render_upstream_model(tmp_path, metadata):
+    overlay = tmp_path / "overlay.yaml"
+    overlay.write_text(
+        "upstream:\n  api_base: https://example.invalid/v1\n"
+        "  api_key_env: TEST_API_KEY\n  models:\n    - name: test-model\n"
+        f"      timeout: 90\n{metadata}"
+        "master_key_env: TEST_MASTER_KEY\n"
+    )
+    template = tmp_path / "template.txt"
+    template.write_text("# ===BEGIN GENERATED===\n")
+    out = tmp_path / "out.yaml"
+    result = subprocess.run(
+        [sys.executable, str(RENDER), "--overlay", str(overlay), "--template", str(template), "--out", str(out)],
+        capture_output=True, text=True, timeout=10,
+    )
+    return result, out
 
 
 def test_render_staleness_check_fails_on_divergence(tmp_path):
