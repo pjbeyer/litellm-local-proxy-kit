@@ -423,6 +423,21 @@ def test_arm_canary_creates_exclusive_private_envelope(tmp_path):
         canary.arm_canary(tmp_path, ARM_BINDINGS)
 
 
+def test_arm_keeps_rounded_deadline_within_lifetime(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    wall, mono = 1_800_000_000.0, 212.2
+    assert (mono + 300.0) - mono > 300.0  # The rounded sum exceeds the cap.
+    monkeypatch.setattr(canary, "time", SimpleNamespace(time=lambda: wall, monotonic=lambda: mono))
+    record = canary.arm_canary(tmp_path, ARM_BINDINGS)
+    assert record["expires_at"] == wall + 300.0
+    assert 299.999999 < record["expires_monotonic"] - mono <= 300.0
+    assert canary.arm_is_fresh(record, wall, mono)
+    assert not canary.arm_is_fresh(record, wall, record["expires_monotonic"])
+    with pytest.raises(ValueError, match="canary_arm_invalid"):
+        canary.validate_arm({**record, "expires_monotonic": mono + 300.0}, operator_uid=os.getuid())
+
+
 def test_arm_refuses_existing_uncertainty(tmp_path):
     canary.arm_canary(tmp_path, ARM_BINDINGS)
     # Any consumed scope present (even without evidence) blocks a new arm.

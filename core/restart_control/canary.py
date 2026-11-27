@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import secrets
@@ -169,6 +170,15 @@ def arm_is_fresh(record, wall, mono):
 _ARM_LIFETIME = 300.0
 
 
+def _arm_deadline(issued):
+    expires = issued + _ARM_LIFETIME
+    # The rounded sum can overshoot the cap. Move down one representable
+    # value only when needed; keep the reader's strict limit unchanged.
+    if math.fsum((expires, -issued, -_ARM_LIFETIME)) > 0:
+        expires = math.nextafter(expires, issued)
+    return expires
+
+
 def arm_bindings(policy_path):
     """The exact generation hashes an arm binds, computed without Runtime.
 
@@ -219,8 +229,7 @@ def arm_canary(state, bindings):
     if not root.exists():
         private_dir(root)
     nonce = secrets.token_hex(16)
-    # Capture both clocks ONCE: the expiry windows must be exactly the
-    # arm lifetime, immune to clock reads straddling a boundary.
+    # Capture both clocks once, and cap each expiry relative to its sample.
     now, mono = time.time(), time.monotonic()
     record = {"version": 1, "operator_uid": os.getuid(), "nonce": nonce,
               "policy_digest": bindings["policy_digest"],
@@ -228,9 +237,9 @@ def arm_canary(state, bindings):
               "controller_plist_digest": bindings["controller_plist_digest"],
               "boot_identity": kernel_boot_identity(),
               "issued_at": now,
-              "expires_at": now + _ARM_LIFETIME,
+              "expires_at": _arm_deadline(now),
               "issued_monotonic": mono,
-              "expires_monotonic": mono + _ARM_LIFETIME}
+              "expires_monotonic": _arm_deadline(mono)}
     validate_arm(record, operator_uid=os.getuid())
     # Exclusive creation: O_EXCL, private mode, no overwrite, synced.
     destination = root/"intent.json"
