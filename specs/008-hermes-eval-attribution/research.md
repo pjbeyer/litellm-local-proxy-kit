@@ -1,6 +1,6 @@
 # Research: Hermes Exact Quality-Eval Attribution
 
-**Evidence level:** Read-only source inspection. No turns, probes against deployed stores, or live canaries were run. Nothing here qualifies a mode.
+**Evidence level:** Source inspection and a partial disposable runtime probe ([R4](#r4-separate-proof-phases-and-keep-the-failure-boundary-narrow)). No Hermes turn reached the proxy, no deployed store was queried, and no mode is qualified.
 
 ## R1. Keep wire identity separate from acceptance and persistence
 
@@ -38,3 +38,11 @@
 **Decision:** Reuse kit plugin packaging and offline pytest conventions; do not modify the lifecycle guard or add an upstream persistence dependency. Do not choose a concrete read API, storage engine, census feed or report command until supported seams are shown. The 24-hour cap and 30-second read window are draft defaults, not measured properties. See the [plan](plan.md) for decision owners and [quickstart](quickstart.md) for evidence scenarios.
 
 **Rejected:** Implementing against guessed APIs and using the eventual plugin canary to satisfy a pre-implementation dependency. Pre-implementation evidence may exercise supported interfaces on a separately authorized disposable setup; installed-plugin qualification is a later gate. Neither authorizes scoring.
+
+### Disposable runtime probe: stopped before a Hermes turn
+
+The probe used Hermes v0.23.4 (source `8fc037444731`) and a LiteLLM build based on v1.110.0 (source `89cb4042afbc`). A direct, non-streaming Chat Completions control sent a synthetic attempt token to `smart-router` on the disposable proxy. The loopback fixture returned a completion without receiving the token, and LiteLLM returned `x-litellm-call-id`. The run stopped before SpendLog readback, so it did not establish a token-to-row match.
+
+The Hermes launcher stopped before dispatch when a dependency download failed with a DNS error. The probe did not retry with the existing interpreter because the permitted scratch root was inside the active Hermes home, not an independently isolated profile root. No Hermes request, observer event, or persisted message UID was observed. Streaming, Responses, retries, tool follow-ups, and resumed turns were not exercised.
+
+**Disposition:** G2 and G3 remain unmet. This run neither proves nor disproves the plugin seam. Resume only with an approved scratch root outside existing Hermes homes and a pre-staged offline runtime. First verify the scratch profile and gateway boundaries and complete the control's SpendLog readback; then exercise the supported hooks and persistence interfaces against the endpoint matrix in R1. Do not implement the plugin or enable scoring based on this probe.
