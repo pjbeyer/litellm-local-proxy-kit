@@ -1,11 +1,11 @@
 # Tasks: Restart controller operations
 
-This is the reconciliation plan, not a reenactment of the original delivery. Beads owns backlog/status.
+This is the reconciliation plan, not a reenactment of the original delivery. Beads owns backlog and delivery status. Checkmarks record offline task completion, not approval. See the [closeout record](analysis.md#offline-closeout).
 
 - [x] T001 [US4] Rehome the controller contracts and historical plans, document precedence and ownership, and add Spec Kit navigation (FR-006, SC-004).
 - [x] T002 [US1] Consolidate routine commands and their authority boundaries in the runbook; keep Make and the dispatcher as the only routine entry point (depends on T001) (FR-001, FR-002, SC-001).
 - [x] T003 [US3] Trace preparation, approval, qualification and recovery to the controller and offline tests; preserve historical evidence without reasserting live readiness (depends on T001) (FR-004, FR-005, SC-003).
-- [ ] T004 [US2] After the revision-bound Spec Validate gate and plan/tasks security review clear, add the [read-only disk check](plan.md#on-disk-diagnostic-design-t004) to `owner_maintenance.py` and expose it through one Make target. Reuse the policy reader, receipt schema, controller-input registry, and byte/mode checks. Keep the existing install verifier for bundle/plist parity (depends on T002) (FR-003, SC-002).
+- [x] T004 [US2] Add the [read-only disk check](plan.md#on-disk-diagnostic-design-t004) to `owner_maintenance.py` and expose it as `make check-binding`. Reuse the policy reader, receipt schema, controller-input registry, and byte/mode checks. Keep the existing install verifier for bundle/plist parity (depends on T002) (FR-003, SC-002).
 
 ### T004 offline acceptance
 
@@ -16,4 +16,4 @@ This is the reconciliation plan, not a reenactment of the original delivery. Bea
 
 - Wave 1: T001
 - Wave 2: T002, T003
-- Wave 3: T004 (requires a passing Spec Validate gate for current spec/tasks and a completed plan/tasks security review before work starts)
+- Wave 3: T004 (pre-implementation gate and security review required; see [historical dispositions](analysis.md#implementation-admission))
