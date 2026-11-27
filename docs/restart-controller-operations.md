@@ -14,24 +14,37 @@ actors; they are not OS isolation.
 
 ## Existing deployment: before you prepare
 
+`make check-binding` requires `python3` 3.11 or newer on `PATH`. It uses the
+standard library and does not invoke the installed controller's interpreter.
+If the command reports a different binding helper, update the maintenance
+worktree to a revision with the same helper as the policy-bound kit. Do not
+repoint the policy or change the stored receipt to make the check pass.
+
 | Need | Command | What it does and does not prove |
 |---|---|---|
 | Inspect the controller | `make status` | Queries the installed controller; not a live qualification check. |
 | Check the primary listener | `make health` | Checks loopback liveness, readiness and unauthenticated models access; not provenance, owner approval or upstream model acceptance. |
 | Preview reviewed deployment changes | `make preview` | Installer dry run, not a credential-free check. Use only reviewed deployment inputs; it does not stage or activate. |
 | Stage reviewed changes | `make apply` | Writes and verifies managed files after preview and review. No service reload; stop on error and reconcile any partial staging. |
+| Compare the controller’s on-disk binding | `make check-binding` | Compares the policy digest and the byte hashes and modes of kit and installed controller files against the install receipt. No service contact or writes. Not plist parity, loaded-job evidence, or approval. |
 | Check proxy files and drift | `make verify` | Installer verify plus deployment drift via the pinned Python; not controller bundle parity. |
 | Check controller bundle parity | [Install verifier](#provision-and-install) | Stay in your worktree and run the policy-bound installer by absolute path with `--verify`. Compares installed files and generated plist; does not validate the loaded job or qualify the daemon. |
 | Ask for a restart plan | `make prepare` | Real candidate rehearsal; may use credentials and shared DB, cache and inference. Does not approve or restart. |
 | Submit an approved plan | `make restart REQUEST_ID=… ASSET_DIGEST=…` | Owner-only step after exact fresh approval and matching record. It does not create approval. Never retry after timeout or refusal without reconciling the outcome. |
 
-**Routine order:** diagnose first. If staging is needed, edit the deployment
-source, then preview, review, apply and verify. A change to a boot-bound input
-can require an owner controller refresh and new qualification before prepare.
-Do not edit installed files or issue qualification yourself. If `status` reports
-an active request or the outcome is unclear, stop and reconcile it first.
-For read-only triage, stop at status, health and the relevant parity check.
-Do not schedule rehearsal, staging or submission as an unattended check.
+**Routine order:**
+
+1. **Inspect.** Use `make status`, `make health`, or `make check-binding` for
+   the question at hand. A binding `mismatch` means the policy or files differ
+   from the receipt. For `input error` or `invalid receipt`, check the policy
+   and installation using the [install runbook](#provision-and-install). Do not
+   edit installed files or treat a disk match as permission to proceed.
+2. **Stage only if needed.** Edit the deployment source, run `make preview`,
+   review the result, then run `make apply` and `make verify` separately. A
+   boot-bound change can require an owner controller refresh and new qualification.
+3. **Restart only if needed.** Stop if a request is active or its outcome is
+   unclear. Reconcile that request first. Keep `make prepare`, owner approval,
+   and `make restart` separate. Do not schedule them or staging unattended.
 
 Follow the [client and approval rules](#closed-client-interface) for rehearsal
 and submission. If a client times out, the daemon may still be working. Observe

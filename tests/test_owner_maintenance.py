@@ -42,6 +42,160 @@ def maintenance(tmp_path):
     return run, policy, deployment, plist
 
 
+@pytest.fixture
+def binding(maintenance, monkeypatch):
+    monkeypatch.syspath_prepend(str(ROOT))
+    import owner_maintenance
+    from restart_control.engine import canonical_digest
+    from restart_control.runtime_identity import CONTROLLER_INPUTS, file_fact
+
+    run, policy, _, _ = maintenance
+    values = json.loads(policy.read_text())
+    kit = Path(values["kit_root"])
+    installed = Path(values["controller_root"])
+    for name in CONTROLLER_INPUTS:
+        source = kit / name
+        source.parent.mkdir(parents=True, exist_ok=True)
+        if name == "core/restart_control/runtime_identity.py":
+            shutil.copy2(ROOT / name, source)
+        else:
+            source.write_text("fixture controller source, not executable Python\n")
+        copy = installed / name.removeprefix("core/")
+        copy.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, copy)
+    receipt = installed / "install.json"
+    receipt.write_text(json.dumps({"version": 1, "policy_digest": canonical_digest(values),
+                                   "sources": {name: file_fact(kit / name)
+                                               for name in CONTROLLER_INPUTS}}))
+    receipt.chmod(0o600)
+    monkeypatch.setenv("POLICY", str(policy))
+    monkeypatch.delenv("REQUEST_ID", raising=False)
+    monkeypatch.delenv("ASSET_DIGEST", raising=False)
+    return owner_maintenance, run, policy, receipt, kit, installed
+
+
+@pytest.mark.parametrize(("change", "expected"), [
+    ("none", "match"), ("policy", "mismatch"), ("kit bytes", "mismatch"),
+    ("installed bytes", "mismatch"), ("kit mode", "mismatch"),
+    ("installed mode", "mismatch"), ("missing receipt", "input error"),
+    ("bad json", "invalid receipt"), ("incomplete coverage", "invalid receipt"),
+    ("boolean version", "invalid receipt"), ("boolean mode", "invalid receipt"),
+    ("nonregular", "input error"), ("unreadable", "input error"),
+    ("missing source", "input error"), ("receipt link", "input error"),
+    ("invalid policy root", "input error"), ("approval arguments", "input error"),
+])
+def test_binding_is_read_only_and_sanitized(binding, monkeypatch, capsys, change, expected):
+    module, _, policy, receipt, kit, installed = binding
+    source = kit / "core/restart_controller.py"
+    copy = installed / "restart_controller.py"
+    if change in ("policy", "invalid policy root"):
+        values = json.loads(policy.read_text())
+        if change == "policy":
+            values["candidate_port"] += 1
+        else:
+            del values["kit_root"]
+        policy.write_text(json.dumps(values))
+    elif change in ("kit bytes", "installed bytes"):
+        (source if change == "kit bytes" else copy).write_text("different bytes")
+    elif change in ("kit mode", "installed mode"):
+        (source if change == "kit mode" else copy).chmod(0o700)
+    elif change == "missing receipt":
+        receipt.unlink()
+    elif change == "bad json":
+        receipt.write_text("invalid fixture contents")
+    elif change in ("incomplete coverage", "boolean version", "boolean mode"):
+        values = json.loads(receipt.read_text())
+        if change == "incomplete coverage":
+            values["sources"].popitem()
+        elif change == "boolean version":
+            values["version"] = True
+        else:
+            values["sources"]["core/restart_controller.py"]["mode"] = True
+        receipt.write_text(json.dumps(values))
+    elif change == "nonregular":
+        copy.unlink()
+        copy.mkdir()
+    elif change == "missing source":
+        source.unlink()
+    elif change == "receipt link":
+        renamed = receipt.rename(installed / "original.json")
+        receipt.symlink_to(renamed)
+    elif change == "approval arguments":
+        monkeypatch.setenv("REQUEST_ID", "fixture-approval-argument")
+        monkeypatch.setenv("ASSET_DIGEST", "fixture-approval-digest")
+
+    import builtins
+    import io
+
+    def reject(*args, **kwargs):
+        pytest.fail("disk diagnostic tried to mutate, contact a service, or spawn a process")
+
+    def observe_open(opener):
+        def read_only(file, mode="r", *args, **kwargs):
+            assert mode in ("r", "rb"), "disk diagnostic tried to write"
+            if change == "unreadable" and file == source:
+                raise PermissionError("private path must not reach output")
+            return opener(file, mode, *args, **kwargs)
+        return read_only
+
+    original_open = os.open
+
+    def observe_os_open(path, flags, *args, **kwargs):
+        assert not flags & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND)
+        return original_open(path, flags, *args, **kwargs)
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(builtins, "open", observe_open(builtins.open))
+        scoped.setattr(io, "open", observe_open(io.open))
+        scoped.setattr(os, "open", observe_os_open)
+        for name in ("mkdir", "unlink", "rename", "replace", "chmod", "system"):
+            scoped.setattr(os, name, reject)
+        scoped.setattr(subprocess, "Popen", reject)
+        scoped.setattr(module.http.client, "HTTPConnection", reject)
+        result = module.main("check-binding")
+    out, err = capsys.readouterr()
+    assert (result == 0) == (expected == "match")
+    assert (out + err).strip() == f"on-disk controller binding only: {expected}"
+
+
+def test_binding_refuses_a_different_registry_even_if_the_receipt_matches(binding):
+    from restart_control.runtime_identity import file_fact
+
+    _, run, _, receipt, kit, installed = binding
+    name = "core/restart_control/runtime_identity.py"
+    source = kit / name
+    source.write_text(source.read_text() + "\n# Different helper revision.\n")
+    shutil.copy2(source, installed / name.removeprefix("core/"))
+    values = json.loads(receipt.read_text())
+    values["sources"][name] = file_fact(source)
+    receipt.write_text(json.dumps(values))
+    result = run("check-binding")
+    assert result.returncode != 0
+    assert "on-disk controller binding only: input error (different binding helper;" in result.stderr
+
+
+def test_binding_reports_unsupported_python_before_reading_policy(binding, monkeypatch, capsys):
+    module, _, _, _, _, _ = binding
+    with monkeypatch.context() as scoped:
+        scoped.setattr(module.sys, "version_info", (3, 10))
+        result = module.main("check-binding")
+    assert result == 78
+    assert capsys.readouterr().err.strip() == (
+        "on-disk controller binding only: input error (requires Python 3.11 or newer)"
+    )
+
+
+def test_make_check_binding_dispatches_without_policy_bound_code(binding):
+    _, run, _, _, _, _ = binding
+    assert "make check-binding" in run("help").stdout
+    result = run("check-binding")
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "on-disk controller binding only: match"
+    refused = run("check-binding", POLICY="/missing-fixture-policy")
+    assert refused.returncode != 0
+    assert "on-disk controller binding only: input error" in refused.stderr
+
+
 def test_owner_helper_does_not_change_controller_source_inventory(monkeypatch):
     monkeypatch.syspath_prepend(str(ROOT / "core"))
     from restart_control.runtime_identity import source_facts
