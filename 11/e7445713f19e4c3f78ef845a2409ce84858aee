@@ -1,0 +1,26 @@
+specs/002-prod-db-virtual-key-adoption/tasks.md
+  s_05d22db0c85220::t_56faece0dab5ec 64
+  s_05d22db0c85220::t_983f9b5e30595c 30
+  s_05d22db0c85220::t_8916b2dec72d9a 24
+  s_05d22db0c85220::t_2c942d64f11833 76
+  s_05d22db0c85220::t_2d43d6f8bb3c84 80
+  s_05d22db0c85220::t_9bc2a3c0b0ea55 8,10
+specs/002-prod-db-virtual-key-adoption/plan.md
+  s_05d22db0c85220::t_72f031ccf25f40 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "11e7445713f19e4c3f78ef845a2409ce84858aee",
+  "prompts": {},
+  "sessions": {
+    "s_05d22db0c85220": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261127_093656_39a9c5",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
