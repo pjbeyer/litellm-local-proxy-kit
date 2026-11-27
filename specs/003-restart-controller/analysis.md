@@ -1,16 +1,16 @@
 # Consistency analysis: restart controller
 
-Scope: retrospective documentation and existing dispatcher. This is not platform qualification or the operator’s comprehension record.
+Scope: specification reconciliation, the owner dispatcher, and the offline disk check. This is not platform qualification or the operator’s comprehension record.
 
 | Requirement | Task | Acceptance surface |
 |---|---|---|
 | FR-001, FR-002; SC-001 | T002 | Agent entry point, command table, `make help`, dispatcher fixtures |
-| FR-003; SC-002 | T004 | Proposed disk-only check. Offline acceptance is defined in `tasks.md`; implementation and fixture results are pending. |
+| FR-003; SC-002 | T004 | `make check-binding` compares the policy digest and controller file facts to the install receipt. `tests/test_owner_maintenance.py` covers matches, drift, invalid inputs and the read-only boundary. |
 | FR-004, FR-005; SC-003 | T003 | Controller, shutdown and reconciliation contracts; offline controller fixtures |
 | FR-006; SC-004 | T001 | Spec Kit feature paths, contract and history links, identifier and task-coverage checks |
 
 - **A1 — Feature collision (resolved):** The sibling attribution feature already uses number `002` in the shared recovery candidate. Move this feature to `003` without changing the sibling’s files or approval state.
-- **A2 — Diagnostic scope (resolved in documentation):** Proxy verification, controller install parity and live qualification answer different questions. The runbook names each separately and does not advertise a command for T004.
+- **A2 — Diagnostic scope:** `make check-binding`, proxy verification, controller install parity, and live qualification answer different questions. The runbook keeps them separate.
 - **A3 — Historical authority (resolved in documentation):** The migrated contracts retain the historical design; their headers no longer read as current permission. The reconciliation contract governs conflicts with the older design. Incident evidence remains historical.
 - **A4 — Implementation admission:** The implementation gate returned `allowed-with-warning` in the preparation worktree for the validated spec and task revisions. The warnings reflect separate maintainer waivers, not peer approval. Approval state is private and does not travel with this branch. Check the gate in the worktree where T004 will run; execute the offline acceptance fixtures as part of T004.
 
@@ -24,4 +24,4 @@ Independent follow-up found no remaining blockers in the revised design and acce
 
 This technical review is not operator validation, spec peer approval, or a runtime test of T004.
 
-No controller, guard or installed artifacts are changed by this documentation slice. The [plan](plan.md#gates-and-complexity) records the remaining gates.
+T004 changes only the owner command and its fixtures, not the controller or guard inventory. The reviewed spec, plan and task files are preserved byte-for-byte; this analysis records implementation evidence separately. No offline result qualifies or authorizes a live controller.
