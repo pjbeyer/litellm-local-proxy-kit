@@ -1,0 +1,37 @@
+specs/003-restart-controller/analysis.md
+  s_cf2554aaa22366::t_28f9e5f48afeb6 8
+  s_cf2554aaa22366::t_0a033f014092b5 15
+  s_cf2554aaa22366::t_c6175d5693089d 16-18
+specs/003-restart-controller/checklists/requirements.md
+  s_c78f7507ec0844::t_58acbe3b60d161 5-10
+specs/003-restart-controller/contracts/controller.md
+  s_c78f7507ec0844::t_73b951d771d045 250
+specs/003-restart-controller/plan.md
+  s_c78f7507ec0844::t_850d9abf01fab2 30-53,63-64
+specs/003-restart-controller/tasks.md
+  s_c78f7507ec0844::t_c9fafd30636a05 8-13,19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "36a7f9ed6ab4e7d87bba54009c99f8ed5ac79629",
+  "prompts": {},
+  "sessions": {
+    "s_c78f7507ec0844": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261126_205935_9a1cc0",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_cf2554aaa22366": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261127_053905_cd4bca",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
