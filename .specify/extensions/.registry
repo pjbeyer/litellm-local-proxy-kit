@@ -14,6 +14,47 @@
       },
       "registered_skills": [],
       "installed_at": "2026-11-26T13:31:23.741844+00:00"
+    },
+    "spec-validate": {
+      "version": "1.0.1",
+      "source": "local",
+      "manifest_hash": "sha256:170187e5d80a7d0435b5924e601f65215a18f36914e6cb15cfd1e3662333ac92",
+      "enabled": true,
+      "priority": 10,
+      "registered_commands": {
+        "hermes": [
+          "speckit.spec-validate.validate",
+          "speckit.spec-validate.validate-tasks",
+          "speckit.spec-validate.review",
+          "speckit.spec-validate.gate",
+          "speckit.spec-validate.status",
+          "speckit.spec-validate.analytics"
+        ]
+      },
+      "registered_skills": [],
+      "installed_at": "2026-11-03T03:07:38.532219+00:00"
+    },
+    "security-review": {
+      "version": "1.5.3",
+      "source": "local",
+      "manifest_hash": "sha256:4d22ce856396f7142eff759194678e29e88110742f5006c09bf8fbc73a2099d2",
+      "enabled": true,
+      "priority": 10,
+      "registered_commands": {
+        "hermes": [
+          "speckit.security-review.audit",
+          "speckit.security-review.staged",
+          "speckit.security-review.branch",
+          "speckit.security-review.plan",
+          "speckit.security-review.tasks",
+          "speckit.security-review.followup",
+          "speckit.security-review.apply",
+          "speckit.security-review.export",
+          "speckit.security-review.init"
+        ]
+      },
+      "registered_skills": [],
+      "installed_at": "2026-11-03T03:07:39.371060+00:00"
     }
   }
 }
