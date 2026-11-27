@@ -1,0 +1,29 @@
+specs/008-hermes-eval-attribution/research.md
+  s_34ede2e8814331::t_506550cf883e7d 41-45,47-48
+  s_02338945878538::t_5e1463ff12b722 46
+  s_34ede2e8814331::t_1282365f1733c1 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "4a1da18a7b2c8e3ed6f975b7dcfe83a9b679aca2",
+  "prompts": {},
+  "sessions": {
+    "s_02338945878538": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261127_153406_c3a247",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_34ede2e8814331": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261127_153003_8db2cd",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
