@@ -6,7 +6,6 @@ import os
 import socket
 import tempfile
 import threading
-import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -349,15 +348,21 @@ class ControllerTest(unittest.TestCase):
                 self.skipTest("sandbox denies Unix socket bind")
             raise
         stop = threading.Event()
+        listening = threading.Event()
+        real_listen = socket.socket.listen
+
+        def listen(listener, backlog):
+            real_listen(listener, backlog)
+            listening.set()
+
         thread = threading.Thread(target=serve, args=(path, self.controller, stop), daemon=True)
-        thread.start()
-        self.addCleanup(lambda: (stop.set(), thread.join(2)))
-        for _ in range(100):
-            if path.exists():
-                break
-            time.sleep(.01)
-        self.assertEqual(client(path, {"op": "status"})["status"], "ok")
+        with mock.patch.object(socket.socket, "listen", listen):
+            thread.start()
+            self.addCleanup(lambda: (stop.set(), thread.join(2)))
+            self.assertTrue(listening.wait(5), "fixture did not start listening")
+        self.assertEqual(client(path, {"op": "status"}, timeout=5)["status"], "ok")
         with socket.socket(socket.AF_UNIX) as sock:
+            sock.settimeout(5)
             sock.connect(str(path))
             sock.sendall(b'{"op":"status","op":"prepare"}\n')
             self.assertEqual(json.loads(sock.recv(4096))["code"], "invalid_request")
