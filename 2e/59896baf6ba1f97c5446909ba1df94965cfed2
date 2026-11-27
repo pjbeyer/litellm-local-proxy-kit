@@ -1,0 +1,36 @@
+tests/test_speckit_gate.py
+  s_1d19392fec9a37::t_06ccde986bd090 379,383-385,387-389
+  s_ca1a73642604c0::t_aaadf5f5451755 414-434,478-496
+.specify/extensions/security-review/commands/security-review-branch.md
+  s_ca1a73642604c0::t_e6d279d8533c72 15-16,82,129
+.specify/extensions/security-review/commands/security-review-plan.md
+  s_ca1a73642604c0::t_a2b7e8a897e13d 132
+.specify/extensions/security-review/scripts/bash/detect-changed-files.sh
+  s_ca1a73642604c0::t_ce4b9af0513c45 12-13,37,42,50-51,139-150
+.specify/extensions/security-review/scripts/powershell/detect-changed-files.ps1
+  s_ca1a73642604c0::t_76815b52a21f58 14-16,38,53-54,129-140,146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "2e59896baf6ba1f97c5446909ba1df94965cfed2",
+  "prompts": {},
+  "sessions": {
+    "s_1d19392fec9a37": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261127_071604_a376d1",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_ca1a73642604c0": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261127_071610_d5d590",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
