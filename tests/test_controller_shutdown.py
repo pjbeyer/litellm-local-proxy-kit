@@ -720,14 +720,25 @@ class _LatchView:
         return self.shutdown.remaining(limit, cleanup=cleanup)
 
 
-def _wait_bound(path, thread, timeout=5.0):
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if path.exists():
-            return
-        assert thread.is_alive(), "server exited before binding"
-        time.sleep(0.01)
-    raise AssertionError("socket never bound")
+def _start_listening(path, controller, stop_event):
+    import socket
+    from unittest.mock import patch
+    from core.restart_control.wire import serve
+
+    listening = threading.Event()
+    real_listen = socket.socket.listen
+
+    def listen(listener, backlog):
+        real_listen(listener, backlog)
+        if listener.family == socket.AF_UNIX and listener.getsockname() == str(path):
+            listening.set()
+
+    thread = threading.Thread(target=serve, args=(path, controller, stop_event), daemon=True)
+    # bind() creates the path before the listener can accept connections.
+    with patch.object(socket.socket, "listen", listen):
+        thread.start()
+        assert listening.wait(5), "fixture did not start listening"
+    return thread
 
 
 def _serve_root():
@@ -745,9 +756,8 @@ def _serve_root():
 
 def test_wire_drain_joins_under_one_shared_budget(tmp_path):
     """Stuck workers share ONE deadline from the latch, not per-worker."""
-    import socket
     from core.restart_control.shutdown import Shutdown
-    from core.restart_control.wire import serve, client
+    from core.restart_control.wire import client
 
     class StuckController:
         uid = os.getuid()
@@ -764,9 +774,7 @@ def test_wire_drain_joins_under_one_shared_budget(tmp_path):
     shutdown = Shutdown(clock=lambda: now[0])
     view = _LatchView(shutdown)
     path = _serve_root()/"controller.sock"
-    thread = threading.Thread(target=serve, args=(path, controller, view), daemon=True)
-    thread.start()
-    _wait_bound(path, thread)
+    thread = _start_listening(path, controller, view)
     try:
         client(path, {"op": "status"}, timeout=5)
     except Exception:
@@ -788,7 +796,7 @@ def test_wire_drain_joins_under_one_shared_budget(tmp_path):
 
 def test_wire_drain_uses_fixed_budget_without_latch_view(tmp_path):
     """A plain Event stop source falls back to the fixed contract budget."""
-    from core.restart_control.wire import serve, client
+    from core.restart_control.wire import client
 
     class SlowController:
         uid = os.getuid()
@@ -800,9 +808,7 @@ def test_wire_drain_uses_fixed_budget_without_latch_view(tmp_path):
     controller = SlowController()
     stop = threading.Event()
     path = _serve_root()/"controller.sock"
-    thread = threading.Thread(target=serve, args=(path, controller, stop), daemon=True)
-    thread.start()
-    _wait_bound(path, thread)
+    thread = _start_listening(path, controller, stop)
     client(path, {"op": "status"}, timeout=5)
     stop.set()
     started = time.monotonic()
@@ -819,7 +825,6 @@ def test_wire_drain_repeated_signals_and_lost_clients(tmp_path):
     """Repeated shutdown requests, queued connections and lost clients."""
     import socket
     from core.restart_control.shutdown import Shutdown
-    from core.restart_control.wire import serve
 
     class Controller:
         uid = os.getuid()
@@ -831,9 +836,7 @@ def test_wire_drain_repeated_signals_and_lost_clients(tmp_path):
     shutdown = Shutdown()
     view = _LatchView(shutdown)
     path = _serve_root()/"controller.sock"
-    thread = threading.Thread(target=serve, args=(path, controller, view), daemon=True)
-    thread.start()
-    _wait_bound(path, thread)
+    thread = _start_listening(path, controller, view)
     # Lost client: connect and vanish without sending anything.
     lost = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     lost.connect(str(path))
@@ -855,7 +858,6 @@ def test_wire_drain_repeated_signals_and_lost_clients(tmp_path):
 def test_wire_drain_inodesafe_cleanup_never_unlinks_replacement(tmp_path):
     """A replaced socket file at the same path is never unlinked."""
     from core.restart_control.shutdown import Shutdown
-    from core.restart_control.wire import serve
 
     class Controller:
         uid = os.getuid()
@@ -866,9 +868,7 @@ def test_wire_drain_inodesafe_cleanup_never_unlinks_replacement(tmp_path):
     controller = Controller()
     view = _LatchView(Shutdown())
     path = _serve_root()/"controller.sock"
-    thread = threading.Thread(target=serve, args=(path, controller, view), daemon=True)
-    thread.start()
-    _wait_bound(path, thread)
+    thread = _start_listening(path, controller, view)
     bound_inode = path.lstat().st_ino
     # Replace the socket with a different file before the drain cleans up.
     path.unlink()
