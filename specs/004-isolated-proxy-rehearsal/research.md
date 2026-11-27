@@ -8,6 +8,12 @@
 
 **Consequences:** The check result must be typed (`checked`, `runtime_not_exercised`) so it cannot be mistaken for rehearsal evidence; `make rehearse` must refuse, not downgrade, when the backend is absent. T002's storage blocker no longer gates the default path.
 
+## Routine admission and trusted startup are not yet qualified
+
+The schema and exact-byte tests cover retained data and descriptor checks once a storage boundary supplies an admitted descriptor. They do not prove that path traversal avoids activating mounts, rejects protected roots, or stays under the held root when the filesystem changes. Darwin’s `O_RESOLVE_BENEATH` and `O_NOFOLLOW_ANY` restrict lookup, but they do not establish pre-traversal mount admission. Checking mount flags after opening is too late to prove that no mount was activated. Keep T001 open until the storage boundary is verified on the target host.
+
+The standalone command and Make target remain unwired. T012 also needs an independently provisioned trust record and a bootstrap that binds the verified interpreter and startup dependencies to the objects actually loaded. Hashing a Python installation from inside an already running interpreter does not satisfy that requirement. The schema tests are not SC-005 workstation evidence.
+
 ## Use an offline macOS guest for the first native backend
 
 **Decision:** Plan one Apple Silicon macOS VM with zero network devices, no shared folders, no host sockets or credential/share integration, and a local fixture dependency set. Attach a read-only input image and separate disposable guest state. A narrowly scoped virtual serial result channel carries a closed record, never executable requests.
