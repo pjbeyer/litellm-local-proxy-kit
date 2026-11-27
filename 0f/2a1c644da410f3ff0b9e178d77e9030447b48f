@@ -1,0 +1,61 @@
+specs/004-isolated-proxy-rehearsal/security-review.md
+  s_72c2b3754aeb02::t_5ea21abb27b416 19,23-24
+  s_bf5de0687cc3dd::t_883b48f44392e0 18,20-22
+specs/004-isolated-proxy-rehearsal/contracts/configuration-check.md
+  s_72c2b3754aeb02::t_1fc4d943f0527f 7-14,18,35,39
+  s_72c2b3754aeb02::t_1633c40726804e 5
+specs/004-isolated-proxy-rehearsal/contracts/rehearsal.md
+  s_607f14f069a322::t_3b259262f5d287 9,11
+specs/004-isolated-proxy-rehearsal/data-model.md
+  s_607f14f069a322::t_5de197ddefdb13 9
+specs/004-isolated-proxy-rehearsal/plan.md
+  s_607f14f069a322::t_c3954c5c9176c1 13
+specs/004-isolated-proxy-rehearsal/quickstart.md
+  s_607f14f069a322::t_ff930282a79c6c 6
+specs/004-isolated-proxy-rehearsal/research.md
+  s_0f982870569961::t_18c1bc9690079a 9,13,15
+specs/004-isolated-proxy-rehearsal/spec.md
+  s_607f14f069a322::t_433c5455354a5a 5,15,35,43,65
+specs/004-isolated-proxy-rehearsal/tasks.md
+  s_607f14f069a322::t_0250c9323ed39a 3,5,10,31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "0f2a1c644da410f3ff0b9e178d77e9030447b48f",
+  "prompts": {},
+  "sessions": {
+    "s_0f982870569961": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261127_154920_862775",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_607f14f069a322": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261127_154455_6e09b2",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_72c2b3754aeb02": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261127_154349_07aaca",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_bf5de0687cc3dd": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261127_180525_ffbdeb",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
