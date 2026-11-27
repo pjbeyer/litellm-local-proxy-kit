@@ -1,0 +1,30 @@
+specs/004-isolated-proxy-rehearsal/security-review.md
+  s_d487b5e0ca0018::t_d6de93343bb11c 18,20-28
+  s_d487b5e0ca0018::t_a4fe0c6a85090d 29-31
+specs/004-isolated-proxy-rehearsal/research.md
+  s_a3a8a041d76699::t_52564924f6a96e 7,9,11,25,35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "7058de199139aa7c72edb48d5f1a4fddd8909817",
+  "prompts": {},
+  "sessions": {
+    "s_a3a8a041d76699": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261127_062623_d3ed1c",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_d487b5e0ca0018": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261127_073006_6bae1a",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
