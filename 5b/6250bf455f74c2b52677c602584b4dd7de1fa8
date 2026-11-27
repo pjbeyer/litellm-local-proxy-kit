@@ -1,0 +1,19 @@
+specs/003-restart-controller/analysis.md
+  s_3ea2d66b4bf876::t_ffeabdd525d515 15-18,30-36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "5b6250bf455f74c2b52677c602584b4dd7de1fa8",
+  "prompts": {},
+  "sessions": {
+    "s_3ea2d66b4bf876": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261127_084129_bd21b3",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
