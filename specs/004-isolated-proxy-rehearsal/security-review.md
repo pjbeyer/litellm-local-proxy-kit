@@ -15,7 +15,13 @@ Two independent read-only Codex subscription reviews evaluated the initial plan 
 
 The reviewer confirmed separation from controller authority, proof-before-sentinel order, closure as a success condition, and the fixture-first task DAG. All original findings have corresponding changes in the [backend and CLI contract](contracts/rehearsal.md) and [task list](tasks.md). The proposed backend, including a guest-local policy and ownership under interruption, remains to be demonstrated. Do not claim the safety boundary or acceptance is proven from document review.
 
-## Two-tier amendment review
+## Stdin bundle amendment — draft reviewed
+
+A read-only Codex review of the documentation diff reported no actionable defects. At review, the eight-file normative packet had sorted checksum-manifest SHA-256 `161f09870cdd34821f466f1310777bdda87906074b0ee620649c4f05f6ca5d83`. This is draft review evidence, not Spec Validate approval or authority to implement. The earlier reviews below do not cover this revision; do not carry forward earlier approvals or waivers.
+
+The bundle removes proposal path traversal from the routine checker; it does not qualify the startup boundary. The workstation feasibility investigation did not establish that the verified Python executable and startup dependencies were the objects actually loaded. The configured dependency came from a writable development environment, and a preflight hash of a pathname did not establish continuity into execution. Keep both entry points unwired until that prerequisite is met or a revised startup contract is reviewed and authorized. Native backend qualification remains separate and was not attempted.
+
+## Historical two-tier amendment review
 
 Four independent read-only Codex runs reviewed the eight-file normative packet identified by its repository-relative sorted checksum-manifest SHA-256, `a29161459f7cc459cbfe43774a11e559f8bc5cb611cdbd7dbf33aa26402d14c1`. The reports matched that packet and its spec and task hashes. This summary is not a Spec Validate approval or authorization record; see the [plan’s entry gates](plan.md#gates-and-evidence).
 

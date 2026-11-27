@@ -6,13 +6,13 @@
 
 **Rationale:** Owner confirmed that configuration checking is enough for routine use and declined to commit 40–60 GiB on this machine to rehearsal. This removes T002 from the routine path. Native feasibility remains blocked until a qualified environment is available.
 
-**Consequences:** The check result must be typed (`checked`, `runtime_not_exercised`) so it cannot be mistaken for rehearsal evidence; `make rehearse` must refuse, not downgrade, when the backend is absent. T002's storage blocker no longer gates the default path.
+**Consequences:** The check result must be typed (`checked`, `runtime_not_exercised`) so it cannot be mistaken for rehearsal evidence; `make rehearse` must refuse, not downgrade, when the backend is absent. T002 does not gate the routine path.
 
 ## Routine admission and trusted startup are not yet qualified
 
-The schema and exact-byte tests cover retained data and descriptor checks once a storage boundary supplies an admitted descriptor. They do not prove that path traversal avoids activating mounts, rejects protected roots, or stays under the held root when the filesystem changes. Darwin’s `O_RESOLVE_BENEATH` and `O_NOFOLLOW_ANY` restrict lookup, but they do not establish pre-traversal mount admission. Checking mount flags after opening is too late to prove that no mount was activated. Keep T001 open until the storage boundary is verified on the target host.
+The shipped schema and exact-byte tests cover retained data and descriptor checks once a storage boundary supplies an admitted descriptor. They do not prove pre-traversal protected-root or mount admission: Darwin’s `O_RESOLVE_BENEATH` and `O_NOFOLLOW_ANY` restrict lookup but do not provide that guarantee, and checking mount flags after opening is too late. The draft replaces the routine directory interface with one independently pinned stdin bundle. A closed JSON envelope using standard Base64 preserves the exact reviewed byte sequences without archive extraction, decompression, filesystem metadata or a new dependency. The checker never opens a proposal input path. The operator controls the producer; stream validation is not evidence of where the producer obtained bytes. Native root and image admission are unchanged.
 
-The standalone command and Make target remain unwired. T012 also needs an independently provisioned trust record and a bootstrap that binds the verified interpreter and startup dependencies to the objects actually loaded. Hashing a Python installation from inside an already running interpreter does not satisfy that requirement. The schema tests are not SC-005 workstation evidence.
+The standalone command and Make target remain unwired. T012 still needs an independently provisioned trust record and a bootstrap that binds the verified interpreter and startup dependencies to the objects actually loaded. Hashing a Python installation from inside an already running interpreter does not satisfy that requirement. The bundle change neither proves startup continuity nor makes the schema tests SC-005 workstation evidence.
 
 ## Use an offline macOS guest for the first native backend
 
