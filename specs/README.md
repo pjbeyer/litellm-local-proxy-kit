@@ -7,7 +7,9 @@
 - [004 — Isolated LiteLLM rehearsal](004-isolated-proxy-rehearsal/spec.md): pre-implementation design for an offline configuration check and a separate opt-in native rehearsal. Neither command is available from this specification, and publication does not authorize implementation or qualification. See the [plan and entry gates](004-isolated-proxy-rehearsal/plan.md#gates-and-evidence), [task list](004-isolated-proxy-rehearsal/tasks.md), and [validation quickstart](004-isolated-proxy-rehearsal/quickstart.md). The entry gates bind evidence and authorization to the current spec and task hashes and normative packet digest.
 - [005 — Project provisioning baseline](005-project-provisioning-baseline/spec.md): contributor setup, repository scaffolding, and opt-in release automation.
 - [006 — Revision-bound task-review override](006-task-review-override/spec.md): explicit, default-off waiver of pending task review for exact validated revisions.
-- [008 — Hermes exact quality-eval attribution](008-hermes-eval-attribution/spec.md): design draft formerly numbered 002. No transport is qualified and implementation is not approved. See the [plan and entry gates](008-hermes-eval-attribution/plan.md).
+- [008 — Hermes exact quality-eval attribution](008-hermes-eval-attribution/spec.md): design draft. No transport is qualified and implementation is not approved. See the [plan and entry gates](008-hermes-eval-attribution/plan.md).
+
+The maintainer moved the attribution draft from `002-hermes-eval-attribution` to 008 as a one-time exception to resolve a numbering conflict. For older references to that draft, use the 008 link above; `002` is not an alias for 008.
 
 Feature numbers are stable identifiers, not a count of merged specifications. A gap can be reserved for branch-only work; do not renumber existing features to fill it. Keep each feature's spec and supporting artifacts in its own `specs/NNN-short-name/` directory. The [guard incidence-reduction contract](../docs/contracts/guard-incidence-reduction.md) is a separate operational contract.
 
