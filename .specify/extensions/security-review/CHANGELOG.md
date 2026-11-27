@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Stop feature-branch review when Git cannot determine the merge base. Fetch sufficient branch history and rerun rather than reviewing only uncommitted changes.
+
 ## v1.5.3
 
 - Bumped the extension version to `1.5.3`.

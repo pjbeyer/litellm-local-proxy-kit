@@ -164,8 +164,7 @@ if ($CurrentBranch -and $DefaultBranch -and ($CurrentBranch -ne $DefaultBranch))
 
         $Mode = "Feature branch diff ($DefaultBranch...HEAD) + uncommitted changes"
     } else {
-        # merge-base failed - fall through to Mode B
-        $DefaultBranch = ""
+        Write-ErrorAndExit "Cannot determine the merge base with origin/$DefaultBranch. Fetch sufficient branch history and retry." 1
     }
 }
 

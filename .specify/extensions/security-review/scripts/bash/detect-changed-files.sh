@@ -178,8 +178,7 @@ if [[ -n "$CURRENT_BRANCH" && -n "$DEFAULT_BRANCH" && "$CURRENT_BRANCH" != "$DEF
 
         MODE="Feature branch diff (${DEFAULT_BRANCH}...HEAD) + uncommitted changes"
     else
-        # merge-base failed — fall through to Mode B
-        DEFAULT_BRANCH=""
+        error_exit "Cannot determine the merge base with origin/$DEFAULT_BRANCH. Fetch sufficient branch history and retry." 1
     fi
 fi
 

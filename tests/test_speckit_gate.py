@@ -376,10 +376,47 @@ def test_bash_state_writer_preserves_literal_path(tmp_path):
 SECURITY_SCRIPTS = EXTENSION.parent / 'security-review/scripts'
 
 
-@pytest.mark.parametrize('shell', ['bash', 'pwsh'])
-def test_review_scope_includes_deletions_and_new_files(tmp_path, shell):
+def review_scope_args(shell):
     if not shutil.which(shell):
         pytest.skip(f'{shell} is not installed')
+    if shell == 'bash':
+        return [shell, str(SECURITY_SCRIPTS / 'bash/detect-changed-files.sh'), '--json']
+    return [shell, '-NoProfile', '-File',
+            str(SECURITY_SCRIPTS / 'powershell/detect-changed-files.ps1'), '-Json']
+
+
+@pytest.mark.parametrize('shell', ['bash', 'pwsh'])
+def test_review_scope_requires_merge_base_for_feature_branch(tmp_path, shell):
+    argv = review_scope_args(shell)
+
+    def git(*args):
+        return subprocess.run(
+            ['git', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+             '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', *args],
+            cwd=tmp_path, check=True, capture_output=True, text=True, timeout=20,
+        ).stdout.strip()
+
+    git('init', '-qb', 'main')
+    git('commit', '--allow-empty', '-qm', 'Fixture base')
+    git('update-ref', 'refs/remotes/origin/main', git('rev-parse', 'HEAD'))
+    git('checkout', '-qb', 'feature')
+    (tmp_path / 'committed.txt').write_text('Fixture\n', encoding='utf-8')
+    git('add', 'committed.txt')
+    git('commit', '-qm', 'Fixture feature')
+    result = subprocess.run(argv, cwd=tmp_path, capture_output=True, text=True, timeout=20)
+    assert result.returncode == 0, result.stdout
+    assert json.loads(result.stdout)['changed_files'] == ['committed.txt']
+
+    # A shallow history boundary leaves both refs present but no common ancestor.
+    (tmp_path / '.git/shallow').write_text(git('rev-parse', 'HEAD') + '\n', encoding='utf-8')
+    result = subprocess.run(argv, cwd=tmp_path, capture_output=True, text=True, timeout=20)
+    assert result.returncode == 1, result.stdout
+    assert 'merge base' in json.loads(result.stdout)['error']
+
+
+@pytest.mark.parametrize('shell', ['bash', 'pwsh'])
+def test_review_scope_includes_deletions_and_new_files(tmp_path, shell):
+    argv = review_scope_args(shell)
     file = tmp_path / 'retired-check.txt'
     file.write_text('Fixture\n', encoding='utf-8')
     changed_type = tmp_path / 'type-change.txt'
@@ -396,11 +433,6 @@ def test_review_scope_includes_deletions_and_new_files(tmp_path, shell):
     (tmp_path / 'ignored.txt').write_text('Local fixture\n', encoding='utf-8')
     added = tmp_path / 'new check.txt'
     added.write_text('New fixture\n', encoding='utf-8')
-    if shell == 'bash':
-        argv = [shell, str(SECURITY_SCRIPTS / 'bash/detect-changed-files.sh'), '--json']
-    else:
-        argv = [shell, '-NoProfile', '-File',
-                str(SECURITY_SCRIPTS / 'powershell/detect-changed-files.ps1'), '-Json']
     result = subprocess.run(argv, cwd=tmp_path, check=True, capture_output=True, text=True, timeout=20)
     assert sorted(json.loads(result.stdout)['changed_files']) == sorted([added.name, file.name, changed_type.name])
 
