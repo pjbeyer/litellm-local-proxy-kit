@@ -1,0 +1,30 @@
+tests/test_rehearsal_check.py
+  s_91f1b523b48125::t_e7a37f62f77eda 2
+  s_91f1b523b48125::t_bbf5d151eb52d5 330-331
+  s_91f1b523b48125::t_73ea7fa969586a 309-329,332-400,403-473
+  s_91f1b523b48125::t_55d6694cfcb004 401-402
+rehearsal/schemas/configuration_check.py
+  s_91f1b523b48125::t_00721329979eca 71-77,89-134,136-139,144-148,150-152,157-159,162-171
+  s_91f1b523b48125::t_e2bdededae3c8d 140
+  s_91f1b523b48125::t_f01541ea7fc722 153-156
+  s_91f1b523b48125::t_78d085ba095b8c 160-161
+  s_91f1b523b48125::t_dfc26d2556d145 135,141-143,149
+  s_91f1b523b48125::t_c79006eececf47 4
+  s_91f1b523b48125::t_ed3626700aaf8e 172-173
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "47e356e8f5808c28130f370048763438d3bb8357",
+  "prompts": {},
+  "sessions": {
+    "s_91f1b523b48125": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261127_184401_1fa516",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
