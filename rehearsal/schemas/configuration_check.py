@@ -1,6 +1,7 @@
 """Closed v1 data model for the advisory configuration check."""
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass
 import hashlib
 import json
@@ -67,6 +68,13 @@ def require_digest(raw: bytes, expected: str) -> None:
         raise InputError("digest_mismatch")
 
 
+_MODE = "configuration_check"
+_BUNDLE_CAP = 768 * 1024
+_B64 = re.compile(r"[A-Za-z0-9+/]*={0,2}")
+_ENVELOPE_KEYS = ("manifest", "overlay", "pin")
+_MEMBER_KEYS = _ENVELOPE_KEYS + ("baseline_overlay",)
+
+
 def _pairs(items):
     result = dict(items)
     if len(result) != len(items):
@@ -76,6 +84,91 @@ def _pairs(items):
 
 def _reject_constant(_):
     raise ValueError
+
+
+def _closed_json(raw: bytes, limit: int):
+    """Decode one bounded UTF-8 JSON object with no BOM or trailing data."""
+    if len(raw) > limit or raw.startswith(b"\xef\xbb\xbf"):
+        raise ValueError
+    value = json.loads(raw.decode("utf-8"), object_pairs_hook=_pairs,
+                       parse_constant=_reject_constant)
+    if not isinstance(value, dict):
+        raise ValueError
+    return value
+
+
+def _canonical_base64(value) -> bytes:
+    if not isinstance(value, str) or not _B64.fullmatch(value) or not value:
+        raise ValueError
+    decoded = base64.b64decode(value, validate=True)
+    if base64.b64encode(decoded).decode() != value:
+        raise ValueError
+    return decoded
+
+
+def _member_digests(manifest) -> dict:
+    if not _closed(manifest, ("version", "mode", "overlay", "pin"),
+                   ("baseline_overlay",)) or not _version(manifest["version"]) \
+            or manifest["mode"] != _MODE:
+        raise ValueError
+    digests = {}
+    for key in _MEMBER_KEYS:
+        if key not in manifest:
+            continue
+        entry = manifest[key]
+        if not _closed(entry, ("sha256",)) or not is_digest(entry["sha256"]):
+            raise ValueError
+        digests[key] = entry["sha256"]
+    if ("baseline_overlay" in digests) != ("baseline_overlay" in manifest):
+        raise ValueError
+    return digests
+
+
+def admit_bundle(raw: bytes, expected: str) -> ReviewedCheck:
+    """Admit one complete stdin stream as reviewed, retained member bytes.
+
+    Verifies the independently supplied digest over the exact stream, decodes
+    the closed base64 envelope and the path-free manifest in memory, and
+    binds every retained member to its manifest digest. No member is
+    interpreted as a path and nothing is materialized on disk.
+    """
+    if not is_digest(expected) or len(raw) > _BUNDLE_CAP or not raw:
+        raise InputError("input_invalid")
+    require_digest(raw, expected)
+    try:
+        envelope = _closed_json(raw, _BUNDLE_CAP)
+        expected_keys: set[str] = set(_ENVELOPE_KEYS)
+        if "baseline_overlay" in envelope:
+            expected_keys.add("baseline_overlay")
+        if set(envelope) != expected_keys:
+            raise ValueError
+        members = {key: _canonical_base64(envelope[key]) for key in _MEMBER_KEYS
+                   if key in envelope}
+        manifest = _closed_json(members["manifest"], LIMITS["manifest"])
+        digests = _member_digests(manifest)
+        if set(digests) != set(members) - {"manifest"}:
+            raise ValueError
+    except (ValueError, RecursionError):
+        raise InputError("input_invalid") from None
+    # A decoded member digest mismatch is a mismatch, not a format error.
+    for key in ("overlay", "pin", "baseline_overlay"):
+        if key in members:
+            require_digest(members[key], digests[key])
+    for key in ("overlay", "pin", "baseline_overlay"):
+        if key in members and len(members[key]) > LIMITS[key]:
+            raise InputError("input_invalid")
+    return ReviewedCheck(sha256(members["manifest"]), members["overlay"],
+                         members["pin"], members.get("baseline_overlay"))
+
+
+def load_bundle(raw: bytes, expected: str) -> ReviewedCheck:
+    """Admit a bundle and validate both overlays and the pin schema."""
+    bundle = admit_bundle(raw, expected)
+    parse_overlay(bundle.overlay)
+    parse_pin(bundle.pin)
+    if bundle.baseline_overlay is not None:
+        parse_overlay(bundle.baseline_overlay)
+    return bundle
 
 
 def parse_manifest(raw: bytes, expected: str) -> dict:

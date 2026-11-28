@@ -1,4 +1,5 @@
 """Offline tests for the configuration-check data contract."""
+import base64
 import hashlib
 import importlib
 import json
@@ -305,3 +306,168 @@ def test_load_reviewed_check(admission, schema, tmp_path, change, reason, reads)
         with pytest.raises(schema.InputError, match=f"^{reason}$"):
             schema.load_reviewed_check(fixture_reader, str(tmp_path / "manifest"), reviewed_digest)
     assert observed == reads
+
+
+# --- T001: bounded in-memory bundle admission (stdin wire format v1) ---
+
+
+def routine_members(baseline=None):
+    members = {"overlay": OVERLAY, "pin": PIN}
+    doc = {"version": 1, "mode": "configuration_check",
+           "overlay": {"sha256": digest(OVERLAY)}, "pin": {"sha256": digest(PIN)}}
+    if baseline is not None:
+        members["baseline_overlay"] = baseline
+        doc["baseline_overlay"] = {"sha256": digest(baseline)}
+    members["manifest"] = json.dumps(doc).encode()
+    return members
+
+
+def encode_bundle(members):
+    return json.dumps({key: base64.b64encode(value).decode()
+                       for key, value in members.items()}).encode()
+
+
+BASELINE = OVERLAY.replace(b"wildcard: true", b"wildcard: false").replace(
+    b"\n  wildcard_timeouts: false", b"")
+
+
+def member_bundle(**changes):
+    """A digest-consistent bundle with the named members replaced."""
+    members = routine_members()
+    doc = json.loads(members["manifest"])
+    for role, value in changes.items():
+        members[role] = value
+        doc[role] = {"sha256": digest(value)}
+    members["manifest"] = json.dumps(doc).encode()
+    return encode_bundle(members)
+
+
+def test_bundle_admission_retains_verified_members(schema):
+    members = routine_members()
+    raw = encode_bundle(members)
+    bundle = schema.admit_bundle(raw, digest(raw))
+    assert bundle.overlay == OVERLAY and bundle.pin == PIN
+    assert bundle.baseline_overlay is None
+    assert bundle.manifest_sha256 == digest(members["manifest"])
+    with pytest.raises(schema.InputError, match="^digest_mismatch$"):
+        schema.admit_bundle(raw, digest(b"other"))
+
+
+def test_bundle_admission_with_baseline_loads_closed_members(schema):
+    members = routine_members(BASELINE)
+    raw = encode_bundle(members)
+    bundle = schema.load_bundle(raw, digest(raw))
+    assert bundle.baseline_overlay == BASELINE
+    assert bundle.manifest_sha256 == digest(members["manifest"])
+
+
+def test_bundle_refuses_unusable_streams(schema):
+    members = routine_members()
+    raw = encode_bundle(members)
+    for stream, expected in ((b"", digest(raw)),
+                             (b"x" * (768 * 1024 + 1), digest(b"x" * (768 * 1024 + 1))),
+                             (raw, "not-a-digest"),
+                             (raw, digest(b"other"))):
+        with pytest.raises(schema.InputError) as raised:
+            schema.admit_bundle(stream, expected)
+        assert str(raised.value) == ("input_invalid" if expected == "not-a-digest"
+                                     or stream in (b"", b"x" * (768 * 1024 + 1))
+                                     else "digest_mismatch")
+
+
+def test_bundle_refuses_altered_envelopes_with_recomputed_digests(schema):
+    # Internal consistency is not acceptance: the independently supplied
+    # digest still binds the original reviewed bytes.
+    members = routine_members()
+    doc = json.loads(members["manifest"])
+    doc["overlay"]["sha256"] = digest(OVERLAY + b"extra: true\n")
+    members["manifest"] = json.dumps(doc).encode()
+    raw = encode_bundle(members)
+    with pytest.raises(schema.InputError, match="^digest_mismatch$"):
+        schema.admit_bundle(raw, digest(encode_bundle(routine_members())))
+    # A member/manifest mismatch is caught even when the outer digest matches.
+    other = dict(routine_members(), overlay=OVERLAY + b"# changed\n")
+    raw = encode_bundle(other)
+    with pytest.raises(schema.InputError, match="^digest_mismatch$"):
+        schema.admit_bundle(raw, digest(raw))
+
+
+def test_bundle_refuses_structural_violations(schema):
+    members = routine_members()
+    envelope = json.loads(encode_bundle(members).decode())
+    doc = json.loads(members["manifest"])
+
+    def raw_for(envelope_value):
+        raw = envelope_value if isinstance(envelope_value, bytes) \
+            else json.dumps(envelope_value).encode()
+        return raw, digest(raw)
+
+    def with_manifest(manifest_value):
+        if not isinstance(manifest_value, bytes):
+            manifest_value = json.dumps(manifest_value).encode()
+        return raw_for({**envelope, "manifest": base64.b64encode(manifest_value).decode()})
+
+    duplicate = (b'{"manifest":"' + base64.b64encode(members["manifest"]) + b'",'
+                 b'"overlay":"' + base64.b64encode(OVERLAY) + b'",'
+                 b'"pin":"' + base64.b64encode(PIN) + b'",'
+                 b'"manifest":"' + base64.b64encode(members["manifest"]) + b'"}')
+    without_pin = {key: value for key, value in envelope.items() if key != "pin"}
+    cases = [
+        (raw_for(duplicate), "input_invalid"),
+        (raw_for(without_pin), "input_invalid"),
+        (raw_for({**envelope, "extra_member": "eA=="}), "input_invalid"),
+        (raw_for({**envelope, "manifest": 42}), "input_invalid"),
+        (raw_for({**envelope, "overlay": {"nested": {}}}), "input_invalid"),
+        (raw_for({**envelope, "manifest": " aGVsbG8="}), "input_invalid"),
+        (raw_for({**envelope, "manifest": "eA"}), "input_invalid"),
+        (raw_for({**envelope, "manifest": "eB=="}), "input_invalid"),
+        (raw_for({**envelope, "manifest": "eA==\n"}), "input_invalid"),
+        (with_manifest({**doc, "version": 2}), "input_invalid"),
+        (with_manifest({**doc, "mode": "native_rehearsal"}), "input_invalid"),
+        (with_manifest({**doc, "overlay": {"path": "/proposal.yaml",
+                                           "sha256": digest(OVERLAY)}}), "input_invalid"),
+        (with_manifest({**doc, "overlay": {"sha256": digest(OVERLAY), "note": "x"}}),
+         "input_invalid"),
+        (with_manifest(b"{"), "input_invalid"),
+        (with_manifest(b'{"x": NaN}'), "input_invalid"),
+    ]
+    for (raw, expected), reason in cases:
+        with pytest.raises(schema.InputError, match=f"^{reason}$"):
+            schema.admit_bundle(raw, expected)
+    # Baseline presence must agree between envelope and manifest.
+    raw, expected = raw_for({**envelope, "baseline_overlay":
+                             base64.b64encode(BASELINE).decode()})
+    with pytest.raises(schema.InputError, match="^input_invalid$"):
+        schema.admit_bundle(raw, expected)
+    doc_with_baseline = {**doc, "baseline_overlay": {"sha256": digest(BASELINE)}}
+    raw = encode_bundle(dict(routine_members(),
+                             manifest=json.dumps(doc_with_baseline).encode()))
+    with pytest.raises(schema.InputError, match="^input_invalid$"):
+        schema.admit_bundle(raw, digest(raw))
+    # A baseline with a stale member digest is a mismatch, not a format error.
+    stale = dict(routine_members(BASELINE),
+                 manifest=json.dumps({**json.loads(routine_members()["manifest"]),
+                                      "baseline_overlay": {"sha256": digest(OVERLAY)}}).encode())
+    raw = encode_bundle(stale)
+    with pytest.raises(schema.InputError, match="^digest_mismatch$"):
+        schema.admit_bundle(raw, digest(raw))
+
+
+def test_bundle_enforces_role_byte_limits(schema):
+    oversized = b" " * (256 * 1024 + 1)
+    raw = member_bundle(overlay=oversized)
+    with pytest.raises(schema.InputError, match="^input_invalid$"):
+        schema.admit_bundle(raw, digest(raw))
+
+
+def test_load_bundle_validates_both_overlays_and_the_pin(schema):
+    with pytest.raises(schema.InputError, match="^input_invalid$"):
+        schema.load_bundle(member_bundle(overlay=OVERLAY + b"callbacks: []\n"),
+                           digest(member_bundle(overlay=OVERLAY + b"callbacks: []\n")))
+    with pytest.raises(schema.InputError, match="^input_invalid$"):
+        schema.load_bundle(member_bundle(pin=b'base_version = "1.2.3"\n'),
+                           digest(member_bundle(pin=b'base_version = "1.2.3"\n')))
+    members = routine_members(BASELINE + b"unsupported: true\n")
+    raw = encode_bundle(members)
+    with pytest.raises(schema.InputError, match="^input_invalid$"):
+        schema.load_bundle(raw, digest(raw))
