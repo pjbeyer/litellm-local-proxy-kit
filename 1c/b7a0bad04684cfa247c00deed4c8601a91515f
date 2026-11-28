@@ -1,0 +1,64 @@
+tests/test_rehearsal_check.py
+  s_c1ef33afdd4dc6::t_e44b7b91089024 480-559,561-564,567-569,571-605,607-619,621-647,649-666,668-678,747-759
+  s_39dc5d789bb322::t_76b46f07fc212d 700-718
+  s_39dc5d789bb322::t_e596d499459708 719-731
+  s_91f1b523b48125::t_76ce5c18d7bf77 478-479,560,565-566,570,606,620,648,667
+  s_39dc5d789bb322::t_7a26d0906a0569 679-699,732-746
+  s_c1ef33afdd4dc6::t_c5d7b3739ed3bf 7-10
+  s_c1ef33afdd4dc6::t_6759fd08653f6c 124,128-130
+rehearsal/check.py
+  s_39dc5d789bb322::t_99a2478ec94e24 121-124
+  s_c1ef33afdd4dc6::t_902a3ac379cc8e 1-120,125-193,208,211-215,223,232-237
+  s_39dc5d789bb322::t_478018842d4987 194-207,209-210,216-222,224-231
+core/render_config.py
+  s_39dc5d789bb322::t_26c1901ff39145 23-24,27-43
+  s_39dc5d789bb322::t_fd4fc674ec79cd 129-134
+  s_39dc5d789bb322::t_62796b911903d0 15
+rehearsal/schemas/configuration_check.py
+  s_c1ef33afdd4dc6::t_7e87547531b85e 21
+rehearsal-check
+  s_c1ef33afdd4dc6::t_0d9ea79217a3c2 3
+  s_c1ef33afdd4dc6::t_3bb16bcfe383cb 1-2,4-11,13-27
+  s_39dc5d789bb322::t_e4d1076fc182dc 12
+README.md
+  s_39dc5d789bb322::t_bbf0ca6ee0c8ec 21-22
+docs/rehearsal-configuration-check.md
+  s_39dc5d789bb322::t_c9be6e4803a810 1-13
+Makefile
+  s_c1ef33afdd4dc6::t_8aa18f3568c577 8,10-12,16-22
+  s_c1ef33afdd4dc6::t_eb504eb9275913 41-43
+.gitignore
+  s_39dc5d789bb322::t_a907e747029a8f 33-35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "1cb7a0bad04684cfa247c00deed4c8601a91515f",
+  "prompts": {},
+  "sessions": {
+    "s_39dc5d789bb322": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261127_212417_4998c7",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_91f1b523b48125": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261127_184401_1fa516",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_c1ef33afdd4dc6": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261127_211518_bbedde",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
