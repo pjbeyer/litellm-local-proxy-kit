@@ -1,0 +1,49 @@
+specs/008-hermes-eval-attribution/plan.md
+  s_167289b2fc20c5::t_b3feb76a1fed15 41
+specs/008-hermes-eval-attribution/research.md
+  s_77db1ea6805a1b::t_773909bf4fa9e1 3
+  s_167289b2fc20c5::t_7e56f5247642eb 46
+  s_ed331d32891120::t_6f078ae8580cff 44
+  s_ed331d32891120::t_47e87c4fffbca9 57-59
+  s_8e14a1f41bf857::t_343c99eeace928 42,48-56,60-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.7.6",
+  "base_commit_sha": "8516f0214451c3f2bf51d86bf708346978ea2b51",
+  "prompts": {},
+  "sessions": {
+    "s_167289b2fc20c5": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261127_185409_bed2fd",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_77db1ea6805a1b": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261127_193340_b5e24c",
+        "model": "smart-router"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_8e14a1f41bf857": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261127_184640_cbdda7",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    },
+    "s_ed331d32891120": {
+      "agent_id": {
+        "tool": "hermes",
+        "id": "20261127_204644_30d733",
+        "model": "unknown"
+      },
+      "human_author": "Phil Beyer <6152278+pjbeyer@users.noreply.github.com>"
+    }
+  }
+}
