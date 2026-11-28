@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import os
 import sys
+from io import StringIO
 from pathlib import Path
 
 import yaml
@@ -19,14 +20,27 @@ import yaml
 REPO = Path(__file__).resolve().parent.parent
 
 
-def _render_yaml(obj: object) -> str:
-    """Deterministic YAML dump: sorted keys, no anchors, trailing newline."""
-    return yaml.safe_dump(
-        obj, default_flow_style=False, sort_keys=False, width=120, allow_unicode=True
-    )
+class RenderLimit(Exception):
+    """The rendered UTF-8 output would exceed its byte budget."""
 
 
-def render(overlay: dict, template: str, *, home: str | None = None) -> str:  # noqa: C901
+class _BoundedText(StringIO):
+    def __init__(self, max_bytes: int):
+        super().__init__()
+        self.remaining = max_bytes
+
+    def write(self, text: str) -> int:
+        if len(text) > self.remaining:
+            raise RenderLimit
+        size = len(text.encode("utf-8"))
+        if size > self.remaining:
+            raise RenderLimit
+        self.remaining -= size
+        return super().write(text)
+
+
+def render(overlay: dict, template: str, *, home: str | None = None,
+           max_bytes: int | None = None) -> str:  # noqa: C901
     """Produce the final config bytes: template with overlay-driven blocks.
 
     `${HOME}` in overlay values is substituted with the operator's home at
@@ -112,7 +126,12 @@ def render(overlay: dict, template: str, *, home: str | None = None) -> str:  # 
     if mcp:
         doc["mcp_servers"] = mcp
 
-    return template_part + _render_yaml(doc)
+    stream = StringIO() if max_bytes is None else _BoundedText(max_bytes)
+    with stream:
+        stream.write(template_part)
+        yaml.safe_dump(doc, stream, default_flow_style=False, sort_keys=False,
+                       width=120, allow_unicode=True)
+        return stream.getvalue()
 
 
 def main() -> int:

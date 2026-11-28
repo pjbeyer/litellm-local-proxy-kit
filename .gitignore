@@ -30,6 +30,9 @@ secrets.*
 .idea/
 .vscode/
 
+# Installation-local rehearsal bootstrap (never distributed by the checkout)
+/rehearsal/.check-bootstrap
+
 # Generated review / scratch artifacts
 /tmp/
 tmp/

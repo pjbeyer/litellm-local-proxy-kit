@@ -5,12 +5,21 @@ export POLICY ?= $(HOME)/.config/litellm-restart-controller/policy.json
 export REQUEST_ID
 export ASSET_DIGEST
 
-# Keep preview, apply, and activation separately invoked, even with make -j.
+# Keep rehearsal and maintenance targets separately invoked, even with make -j.
 ifneq ($(word 2,$(MAKECMDGOALS)),)
+ifneq ($(filter rehearse rehearse-check,$(MAKECMDGOALS)),)
+$(error Run one rehearsal target at a time; see make help)
+endif
 $(error Run one maintenance target at a time; see make help)
 endif
 
-.PHONY: help status health check-binding preview apply verify prepare restart
+# Pass the literal assignment through the environment, never as shell source.
+ifeq ($(MAKECMDGOALS),rehearse-check)
+override REHEARSAL_BUNDLE_SHA256 := $(value REHEARSAL_BUNDLE_SHA256)
+export REHEARSAL_BUNDLE_SHA256
+endif
+
+.PHONY: help status health check-binding preview apply verify prepare restart rehearse-check
 help:
 	@printf '%s\n' \
 	  'Inspect (choose the relevant check):' \
@@ -29,3 +38,6 @@ help:
 
 status health check-binding preview apply verify prepare restart:
 	@python3 -I -B owner_maintenance.py "$@"
+
+rehearse-check:
+	@./rehearsal-check --bundle-sha256 "$$REHEARSAL_BUNDLE_SHA256"

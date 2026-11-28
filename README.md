@@ -18,6 +18,8 @@ An experimental MIT-licensed kit for running a pinned, loopback-only LiteLLM pro
 
 ## Verify without touching a deployment
 
+The [offline configuration checker](docs/rehearsal-configuration-check.md) is experimental. A plain checkout cannot produce a `checked` result; the test fixture does not qualify interpreter startup.
+
 From an isolated worktree, set `TMPDIR` to a short, existing, private directory
 with no symlinked ancestors (macOS `/var` is commonly a symlink), then run the
 complete offline suite. No provider credentials are needed:

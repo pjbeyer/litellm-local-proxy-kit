@@ -18,7 +18,7 @@ _DIGEST = re.compile(r"[0-9a-f]{64}")
 _ENV = re.compile(r"[A-Z_][A-Z0-9_]*")
 _NAME = re.compile(r"[A-Za-z0-9._/-]+")
 _RESULT_HASHES = {f"{name}_sha256" for name in
-                  ("manifest", "overlay", "pin", "template", "render_context", "rendered")}
+                  ("bundle", "manifest", "overlay", "pin", "template", "render_context", "rendered")}
 _REASONS = {"refused": ("input_invalid", "digest_mismatch"),
             "failed": ("render_failed", "output_limit", "deadline")}
 

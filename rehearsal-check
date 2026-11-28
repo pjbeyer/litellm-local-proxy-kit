@@ -1,0 +1,27 @@
+#!/bin/sh
+# Shared standalone and Make boundary. No checkout-provided Python fallback.
+invalid=0
+if [ "$#" -ne 2 ] || [ "$1" != --bundle-sha256 ]; then
+    invalid=1
+else
+    case $2 in
+        *[!0123456789abcdef]*) invalid=1 ;;
+        *) [ "${#2}" -eq 64 ] || invalid=1 ;;
+    esac
+fi
+if [ "$invalid" = 1 ]; then
+    printf '%s\n' '{"mode":"configuration_check","reason":"input_invalid","runtime_not_exercised":true,"status":"refused","version":1}'
+    exit 78
+fi
+
+# The trusted installation supplies this entry point, not the bundle. The
+# repository does not install it, including on the experimental workstation.
+case $0 in
+    */*) bootstrap=${0%/*}/rehearsal/.check-bootstrap ;;
+    *) bootstrap= ;;
+esac
+if [ -f "$bootstrap" ] && [ -x "$bootstrap" ]; then
+    exec /usr/bin/env -i HOME=/rehearsal-home "$bootstrap" "$@"
+fi
+printf '%s\n' '{"mode":"configuration_check","reason":"render_failed","runtime_not_exercised":true,"status":"failed","version":1}'
+exit 1

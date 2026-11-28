@@ -4,6 +4,10 @@ import hashlib
 import importlib
 import json
 import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
 
 import pytest
 
@@ -117,10 +121,13 @@ def test_result_is_closed_bounded_and_advisory(schema):
     value = {"version": 1, "mode": "configuration_check", "runtime_not_exercised": True,
              "status": "checked", "comparison": None,
              "categories_present": ["model_list", "general_settings"]}
-    for name in ("manifest", "overlay", "pin", "template", "render_context", "rendered"):
+    for name in ("bundle", "manifest", "overlay", "pin", "template", "render_context", "rendered"):
         value[f"{name}_sha256"] = "a" * 64
     raw = schema.encode_result(value)
     assert len(raw) <= 4096 and json.loads(raw) == value
+    for missing in ("bundle_sha256", "manifest_sha256"):
+        with pytest.raises(schema.ResultError):
+            schema.encode_result({key: val for key, val in value.items() if key != missing})
     for change in ({"runtime_not_exercised": False}, {"status": "passed"},
                    {"categories_present": ["general_settings", "model_list"]},
                    {"comparison": {"changed_categories": []}}, {"receipt": {}},
@@ -308,9 +315,6 @@ def test_load_reviewed_check(admission, schema, tmp_path, change, reason, reads)
     assert observed == reads
 
 
-# --- T001: bounded in-memory bundle admission (stdin wire format v1) ---
-
-
 def routine_members(baseline=None):
     members = {"overlay": OVERLAY, "pin": PIN}
     doc = {"version": 1, "mode": "configuration_check",
@@ -471,3 +475,285 @@ def test_load_bundle_validates_both_overlays_and_the_pin(schema):
     raw = encode_bundle(members)
     with pytest.raises(schema.InputError, match="^input_invalid$"):
         schema.load_bundle(raw, digest(raw))
+
+
+# --- T012: local experimental boundary; the fixture does not qualify startup. ---
+
+_REPO = Path(__file__).resolve().parents[1]
+_CATEGORIES = ["model_list", "litellm_settings", "general_settings", "router_settings"]
+
+
+def canonical(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":")).encode("ascii")
+
+
+@pytest.fixture
+def experiment(tmp_path):
+    import shlex
+    import yaml
+
+    for name in ("Makefile", "rehearsal-check", "rehearsal/check.py",
+                 "rehearsal/schemas/configuration_check.py", "core/render_config.py",
+                 "core/config.template.header.txt"):
+        dest = tmp_path / name
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(_REPO / name, dest)
+
+    # Test-installed reference, created before invocation and not sourced from
+    # stdin. The two runtime inventory digests are fixture identities, NOT proof
+    # of verified-object continuity into native interpreter startup.
+    def provision():
+        def hash_file(name):
+            return digest((tmp_path / name).read_bytes())
+
+        parser_names = ("check.py", "schemas/configuration_check.py")
+        context = {
+            "version": 1,
+            "renderer_sha256": hash_file("core/render_config.py"),
+            "template_sha256": hash_file("core/config.template.header.txt"),
+            "parser_inventory_sha256": digest(canonical({
+                name: hash_file(f"rehearsal/{name}") for name in parser_names})),
+            "python": {"implementation": sys.implementation.name,
+                       "version": sys.version.split()[0],
+                       "executable_sha256": digest(Path(sys.executable).read_bytes()),
+                       "inventory_sha256": digest(b"synthetic Python inventory")},
+            "pyyaml": {"version": yaml.__version__,
+                       "inventory_sha256": digest(b"synthetic PyYAML inventory")},
+            "settings": {"HOME": "/rehearsal-home"},
+        }
+        record = tmp_path / "fixture-context.json"
+        record.write_bytes(canonical(context))
+        return context
+
+    launcher = tmp_path / "rehearsal/.check-bootstrap"
+    launcher.write_text("#!/bin/sh\nexec " + shlex.join([
+        "/usr/bin/env", "-i", "HOME=/rehearsal-home", sys.executable, "-I", "-S", "-B",
+        str(tmp_path / "rehearsal/check.py"), str(tmp_path / "fixture-context.json"),
+        str(Path(yaml.__file__).resolve().parent.parent),
+    ]) + ' "$@"\n')
+    launcher.chmod(0o700)
+    return tmp_path, provision
+
+
+@pytest.fixture(params=["cli", "make"])
+def check_command(request, experiment):
+    root, _ = experiment
+
+    def command(expected, *extra):
+        if request.param == "make":
+            return ["make", "-s", "-j1", "rehearse-check", f"REHEARSAL_BUNDLE_SHA256={expected}", *extra]
+        return [str(root / "rehearsal-check"), "--bundle-sha256", expected, *extra]
+
+    return root, command, {0: 0, 1: 2, 78: 2} if request.param == "make" else {0: 0, 1: 1, 78: 78}
+
+
+def invoke(check_command, expected, raw, *, env=None):
+    root, command, _ = check_command
+    return subprocess.run(command(expected), cwd=root, input=raw,
+                          capture_output=True, timeout=15, env=env)
+
+
+def result_of(process, exit_code):
+    assert process.returncode == exit_code, process.stderr
+    assert 0 < len(process.stdout) <= 4096
+    result = json.loads(process.stdout)
+    assert result["version"] == 1 and result["mode"] == "configuration_check"
+    assert result["runtime_not_exercised"] is True
+    if result["status"] != "checked":
+        assert set(result) == {"version", "mode", "runtime_not_exercised", "status", "reason"}
+    return result
+
+
+def test_command_checks_exact_stream_and_reviewed_baseline(experiment, check_command):
+    import yaml
+    from core.render_config import render
+
+    root, provision = experiment
+    _, _, exits = check_command
+    context = provision()
+    members = routine_members(BASELINE)
+    raw = encode_bundle(members) + b"\r\n\t "
+    template = (root / "core/config.template.header.txt").read_bytes().decode()
+    before = {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()}
+    first = invoke(check_command, digest(raw), raw)
+    altered_env = dict(os.environ, HOME="/unused-for-test", PYTHONPATH="/unused-for-test")
+    second = invoke(check_command, digest(raw), raw, env=altered_env)
+    assert not first.stderr and not second.stderr and first.stdout == second.stdout
+    assert result_of(first, exits[0]) == {
+        "version": 1, "mode": "configuration_check", "status": "checked",
+        "runtime_not_exercised": True, "bundle_sha256": digest(raw),
+        "manifest_sha256": digest(members["manifest"]), "overlay_sha256": digest(OVERLAY),
+        "pin_sha256": digest(PIN), "template_sha256": context["template_sha256"],
+        "render_context_sha256": digest(canonical(context)),
+        "rendered_sha256": digest(render(yaml.safe_load(OVERLAY), template,
+                                         home="/rehearsal-home").encode()),
+        "categories_present": _CATEGORIES,
+        "comparison": {
+            "baseline_overlay_sha256": digest(BASELINE),
+            "baseline_rendered_sha256": digest(render(yaml.safe_load(BASELINE), template,
+                                                      home="/rehearsal-home").encode()),
+            "changed_categories": ["model_list"],
+        },
+    }
+    assert before == {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()}
+
+
+def test_command_comparison_null_equal_and_ordered(experiment, check_command):
+    _, provision = experiment
+    provision()
+    _, _, exits = check_command
+    changed = BASELINE.replace(b"telemetry: false", b"telemetry: true").replace(
+        b"to: [example/two]", b"to: [example/two, example/one]")
+    for baseline, categories in ((None, None), (OVERLAY, []),
+                                  (changed, ["model_list", "litellm_settings", "router_settings"])):
+        raw = encode_bundle(routine_members(baseline))
+        comparison = result_of(invoke(check_command, digest(raw), raw), exits[0])["comparison"]
+        assert (comparison if comparison is None else comparison["changed_categories"]) == categories
+
+
+def test_command_refuses_invalid_arguments_and_streams(experiment, check_command):
+    root, provision = experiment
+    provision()
+    _, command, exits = check_command
+    raw = encode_bundle(routine_members())
+    oversize = raw + b" " * (768 * 1024 + 1 - len(raw))
+    for stream, expected, reason in (
+        (raw, f" {digest(raw)} ", "input_invalid"),
+        (raw, "literal'quote\"and whitespace", "input_invalid"),
+        (raw, "", "input_invalid"),
+        (raw + b"\n", digest(raw), "digest_mismatch"),
+        (b"not json", digest(b"not json"), "input_invalid"),
+        (b"", digest(b""), "input_invalid"),
+        (oversize, digest(oversize), "input_invalid"),
+    ):
+        result = result_of(invoke(check_command, expected, stream), exits[78])
+        assert (result["status"], result["reason"]) == ("refused", reason)
+    with (root / "regular-input").open("wb+") as handle:
+        handle.write(raw)
+        handle.seek(0)
+        completed = subprocess.run(command(digest(raw)), cwd=root, stdin=handle,
+                                   capture_output=True, timeout=15)
+    assert result_of(completed, exits[78])["reason"] == "input_invalid"
+    if exits[78] == 78:
+        for args in ([], ["--bundle-sha256", digest(raw)] * 2, ["--manifest", "old"]):
+            done = subprocess.run([str(root / "rehearsal-check"), *args], cwd=root,
+                                  input=raw, capture_output=True, timeout=15)
+            assert result_of(done, 78)["reason"] == "input_invalid"
+
+
+def test_no_eof_does_not_admit_valid_prefix(experiment, check_command):
+    _, provision = experiment
+    provision()
+    root, command, exits = check_command
+    raw = encode_bundle(routine_members())
+    with subprocess.Popen(command(digest(raw)), cwd=root, stdin=subprocess.PIPE,
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE) as child:
+        try:
+            assert child.stdin is not None
+            child.stdin.write(raw)
+            child.stdin.flush()
+            child.wait(timeout=13)  # deliberately keep the input pipe open
+            stdout, stderr = child.communicate()
+        finally:
+            if child.poll() is None:
+                child.kill()
+    done = subprocess.CompletedProcess(child.args, child.returncode, stdout, stderr)
+    assert result_of(done, exits[1])["reason"] == "deadline"
+
+
+def test_command_fails_when_startup_fixture_or_expected_identity_is_missing(experiment, check_command):
+    root, provision = experiment
+    _, _, exits = check_command
+    raw = encode_bundle(routine_members())
+    for setup in (lambda: None, provision):
+        setup()
+        renderer = root / "core/render_config.py"
+        with renderer.open("ab") as handle:
+            handle.write(b"\nraise AssertionError('fixture code must not execute')\n")
+        result = result_of(invoke(check_command, digest(raw), raw), exits[1])
+        assert (result["status"], result["reason"]) == ("failed", "render_failed")
+    (root / "rehearsal/.check-bootstrap").unlink()
+    assert result_of(invoke(check_command, digest(raw), raw), exits[1])["reason"] == "render_failed"
+
+
+@pytest.mark.parametrize("stage", ["context", "render"])
+def test_worker_deadline_covers_context_and_render(experiment, check_command, stage):
+    root, provision = experiment
+    worker = root / "rehearsal/check.py"
+    worker.write_text(worker.read_text().replace("DEADLINE_SECONDS = 10", "DEADLINE_SECONDS = 2"))
+    renderer = root / "core/render_config.py"
+    if stage == "render":
+        with renderer.open("a") as handle:
+            handle.write("\n_original_render = render\ndef render(*args, **kwargs):\n"
+                         "    import time\n    time.sleep(5)\n"
+                         "    return _original_render(*args, **kwargs)\n")
+    provision()
+    if stage == "context":
+        context = root / "fixture-context.json"
+        context.unlink()
+        os.mkfifo(context)
+    raw = encode_bundle(routine_members())
+    _, _, exits = check_command
+    assert result_of(invoke(check_command, digest(raw), raw), exits[1])["reason"] == "deadline"
+
+
+def test_worker_keeps_deadline_armed_while_delivering_result(monkeypatch):
+    from rehearsal import check
+
+    state = {"armed": False}
+
+    def set_timer(_kind, seconds):
+        state["armed"] = bool(seconds)
+
+    def emit(_code, _payload):
+        assert state["armed"]
+        raise check.Deadline
+
+    monkeypatch.setattr(check.signal, "signal", lambda *_: None)
+    monkeypatch.setattr(check.signal, "setitimer", set_timer)
+    monkeypatch.setattr(check, "_emit", emit)
+    assert check.main() == 1
+    assert not state["armed"]
+
+
+def test_renderer_stops_writing_at_utf8_budget():
+    from core.render_config import RenderLimit, render
+    import yaml
+
+    overlay = yaml.safe_load(OVERLAY)
+    template = "# café\n"
+    rendered = render(overlay, template, home="/rehearsal-home")
+    size = len(rendered.encode("utf-8"))
+    assert render(overlay, template, home="/rehearsal-home", max_bytes=size) == rendered
+    with pytest.raises(RenderLimit):
+        render(overlay, template, home="/rehearsal-home", max_bytes=size - 1)
+
+
+def test_command_reports_render_errors_and_limits(experiment, check_command):
+    root, provision = experiment
+    renderer = root / "core/render_config.py"
+    original = renderer.read_bytes()
+    raw = encode_bundle(routine_members())
+    _, _, exits = check_command
+    for body, reason in ((b"raise ValueError('synthetic failure')", "render_failed"),
+                         (b"return ' ' * (1024 * 1024 + 1)", "output_limit")):
+        renderer.write_bytes(original + b"\ndef render(*args, **kwargs):\n    " + body + b"\n")
+        provision()
+        done = invoke(check_command, digest(raw), raw)
+        assert b"synthetic failure" not in done.stderr
+        assert result_of(done, exits[1])["reason"] == reason
+
+
+@pytest.mark.parametrize("native_goal", ["rehearse-check", "rehearse"])
+@pytest.mark.parametrize("reverse", [True, False])
+def test_make_refuses_mixed_rehearsal_goals_before_any_recipe(experiment, native_goal, reverse):
+    root, _ = experiment
+    with (root / "Makefile").open("a") as handle:
+        handle.write("\nrehearse inert:\n\t@printf 'unexpected recipe\\n'\n")
+    goals = [native_goal, "inert"]
+    if reverse:
+        goals.reverse()
+    done = subprocess.run(["make", "-s", "-j1", *goals], cwd=root,
+                          capture_output=True, timeout=15)
+    assert done.returncode != 0 and done.stdout == b""
+    assert b"Run one rehearsal target at a time" in done.stderr
