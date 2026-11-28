@@ -1,6 +1,6 @@
 # Research: Hermes Exact Quality-Eval Attribution
 
-**Evidence level:** Source inspection and a partial disposable runtime probe ([R4](#r4-separate-proof-phases-and-keep-the-failure-boundary-narrow)). No Hermes turn reached the proxy, no deployed store was queried, and no mode is qualified.
+**Evidence level:** Source inspection and disposable runtime observations ([R4](#r4-separate-proof-phases-and-keep-the-failure-boundary-narrow)). The positive control on each LiteLLM endpoint matched a SpendLog row. The observed Hermes hooks did not bind an accepted proxy call to the exact persisted message pair. No deployed store was queried, and no mode is qualified.
 
 ## R1. Keep wire identity separate from acceptance and persistence
 
@@ -39,10 +39,23 @@
 
 **Rejected:** Implementing against guessed APIs and using the eventual plugin canary to satisfy a pre-implementation dependency. Pre-implementation evidence may exercise supported interfaces on a separately authorized disposable setup; installed-plugin qualification is a later gate. Neither authorizes scoring.
 
-### Disposable runtime probe: stopped before a Hermes turn
+### Disposable runtime probe: proxy match verified, Hermes binding not demonstrated
 
-The probe used Hermes v0.23.4 (source `8fc037444731`) and a LiteLLM build based on v1.110.0 (source `89cb4042afbc`). A direct, non-streaming Chat Completions control sent a synthetic attempt token to `smart-router` on the disposable proxy. The loopback fixture returned a completion without receiving the token, and LiteLLM returned `x-litellm-call-id`. The run stopped before SpendLog readback, so it did not establish a token-to-row match.
+The operator authorized a disposable probe with synthetic inputs and no production-store writes. The first run stopped before Hermes dispatch and SpendLog readback. The follow-up used [Hermes v0.23.4](https://github.com/NousResearch/hermes-agent/tree/8fc0374447313e276f6b9a2764bfc750190c966a) and a locally patched LiteLLM fork based on upstream v1.110.0. The fork included patches to ignore empty stream deltas and prevent duplicate streamed tool-call arguments, plus a regression test for the latter. The Responses observations therefore apply to the patched build, not unmodified upstream LiteLLM. The probe used a network-isolated container with a fresh Hermes profile, a disposable PostgreSQL database, and a loopback upstream fixture. It did not access a deployed store or provider.
 
-The Hermes launcher stopped before dispatch when a dependency download failed with a DNS error. The probe did not retry with the existing interpreter because the permitted scratch root was inside the active Hermes home, not an independently isolated profile root. No Hermes request, observer event, or persisted message UID was observed. Streaming, Responses, retries, tool follow-ups, and resumed turns were not exercised.
+**Proxy controls.** One direct non-streaming request per endpoint through `smart-router` returned `x-litellm-call-id`. In each case exactly one disposable SpendLog row matched the call ID (`litellm_call_id`), attempt tag, authenticated key hash, and router alias. `request_id` did not equal the call ID. The wrong-tag control found no tag match for the real call ID; the wrong-call-ID control found no row. The fixture received neither control tag. This verifies these two controls, not a complete or independently enumerated billing census.
 
-**Disposition:** G2 and G3 remain unmet. This run neither proves nor disproves the plugin seam. Resume only with an approved scratch root outside existing Hermes homes and a pre-staged offline runtime. First verify the scratch profile and gateway boundaries and complete the control's SpendLog readback; then exercise the supported hooks and persistence interfaces against the endpoint matrix in R1. Do not implement the plugin or enable scoring based on this probe.
+**Hermes observer trials.** Each configuration completed an initial and resumed turn. The fixture recorded the following upstream exchanges; wire mode is observed at that fixture, not inferred from the display setting.
+
+| Hermes configuration | Fixture exchanges | Successful `post_api_request` events | `post_llm_call` events |
+| --- | --- | ---: | ---: |
+| Chat Completions, streaming off | Non-streaming: one 503, then successful retry, tool follow-up, and resumed turn | 3 | 2 |
+| Chat Completions, streaming on | Streaming: two successes | 2 | 2 |
+| Responses, streaming off | Streaming: two successes | 2 | 2 |
+| Responses, streaming on | Streaming: two successes | 2 | 2 |
+
+The pinned Hermes `codex_responses` transport uses the stream runner even from the non-streaming dispatch branch (`agent/chat_completion_helpers.py`); the streaming-off trial did not exercise a non-streaming Hermes Responses exchange. The observer hooks exposed internal request and turn IDs and history with message UIDs. Readback from the disposable SQLite store found UIDs on every observed session's user and assistant rows. No observed hook payload contained `x-litellm-call-id`, and no terminal hook paired the accepted proxy call with the exact durable user and final assistant rows and their revisions.
+
+A repeat added a passive `llm_execution` middleware wrapper at runtime. It returned the provider result unchanged and recorded the request and turn IDs, API mode, and whether the inspected public header accessors exposed the call ID. They did so on **0 of 9 successful returns**. The wrapper did not record header values, and this result does not establish that the header was absent on the Hermes–proxy wire. Hermes can still discard the result after the middleware returns if a redirect intervenes (`agent/turn_api_call.py`), so a header at that point would not prove acceptance. Neither run sent the control tag from Hermes or proved final-dispatch non-egress, row lineage, or a coherent read point.
+
+**Disposition:** G2 and G3 remain unmet. The proxy-side control is no longer the immediate blocker. Require a supported Hermes interface that binds the accepted response's allowlisted call ID to the exact persisted message pair and revision lineage, or return to maintainer review with that gap. Do not implement the plugin or enable scoring on the strength of this probe.
